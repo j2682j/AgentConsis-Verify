@@ -1,0 +1,124 @@
+from __future__ import annotations
+
+import datetime as dt
+from dataclasses import dataclass, field
+from typing import Any
+
+
+try:
+    import tiktoken
+except ImportError:  # pragma: no cover - optional dependency
+    tiktoken = None
+
+
+@dataclass
+class ContextPacket:
+    """A content unit used to build agent messages."""
+
+    packet_type: str
+    content: str
+    priority: int = 0
+    metadata: dict[str, Any] = field(default_factory=dict)
+    token_count: int = 0
+    relevance_score: float = 0.0
+    timestamp: dt.datetime = field(default_factory=dt.datetime.now)
+
+    def __post_init__(self) -> None:
+        self.content = "" if self.content is None else str(self.content)
+        if self.token_count <= 0:
+            self.token_count = count_tokens(self.content)
+
+
+@dataclass
+class ContextConfig:
+    """Settings for context selection and compression."""
+
+    max_tokens: int = 8000
+    reserve_ratio: float = 0.15
+    min_relevance: float = 0.0
+    max_context_lines: int = 80
+    max_context_chars: int = 12000
+    max_solver_chars: int = 2000
+    none_text: str = "None"
+    enable_compression: bool = True
+
+    def get_available_tokens(self) -> int:
+        return int(self.max_tokens * (1 - self.reserve_ratio))
+
+
+class ContextBuilder:
+    """Base class for building chat messages from context packets."""
+
+    def __init__(self, config: ContextConfig | None = None) -> None:
+        self.config = config or ContextConfig()
+
+    def build(self, **kwargs: Any) -> list[dict[str, str]]:
+        packets = self.gather(**kwargs)
+        selected = self.select(packets, **kwargs)
+        structured = self.structure(selected, **kwargs)
+        compressed = self.compress(structured, **kwargs)
+        return self.render(compressed, **kwargs)
+
+    def gather(self, **kwargs: Any) -> list[ContextPacket]:
+        raise NotImplementedError
+
+    def select(self, packets: list[ContextPacket], **kwargs: Any) -> list[ContextPacket]:
+        raise NotImplementedError
+
+    def structure(self, packets: list[ContextPacket], **kwargs: Any) -> dict[str, Any]:
+        raise NotImplementedError
+
+    def compress(self, structured: dict[str, Any], **kwargs: Any) -> dict[str, Any]:
+        raise NotImplementedError
+
+    def render(self, compressed: dict[str, Any], **kwargs: Any) -> list[dict[str, str]]:
+        raise NotImplementedError
+
+    def _normalize_text(self, text: Any) -> str:
+        if text is None:
+            return ""
+        return " ".join(str(text).strip().split())
+
+    def _compress_multiline_text(
+        self,
+        text: Any,
+        *,
+        max_lines: int | None = None,
+        max_chars: int | None = None,
+    ) -> str:
+        raw = "" if text is None else str(text).strip()
+        if not raw or raw == self.config.none_text:
+            return ""
+
+        max_lines = max_lines or self.config.max_context_lines
+        max_chars = max_chars or self.config.max_context_chars
+        lines = [line.strip() for line in raw.splitlines() if line.strip()]
+        compressed = "\n".join(lines[:max_lines]).strip()
+        if len(compressed) > max_chars:
+            compressed = compressed[:max_chars].rstrip() + " ..."
+        return compressed
+
+
+def count_tokens(text: Any) -> int:
+    value = "" if text is None else str(text)
+    if not value:
+        return 0
+    if tiktoken is not None:
+        try:
+            encoding = tiktoken.get_encoding("cl100k_base")
+            return len(encoding.encode(value))
+        except Exception:
+            pass
+    return max(1, len(value) // 4)
+
+
+ContextBuildConfig = ContextConfig
+
+
+__all__ = [
+    "ContextBuildConfig",
+    "ContextBuilder",
+    "ContextConfig",
+    "ContextPacket",
+    "count_tokens",
+]
