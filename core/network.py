@@ -15,6 +15,7 @@ from core.slm_agent import SLM_Agent
 from core.stage1_runner import Stage1Runner
 from core.stage2_runner import Stage2Runner
 from score import PenaltyCalculator, ScoreCalculator
+from utils.network_utils import normalize_for_exact
 
 
 class Network:
@@ -131,12 +132,23 @@ class Network:
         stage1_attempts = 0
         early_stop_reason = ""
         early_stop_judge_results: list[JudgeScoreByReasoning] = []
+        direct_consensus_winner: AgentReasoningSummary | None = None
+        direct_consensus_supporting_agents: list[str] = []
         while True:
             stage1_attempts += 1
             stage1_results = self.stage1_runner.run(evidence)
-            early_stop_winner, early_stop_judge_results, early_stop_reason = (
-                self._stage1_early_stop_decision(stage1_results)
-            )
+            (
+                direct_consensus_winner,
+                direct_consensus_supporting_agents,
+            ) = self._confidence_one_answer_consensus(stage1_results)
+            if direct_consensus_winner is not None:
+                early_stop_winner = direct_consensus_winner
+                early_stop_judge_results = []
+                early_stop_reason = "cross_agent_confidence_1.0_answer_consensus"
+            else:
+                early_stop_winner, early_stop_judge_results, early_stop_reason = (
+                    self._stage1_early_stop_decision(stage1_results)
+                )
             should_retry_stage1 = (
                 self.enable_stage1_early_stop
                 and early_stop_reason == "confidence_0.67_judge_score_not_positive"
@@ -152,13 +164,20 @@ class Network:
             if stage2_skipped
             else self.stage2_runner.run(active_results)
         )
-        penalty_results = self.penalty_calculator.calculate(stage1_results)
-        self.score_calculator.write_scores_to_agent_config(
-            self.agents,
-            stage1_results,
-            judge_results,
-            penalty_results,
-        )
+        if direct_consensus_winner is not None:
+            penalty_results = []
+            self._write_direct_consensus_scores(stage1_results)
+        else:
+            penalty_results = self.penalty_calculator.calculate(
+                stage1_results,
+                question=self.question,
+            )
+            self.score_calculator.write_scores_to_agent_config(
+                self.agents,
+                stage1_results,
+                judge_results,
+                penalty_results,
+            )
         winner = early_stop_winner or self._select_winner(stage1_results)
         response_time_seconds = time.perf_counter() - response_started_at
 
@@ -186,6 +205,13 @@ class Network:
                 "stage1_early_stop": stage2_skipped,
                 "stage1_early_stop_reason": early_stop_reason if stage2_skipped else "",
                 "stage2_skipped": stage2_skipped,
+                "cross_agent_consensus_used": direct_consensus_winner is not None,
+                "cross_agent_consensus_supporting_agents": direct_consensus_supporting_agents,
+                "cross_agent_consensus_answer": (
+                    direct_consensus_winner.compressed_answer
+                    if direct_consensus_winner is not None
+                    else ""
+                ),
                 "active_agent_count": len(active_results),
                 "search_used": bool(evidence["search_result"].strip()),
                 "attachment_used": bool(evidence["attachment_result"].strip()),
@@ -195,6 +221,92 @@ class Network:
                 "penalty_results": penalty_results,
             },
         )
+
+    def _confidence_one_answer_consensus(
+        self,
+        stage1_results: list[AgentReasoningSummary],
+    ) -> tuple[AgentReasoningSummary | None, list[str]]:
+        """
+        找出多個 Agent 同時達到 confidence=1.0 且 normalized answer 相同的跨 Agent 共識。
+        Args:
+            - stage1_results: Stage1Runner 回傳的每個 Agent 推理摘要。
+        Returns:
+            - AgentReasoningSummary | None: 若存在共識，回傳代表該答案的 winner。
+            - list[str]: 支持該共識答案的 Agent id 清單。
+        """
+        confident_results = [
+            result
+            for result in stage1_results
+            if (
+                result.active
+                and result.confidence_score >= 1.0
+                and result.compressed_answer.strip()
+            )
+        ]
+        if len(confident_results) < 2:
+            return None, []
+
+        groups: list[list[AgentReasoningSummary]] = []
+        for result in confident_results:
+            for group in groups:
+                if self._same_normalized_answer(
+                    result.compressed_answer,
+                    group[0].compressed_answer,
+                ):
+                    group.append(result)
+                    break
+            else:
+                groups.append([result])
+
+        consensus_groups = [group for group in groups if len(group) >= 2]
+        if not consensus_groups:
+            return None, []
+
+        best_group = max(
+            consensus_groups,
+            key=lambda group: (
+                len(group),
+                sum(result.confidence_score for result in group),
+            ),
+        )
+        winner = best_group[0]
+        return winner, [result.agent_id for result in best_group]
+
+    def _same_normalized_answer(self, answer_a: str, answer_b: str) -> bool:
+        """
+        判斷兩個跨 Agent 候選答案是否為相同答案。
+        Args:
+            - answer_a: 第一個候選答案。
+            - answer_b: 第二個候選答案。
+        Returns:
+            - bool: 兩個答案經 exact normalization 後是否相同。
+        """
+        return normalize_for_exact(answer_a) == normalize_for_exact(answer_b)
+
+    def _write_direct_consensus_scores(
+        self,
+        stage1_results: list[AgentReasoningSummary],
+    ) -> None:
+        """
+        跨 Agent 共識直接輸出時，重設 AgentConfig 的非必要評分欄位。
+        Args:
+            - stage1_results: Stage1Runner 回傳的每個 Agent 推理摘要。
+        Returns:
+            - None。
+        """
+        result_by_agent = {result.agent_id: result for result in stage1_results}
+        for config in self.agents:
+            result = result_by_agent.get(config.agent_id)
+            config.confidence_score = result.confidence_score if result else 0.0
+            config.judge_scores = []
+            config.avg_judge_score = 0.0
+            config.penalty_score = 0.0
+            config.penalty_reasons = []
+            config.total_score = (
+                config.confidence_score
+                if result is not None and result.active
+                else float("-inf")
+            )
 
     def _stage1_early_stop_decision(
         self,

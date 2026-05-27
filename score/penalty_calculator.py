@@ -26,6 +26,7 @@ class PenaltyCalculator:
     def calculate(
         self,
         stage1_results: list[AgentReasoningSummary],
+        question: str = "",
     ) -> list[dict[str, Any]]:
         """
         對所有 Stage1 候選結果計算 rule-based penalty。
@@ -36,9 +37,16 @@ class PenaltyCalculator:
         Returns:
             - list[dict[str, Any]]: 每個 Agent 的 penalty、reasons 與 agent_id。
         """
-        return [self.calculate_for_agent(result) for result in stage1_results]
+        return [
+            self.calculate_for_agent(result, question=question)
+            for result in stage1_results
+        ]
 
-    def calculate_for_agent(self, result: AgentReasoningSummary) -> dict[str, Any]:
+    def calculate_for_agent(
+        self,
+        result: AgentReasoningSummary,
+        question: str = "",
+    ) -> dict[str, Any]:
         """
         對單一 AgentReasoningSummary 計算格式與工具相關 penalty。
 
@@ -51,7 +59,7 @@ class PenaltyCalculator:
         penalties: list[float] = []
         reasons: list[str] = []
 
-        self._add_format_penalties(result, penalties, reasons)
+        self._add_format_penalties(result, penalties, reasons, question=question)
         self._add_tool_penalties(result, penalties, reasons)
 
         penalty = self._clamp(sum(penalties))
@@ -66,6 +74,7 @@ class PenaltyCalculator:
         result: AgentReasoningSummary,
         penalties: list[float],
         reasons: list[str],
+        question: str = "",
     ) -> None:
         """
         根據 compressed answer 的有效性加入格式相關 penalty。
@@ -88,13 +97,21 @@ class PenaltyCalculator:
             self._add(penalties, reasons, -1.0, "tool_call_as_final_answer")
             return
 
-        if self.answer_validator.is_refusal_like(answer):
-            self._add(penalties, reasons, -0.75, "refusal_like_final_answer")
+        is_refusal_like = self.answer_validator.is_refusal_like(answer)
+        refusal_allowed = self.answer_validator.question_allow_refusal(question)
+
+        if is_refusal_like and not refusal_allowed:
+            self._add(penalties, reasons, -1.0, "refusal_like_final_answer")
+
+        if self.answer_validator.is_uncertain(answer):
+            self._add(penalties, reasons, -0.3, "uncertain_final_answer")
 
         if self.answer_validator.is_too_verbose(answer):
-            self._add(penalties, reasons, -0.25, "too_verbose_final_answer")
+            self._add(penalties, reasons, -1.0, "too_verbose_final_answer")
 
-        if not self.answer_validator.is_valid(answer):
+        if not self.answer_validator.is_valid(answer) and not (
+            is_refusal_like and refusal_allowed
+        ):
             self._add(penalties, reasons, -0.75, "invalid_final_answer")
 
     def _add_tool_penalties(

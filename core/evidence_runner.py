@@ -5,6 +5,7 @@ from typing import Any
 
 from tools.attachment_reader import AttachmentEvidenceBuilder
 from tools.deterministic_solver import DeterministicSolver
+from tools.search_result_builder.evidence_searcher import EvidenceSearcher
 from tools.system_routing_contract import SystemRoutingContract
 
 
@@ -219,17 +220,22 @@ class EvidenceRunner:
             ]
 
         try:
-            result = self.tool_manager.execute_tool(
-                "search",
-                {
-                    "input": self.question,
-                    "mode": "text",
-                    "conditional_fetch": True,
-                    "max_full_page_results": 2,
-                },
+            searcher = EvidenceSearcher(tool_manager=self.tool_manager)
+            output = searcher.search(
+                self.question,
+                max_queries=3,
+                max_results_per_query=5,
+                max_full_page_results=2,
                 agent_id="network_shared",
                 stage="stage1_evidence",
             )
+            result = {
+                "ok": bool(output.summary.strip()),
+                "tool_name": "search",
+                "output_text": output.summary,
+                "raw_result": searcher.to_dict(output),
+                "error": None,
+            }
         except Exception as exc:
             result = {
                 "ok": False,

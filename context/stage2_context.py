@@ -10,11 +10,38 @@ Stage2 Judge 需要評分「這個 Agent 的每一步 reasoning 是否被 tool e
 """
 
 
-STAGE2_SYSTEM_PROMPT = """You are a strict scoring judge in a multi-agent reasoning network.
+STAGE2_SYSTEM_PROMPT = """
+You are a strict scoring judge in a multi-agent reasoning network.
+"""
 
-Your only job is to assign numeric scores to the target reasoning steps.
-Do not critique, explain, summarize, justify, or discuss.
-No markdown. No prose. No extra keys."""
+
+STAGE2_SCORING_RUBRIC = """
+
+Scoring Rules:
+1.0:
+- Correct, useful, and directly supported by the question or Evidence.
+- Never assign 1.0 to unsupported claims.
+
+0.5:
+- Mostly correct but incomplete.
+- Partially supported by Evidence or the question.
+
+0.0:
+- Unclear, redundant, or cannot be judged.
+- Evidence is missing and the step cannot be verified from the question alone.
+
+-0.5:
+- Unsupported.
+- Skips an important check.
+- Weakly conflicts with Evidence.
+- Claims a tool result that is not present in Evidence.
+
+-1.0:
+- Contradicts Evidence.
+- Invents Evidence.
+- Misuses tool results.
+- Supports a wrong or malformed final answer.
+- Evidence says A, but reasoning/final answer says B."""
 
 
 STAGE2_USER_PROMPT = """Question:
@@ -26,33 +53,22 @@ Target_Agent_Final_Answer:
 Target_Agent_Reasoning:
 {target_reasoning}
 
-Target_Tool_Evidence:
+Evidence:
 {target_tool_evidence}
 
 Task:
 Score each reasoning step using the evidence.
+{scoring_rubric}
 
-Scoring:
-1.0 = correct, useful, and supported by the question or evidence.
-0.5 = mostly correct but incomplete or only partially supported.
-0.0 = unclear, redundant, or cannot be judged.
--0.5 = unsupported, skips an important check, or weakly conflicts with evidence.
--1.0 = contradicts evidence, invents evidence, misuses tool results, or supports a wrong/malformed final answer.
-
-Rules:
-- Do not reward reasoning that is plausible but unsupported.
-- If evidence says A but final answer or reasoning says B, score the related step -1.0.
-- If a step claims a tool result that is not in Evidence, score at most -0.5.
-- If Evidence is empty, judge only from the question, final answer, and reasoning.
-- If the final answer is malformed, score steps supporting it at most -0.5.
-- Output JSON only.
 
 Return exactly this JSON shape:
 {{"step_scores": [{{"step": 1, "score": 0}}, {{"step": 2, "score": 0}}]}}"""
 
 
 class Stage2ContextBuilder(ContextBuilder):
-    """Build Stage2 judge chat messages for scoring another agent's reasoning."""
+    """
+    收集Stage1的輸出，以及Stage2需要的system instruction，構建成Stage2 Judge的輸入格式
+    """
 
     REQUIRED_PACKET_TYPES = {
         "question",
@@ -73,6 +89,20 @@ class Stage2ContextBuilder(ContextBuilder):
         context_packets: list[ContextPacket] | None = None,
         **_: Any,
     ) -> list[ContextPacket]:
+        """
+        收集並優先排序不同來源的上下文信息（如問題、目標答案、推理過程和工具證據)
+
+        Args:
+            question: 用戶提出的問題
+            target_answer: 目標Agent的最終答案
+            target_reasoning: 目標Agent的推理過程
+            target_tool_evidence: 目標Agent使用工具的證據（如API調用結果）
+            system_instructions: 可選的系統指令，覆蓋默認的系統提示
+            context_packets: 來自其他來源的額外上下文
+
+        Returns:
+            一個ContextPacket列表，按照優先級排序，供後續選擇和結構化使用
+        """
         packets = [
             ContextPacket(
                 packet_type="question",
@@ -114,6 +144,15 @@ class Stage2ContextBuilder(ContextBuilder):
         return packets
 
     def select(self, packets: list[ContextPacket], **_: Any) -> list[ContextPacket]:
+        """
+        從收集到的ContextPacket中選擇對Stage2 Judge最有用的部分，並按照優先級排序
+
+        Args:
+            packets: 從gather方法收集到的ContextPacket列表
+
+        Returns:
+            一個ContextPacket列表，包含對Stage2 Judge最有用的信息
+        """
         selected = [
             packet
             for packet in packets
@@ -171,6 +210,7 @@ class Stage2ContextBuilder(ContextBuilder):
             target_answer=compressed["target_answer"],
             target_reasoning=compressed["target_reasoning"],
             target_tool_evidence=compressed["target_tool_evidence"],
+            scoring_rubric=STAGE2_SCORING_RUBRIC,
         )
         return [
             {"role": "system", "content": str(compressed["system"])},
@@ -189,6 +229,7 @@ class Stage2ContextBuilder(ContextBuilder):
 
 
 __all__ = [
+    "STAGE2_SCORING_RUBRIC",
     "STAGE2_SYSTEM_PROMPT",
     "STAGE2_USER_PROMPT",
     "Stage2ContextBuilder",

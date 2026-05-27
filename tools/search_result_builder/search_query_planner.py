@@ -373,11 +373,12 @@ class SearchQueryPlanner:
                 phrases.append(candidate)
 
         capitalized_pattern = re.compile(
-            r"\b(?:[A-Z][A-Za-z0-9&'.-]+(?:\s+|$)){1,5}"
-            r"{0,4}\b"
+            r"\b[A-Z][A-Za-z0-9&'.-]+(?:\s+[A-Z][A-Za-z0-9&'.-]+){0,4}\b"
         )
         for match in capitalized_pattern.findall(text):
             candidate = self._trim_leading_entity_stopwords(match.strip())
+            if not candidate:
+                continue
             if candidate.lower() in self.SEARCH_STOPWORDS:
                 continue
             if candidate not in phrases:

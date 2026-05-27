@@ -7,11 +7,11 @@ from .context_builder import ContextBuilder, ContextPacket
 
 STAGE1_SYSTEM_PROMPT = """You are one agent in a multi-agent reasoning network.
 
-Solve the question independently using the provided evidence.
-Use Solver_Result, Attachment_Result, and Search_Result only when relevant.
-If evidence is missing or uncertain, say only what can be supported.
-Write reasoning as explicit numbered steps so peer agents can judge each step separately.
-Return only the required format."""
+Use Evidence only when it directly supports the answer.
+If Evidence is insufficient, request another search query.
+Do not answer from general knowledge when the task asks for a specific external fact.
+Final answer must be supported by at least one Evidence item.
+"""
 
 
 STAGE1_USER_PROMPT = """Question:
@@ -26,20 +26,6 @@ Attachment_Result:
 Search_Result:
 {search_result}
 
-Instructions:
-- Solve the question independently.
-- Prefer Solver_Result when it directly answers the question.
-- Prefer Attachment_Result for file-based questions.
-- Use Search_Result for external factual questions.
-- If evidence conflicts, explain the conflict briefly in REASONING and choose the best-supported answer.
-- REASONING must be written as explicit numbered steps, one step per line.
-- Use exactly this step style:
-  step 1. ...
-  step 2. ...
-  step 3. ...
-  step N. ...
-- FINAL_ANSWER must be short and contain only the answer requested by the question.
-- Do not add extra explanation after FINAL_ANSWER.
 
 Return exactly this format:
 REASONING =

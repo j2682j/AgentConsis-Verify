@@ -10,7 +10,7 @@ from exceptions import AgentsException
 
 MODEL_ID_MAP = {
     "nemotron-mini:4b": os.getenv("Nemotron_MODEL_ID"),
-    "phi4-mini:3.8b": os.getenv("Phi_MODEL_ID"),
+    "minicpm3:4b": os.getenv("Minicpm_MODEL_ID"),
     "qwen3:4b": os.getenv("Qwen_MODEL_ID"),
     "gemma3:4b": os.getenv("Gemma_MODEL_ID"),
     "gpt-oss:20b": os.getenv("GPT_OSS_MODEL_ID"),
@@ -59,7 +59,7 @@ class SLM_Agent:
     Args:
         - api_key: OpenAI-compatible API key，未提供時使用 OLLAMA_API_KEY。
         - base_url: OpenAI-compatible server base URL，未提供時使用 OLLAMA_BASE_URL。
-        - temperature: 模型生成溫度。
+        - temperature: 模型生成多樣性 
         - max_tokens: 單次模型回覆的最大 token 數。
         - timeout: API 呼叫 timeout 秒數，未提供時使用 OLLAMA_TIMEOUT。
         - model_name: 專案內部模型別名，例如 nemotron-mini:4b、phi4-mini:3.8b、qwen3:4b、gemma3:4b。
@@ -76,7 +76,7 @@ class SLM_Agent:
         self,
         api_key: Optional[str] = None,
         base_url: Optional[str] = None,
-        temperature: float = 0.5,
+        temperature: float = 0.5, # 0.0 為最保守，1.0 為較大創意發揮空間；默認 0.5 提供適度多樣性
         max_tokens: Optional[int] = None,
         timeout: Optional[int] = None,
         model_name: Optional[str] = None,

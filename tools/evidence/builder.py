@@ -16,7 +16,7 @@ class EvidenceBuilder:
         runtime: Any | None = None,
         *,
         search_query_planner: Any | None = None,
-        search_evidence_builder: Any | None = None,
+        evidence_searcher: Any | None = None,
         initialize_search_helpers: bool = True,
     ) -> None:
         """
@@ -31,23 +31,12 @@ class EvidenceBuilder:
         self.tool_manager = tool_manager
         self.runtime = runtime
         self.search_query_planner = search_query_planner
-        self.search_evidence_builder = search_evidence_builder
+        self.evidence_searcher = evidence_searcher
         self.attachment_evidence_builder = AttachmentEvidenceBuilder()
         self.system_routing_contract = SystemRoutingContract()
 
         if initialize_search_helpers:
-            if self.search_query_planner is None:
-                from tools.search_result_builder.search_query_planner import SearchQueryPlanner
-
-                self.search_query_planner = SearchQueryPlanner()
-            if self.search_evidence_builder is None:
-                from tools.search_result_builder.search_evidence_builder import SearchEvidenceBuilder
-
-                self.search_evidence_builder = SearchEvidenceBuilder(
-                    tool_manager=tool_manager,
-                    runtime=runtime,
-                    search_query_planner=self.search_query_planner,
-                )
+            self._ensure_evidence_searcher()
 
     def build(
         self,
@@ -374,65 +363,64 @@ class EvidenceBuilder:
         if self.tool_manager is None:
             return self._empty_tool_result()
 
-        planner = self.search_query_planner
-        if planner is None:
-            from tools.search_result_builder.search_query_planner import SearchQueryPlanner
-
-            planner = SearchQueryPlanner()
-            self.search_query_planner = planner
-
-        evidence_formatter = self.search_evidence_builder
-        if evidence_formatter is None:
-            from tools.search_result_builder.search_evidence_builder import SearchEvidenceBuilder
-
-            evidence_formatter = SearchEvidenceBuilder(
-                tool_manager=self.tool_manager,
-                runtime=self.runtime,
-                search_query_planner=planner,
+        searcher = self._ensure_evidence_searcher()
+        try:
+            output = searcher.search(
+                question,
+                max_queries=3,
+                max_results_per_query=5,
+                max_full_page_results=2,
+                agent_id=agent_id,
+                stage=stage,
             )
-            self.search_evidence_builder = evidence_formatter
-
-        plan = planner.plan(question=question, max_queries=3)
-        planned_queries = plan.get("queries") or [question]
-        search_runs: list[dict[str, Any]] = []
-        tool_usage: list[dict[str, Any]] = []
-        for query in planned_queries:
-            try:
-                result = self.tool_manager.execute_tool(
-                    "search",
-                    {
-                        "input": query,
-                        "mode": "structured",
-                        "conditional_fetch": bool(plan.get("precision_needed")),
-                        "max_full_page_results": 2,
-                    },
-                    agent_id=agent_id,
-                    stage=stage,
-                )
-            except Exception as exc:
-                result = {
+            context = output.summary
+            tool_usage = output.tool_usage
+            query_plan = searcher.to_dict(output)
+            queries = [query.query for query in output.queries]
+            best_verified_candidate = output.candidates[0].__dict__ if output.candidates else None
+        except Exception as exc:
+            context = ""
+            tool_usage = [
+                {
                     "ok": False,
                     "tool_name": "search",
                     "output_text": "",
                     "raw_result": None,
                     "error": str(exc),
                 }
-            tool_usage.append(result)
-            search_runs.append({"query": query, "result": result})
+            ]
+            query_plan = {}
+            queries = []
+            best_verified_candidate = None
 
-        context = evidence_formatter.build_planned_search_evidence_block(
-            search_runs=search_runs,
-            question=question,
-        )
         return {
             "tool_usage": tool_usage,
             "context": context,
             "used": bool(context),
-            "queries": list(planned_queries),
-            "query_plan": plan,
-            "search_runs": search_runs,
-            "best_verified_candidate": None,
+            "queries": queries,
+            "query_plan": query_plan,
+            "search_runs": [],
+            "best_verified_candidate": best_verified_candidate,
         }
+
+    def _ensure_evidence_searcher(self) -> Any:
+        """
+        建立或重用新版 EvidenceSearcher。
+
+        Args:
+            - 無。
+
+        Returns:
+            - Any: 可執行 evidence-oriented search 的 EvidenceSearcher。
+        """
+        if self.evidence_searcher is None:
+            from tools.search_result_builder.evidence_searcher import EvidenceSearcher
+
+            self.evidence_searcher = EvidenceSearcher(
+                tool_manager=self.tool_manager,
+                query_planner=self.search_query_planner,
+            )
+        return self.evidence_searcher
 
     def _question_requires_web(self, question: str) -> bool:
         """

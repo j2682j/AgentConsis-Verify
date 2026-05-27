@@ -17,15 +17,34 @@ class AnswerValidator:
     """
 
     REFUSAL_PATTERNS = (
-        r"\binsufficient (?:data|information|evidence)\b",
+        r"\binformation unavailable\b",
+        r"\bnot available\b",
+        r"\bcannot be determined\b",
+        r"\bcannot determine\b",
+        r"\bcould not be identified\b",
+        r"\bcould not find\b",
+        r"\binsufficient (data|information|evidence)\b",
+        r"\bmissing image data\b",
+        r"\bunknown\b",
+        r"\bnot provided\b",
+        r"\bnot present in the provided search results\b",
         r"\bcannot determine\b",
         r"\bcan't determine\b",
         r"\bcan not determine\b",
-        r"\bnot enough (?:data|information|evidence)\b",
+        r"\bnot enough (data|information|evidence)\b",
         r"\bunknown\b",
         r"\bno answer\b",
         r"\bnone\b",
         r"^n/?a$",
+    )
+
+    UNCERTAINTY_PATTERNS = (
+        r"\bappears to be\b",
+        r"\blikely\b",
+        r"\bprobably\b",
+        r"\bI think\b",
+        r"\bbased on limited information\b",
+        r"\bthe available evidence suggests\b"
     )
 
     TOOL_KEYS = {"tool_name", "tool_args", "arguments", "name", "function", "type"}
@@ -142,9 +161,9 @@ class AnswerValidator:
             - bool: 若答案超過長度或行數限制則回傳 True。
         """
         candidate = self.clean(answer)
-        if len(candidate) > 600:
+        if len(candidate) > 50:
             return True
-        if len(candidate.splitlines()) > 4:
+        if len(candidate.splitlines()) > 1:
             return True
         return False
 
@@ -204,6 +223,47 @@ class AnswerValidator:
         if {"tool_name", "tool_args"}.issubset(keys):
             return True
         return bool(keys & self.TOOL_KEYS) and not {"final_answer", "reasoning"} & keys
+    
+
+    def is_uncertain(self, answer: str) -> bool:
+        """
+        判斷候選答案是否表達不確定性，例如包含 "not sure"、"uncertain" 等字樣
+
+        Args:
+            - answer: 任意型別的候選 final answer。
+
+        Returns:
+            - bool: 若答案看起來表達不確定性則回傳 True。
+        """
+        candidate = self.clean(answer).strip().lower()
+        if not candidate:
+            return True
+        return any(re.search(pattern, candidate, re.IGNORECASE) for pattern in self.UNCERTAINTY_PATTERNS)
+
+        
+    def question_allow_refusal(self, question: str) -> bool:
+        """
+        判斷題目是否允許拒答，若題目中包含 "if you don't know"、"if you are unsure" 等字樣則視為允許拒答。
+
+        Args:
+            - question: 任意型別的題目文字。
+
+        Returns:
+            - bool: 若題目中包含允許拒答的提示則回傳 True。
+        """
+        candidate = self.clean(question).strip().lower()
+        if not candidate:
+            return False
+        refusal_clues = [
+            r"if you don't know",
+            r"if you are unsure",
+            r"if you cannot determine",
+            r"if you cannot answer",
+            r"if the answer is unknown",
+            r"if the information is unavailable",
+        ]
+        return any(re.search(pattern, candidate, re.IGNORECASE) for pattern in refusal_clues)
+
 
 
 __all__ = ["AnswerValidator"]
