@@ -14,7 +14,7 @@ from core.evidence_runner import EvidenceRunner
 from core.slm_agent import SLM_Agent
 from core.stage1_runner import Stage1Runner
 from core.stage2_runner import Stage2Runner
-from score import PenaltyCalculator, ScoreCalculator
+from score import AnswerValidator, PenaltyCalculator, ScoreCalculator
 from utils.network_utils import normalize_for_exact
 
 
@@ -61,6 +61,7 @@ class Network:
         max_stage1_tool_turns: int = 2,
         previous_best_agent_id: str | None = None,
         stage1_early_stop_max_retries: int = 1,
+        enable_compact_search_evidence: bool = False,
         search_result: str = "",
         attachment_result: str = "",
     ) -> None:
@@ -77,6 +78,7 @@ class Network:
         self.max_stage1_tool_turns = max(0, max_stage1_tool_turns)
         self.previous_best_agent_id = previous_best_agent_id
         self.stage1_early_stop_max_retries = max(0, stage1_early_stop_max_retries)
+        self.enable_compact_search_evidence = enable_compact_search_evidence
         self.search_result = search_result
         self.attachment_result = attachment_result
 
@@ -87,12 +89,14 @@ class Network:
 
         self.score_calculator = ScoreCalculator()
         self.penalty_calculator = PenaltyCalculator()
+        self.answer_validator = AnswerValidator()
         self.evidence_runner = EvidenceRunner(
             question=self.question,
             attachment=self.attachment,
             tool_manager=self.tool_manager,
             search_result=self.search_result,
             attachment_result=self.attachment_result,
+            compact_search_evidence=self.enable_compact_search_evidence,
         )
         self.stage1_runner = Stage1Runner(
             question=self.question,
@@ -197,6 +201,7 @@ class Network:
                 "max_stage2_workers": self.stage2_runner.worker_count(active_results),
                 "stage2_max_tokens": self.stage2_max_tokens,
                 "enable_stage1_tool_use": self.enable_stage1_tool_use,
+                "enable_compact_search_evidence": self.enable_compact_search_evidence,
                 "max_stage1_tool_turns": self.max_stage1_tool_turns,
                 "enable_stage1_early_stop": self.enable_stage1_early_stop,
                 "previous_best_agent_id": self.previous_best_agent_id or "",
@@ -241,6 +246,7 @@ class Network:
                 result.active
                 and result.confidence_score >= 1.0
                 and result.compressed_answer.strip()
+                and self.answer_validator.is_valid(result.compressed_answer)
             )
         ]
         if len(confident_results) < 2:

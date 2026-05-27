@@ -1,6 +1,6 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
-from .config import EvidenceOutput
+from ..config import EvidenceOutput
 
 
 class EvidenceRenderer:
@@ -33,10 +33,10 @@ class EvidenceRenderer:
             - str: Prompt-ready search evidence context.
         """
         lines = [
-            "Search evidence bundle:",
-            f"Question focus: {output.question}",
+            "Original Question:",
+            output.question,
             "",
-            "Queries:",
+            "Query:",
         ]
 
         if output.queries:
@@ -52,35 +52,27 @@ class EvidenceRenderer:
                     [
                         f"[{item.evidence_id}]",
                         f"Source: {item.title or item.source_id}",
-                        f"URL: {item.url}",
                         f"Query: {item.query_id}",
-                        f"Relevance: {round(item.relevance_score, 3)}",
                         f"Text: {item.text}",
                     ]
                 )
         else:
             lines.append("None")
 
-        lines.extend(["", "Candidate answers:"])
+        lines.extend(["", "Candidate Answer:"])
         if output.candidates:
             for index, candidate in enumerate(output.candidates[:max_candidates], start=1):
                 evidence_ids = ", ".join(candidate.evidence_ids) or "-"
                 lines.append(
                     f"[C{index}] answer={candidate.answer}; "
                     f"type={candidate.answer_type}; "
-                    f"support={candidate.support_count}; "
-                    f"verification={candidate.verification_score}; "
                     f"evidence={evidence_ids}"
                 )
         else:
             lines.append("None")
 
-        if output.blocked_sources:
-            lines.extend(["", "Filtered sources:"])
-            for source in output.blocked_sources[:5]:
-                lines.append(f"- {source.url} ({source.block_reason})")
-
         return "\n".join(lines).strip()
 
 
 __all__ = ["EvidenceRenderer"]
+

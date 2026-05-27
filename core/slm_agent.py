@@ -87,6 +87,7 @@ class SLM_Agent:
             "phi4-mini:3.8b": "Phi_MODEL_ID",
             "qwen3:4b": "Qwen_MODEL_ID",
             "gemma3:4b": "Gemma_MODEL_ID",
+            "minicpm3:4b": "Minicpm_MODEL_ID",
             "minicpm3_4b:latest": "Minicpm_MODEL_ID",
             "gpt-oss:20b": "GPT_OSS_MODEL_ID",
         }

@@ -1,0 +1,1753 @@
+{
+  "task_id": "17b5a6a3-bc87-42e8-b0fb-6ab0781ef2cc",
+  "level": "2",
+  "question": "I’m researching species that became invasive after people who kept them as pets released them. There’s a certain species of fish that was popularized as a pet by being the main character of the movie Finding Nemo. According to the USGS, where was this fish found as a nonnative species, before the year 2020? I need the answer formatted as the five-digit zip codes of the places the species was found, separated by commas if there is more than one place.",
+  "attachment": {},
+  "predicted": "",
+  "expected": "34689",
+  "exact_match": false,
+  "partial_match": false,
+  "score": 0.0,
+  "winner_agent_id": "",
+  "response_time_seconds": 123.2479725999292,
+  "total_tokens": 20653,
+  "token_usage": {
+    "stage1": {
+      "prompt_tokens": 10590,
+      "completion_tokens": 10063,
+      "total_tokens": 20653
+    },
+    "stage2": {
+      "prompt_tokens": 0,
+      "completion_tokens": 0,
+      "total_tokens": 0
+    },
+    "total": {
+      "prompt_tokens": 10590,
+      "completion_tokens": 10063,
+      "total_tokens": 20653
+    }
+  },
+  "search_summary": {
+    "candidate_count": 3,
+    "fact_count": 6,
+    "top_candidate": "Exotic",
+    "top_candidate_confidence": 0.95,
+    "top_candidate_support": 2,
+    "top_candidate_refute": 0,
+    "missing_info": [],
+    "risk_flags": [
+      "short_generic_candidate"
+    ]
+  },
+  "execution_time": 123.24862360954285,
+  "error": "",
+  "network_summary": {
+    "question": "I’m researching species that became invasive after people who kept them as pets released them. There’s a certain species of fish that was popularized as a pet by being the main character of the movie Finding Nemo. According to the USGS, where was this fish found as a nonnative species, before the year 2020? I need the answer formatted as the five-digit zip codes of the places the species was found, separated by commas if there is more than one place.",
+    "final_answer": "",
+    "winner_agent_id": "",
+    "stage1_results": [
+      {
+        "agent_id": "nemotron",
+        "model_name": "nemotron-mini:4b",
+        "runs": [
+          {
+            "agent_id": "nemotron",
+            "model_name": "nemotron-mini:4b",
+            "run_index": 1,
+            "raw_reply": "REASONING = \nstep 1. The fish popularized as a pet by being the main character of Finding Nemo is the clownfish (Amphiprion ocellaris).  \nstep 2. The USGS reports the distribution of nonnative species; we need the zip codes where clownfish were found before 2020.  \nstep 3. The provided evidence does not include the specific zip codes or USGS data for clownfish nonnative presence.  \nFINAL_ANSWER = NEED_MORE_EVIDENCE",
+            "reasoning": "",
+            "final_answer": "",
+            "parse_completed": false,
+            "tool_context": "Search_Result:\nOriginal Question:\nI’m researching species that became invasive after people who kept them as pets released them. There’s a certain species of fish that was popularized as a pet by being the main character of the movie Finding Nemo. According to the USGS, where was this fish found as a nonnative species, before the year 2020? I need the answer formatted as the five-digit zip codes of the places the species was found, separated by commas if there is more than one place.\n\nAnswer Type: person\n\nVerified Candidate Answer:\n[C4] answer=Exotic; type=person; support=2; refute=0; neutral=3; confidence=0.95; risk=-\n[C5] answer=From; type=person; support=2; refute=0; neutral=3; confidence=0.95; risk=-\n[C1] answer=Mar; type=person; support=2; refute=0; neutral=4; confidence=0.6; risk=short_generic_candidate\n\nFact:\n[F19] supports C4; confidence=1.0\nClaim: Exotic pets might seem fascinating and unique, but when released into the wild, they can wreak havoc on local ecosystems.\nConstraint Match: invasive, pet, pets, released, species\n[F20] supports C4; confidence=1.0\nClaim: From pythons to goldfish, these exotic pets turned into invasive species and are now disrupting ecosystems.\nConstraint Match: fish, invasive, pet, pets, species\n[F25] supports C5; confidence=1.0\nClaim: From pythons to goldfish, these exotic pets turned into invasive species and are now disrupting ecosystems.\nConstraint Match: fish, invasive, pet, pets, species\n[F26] supports C5; confidence=1.0\nClaim: Sep 21, 2021 · The assignment of the task included the fictional character Nemo from the animated film Finding Nemo.\nConstraint Match: 2020, according, character, finding, nemo\n[F1] supports C1; confidence=1.0\nClaim: Mar 24, 2026 · the main character of the movie Finding Nemo.\nConstraint Match: 2020, according, before, character, finding, fish, found, main\n[F6] supports C1; confidence=0.955\nClaim: Feb 1, 2021 · EMA was lead author on ~54% of all USGS ...\nConstraint Match: 2020, usgs\n\nMissing Info:\nNone\n\nRisk Flags:\nshort_generic_candidate",
+            "prompt_tokens": 872,
+            "completion_tokens": 277,
+            "total_tokens": 1149,
+            "tool_calls": [],
+            "tool_results": [],
+            "trajectory": []
+          },
+          {
+            "agent_id": "nemotron",
+            "model_name": "nemotron-mini:4b",
+            "run_index": 2,
+            "raw_reply": "REASONING =\nstep 1. The question asks for the five-digit zip codes of places where the fish was found as a nonnative species before 2020, according to USGS.  \nstep 2. The provided Evidence items (C1‑C5, F1‑F26) only give textual answers (“Exotic”, “From”, “Mar”) and do not provide zip codes.  \nstep 3. No Evidence item supplies the required zip‑code information.  \nFINAL_ANSWER = NEED_MORE_EVIDENCE",
+            "reasoning": "",
+            "final_answer": "",
+            "parse_completed": false,
+            "tool_context": "Search_Result:\nOriginal Question:\nI’m researching species that became invasive after people who kept them as pets released them. There’s a certain species of fish that was popularized as a pet by being the main character of the movie Finding Nemo. According to the USGS, where was this fish found as a nonnative species, before the year 2020? I need the answer formatted as the five-digit zip codes of the places the species was found, separated by commas if there is more than one place.\n\nAnswer Type: person\n\nVerified Candidate Answer:\n[C4] answer=Exotic; type=person; support=2; refute=0; neutral=3; confidence=0.95; risk=-\n[C5] answer=From; type=person; support=2; refute=0; neutral=3; confidence=0.95; risk=-\n[C1] answer=Mar; type=person; support=2; refute=0; neutral=4; confidence=0.6; risk=short_generic_candidate\n\nFact:\n[F19] supports C4; confidence=1.0\nClaim: Exotic pets might seem fascinating and unique, but when released into the wild, they can wreak havoc on local ecosystems.\nConstraint Match: invasive, pet, pets, released, species\n[F20] supports C4; confidence=1.0\nClaim: From pythons to goldfish, these exotic pets turned into invasive species and are now disrupting ecosystems.\nConstraint Match: fish, invasive, pet, pets, species\n[F25] supports C5; confidence=1.0\nClaim: From pythons to goldfish, these exotic pets turned into invasive species and are now disrupting ecosystems.\nConstraint Match: fish, invasive, pet, pets, species\n[F26] supports C5; confidence=1.0\nClaim: Sep 21, 2021 · The assignment of the task included the fictional character Nemo from the animated film Finding Nemo.\nConstraint Match: 2020, according, character, finding, nemo\n[F1] supports C1; confidence=1.0\nClaim: Mar 24, 2026 · the main character of the movie Finding Nemo.\nConstraint Match: 2020, according, before, character, finding, fish, found, main\n[F6] supports C1; confidence=0.955\nClaim: Feb 1, 2021 · EMA was lead author on ~54% of all USGS ...\nConstraint Match: 2020, usgs\n\nMissing Info:\nNone\n\nRisk Flags:\nshort_generic_candidate",
+            "prompt_tokens": 872,
+            "completion_tokens": 514,
+            "total_tokens": 1386,
+            "tool_calls": [],
+            "tool_results": [],
+            "trajectory": []
+          },
+          {
+            "agent_id": "nemotron",
+            "model_name": "nemotron-mini:4b",
+            "run_index": 3,
+            "raw_reply": "REASONING =\nstep 1. The fish in question is the clownfish (Nemo), a species that can become invasive when released.\nstep 2. The USGS must have recorded the locations where this nonnative clownfish was found before 2020.\nstep 3. The provided evidence only confirms that the fish is an exotic pet and that exotic pets can become invasive, but it does not supply any five‑digit zip codes of locations where the fish was recorded.\n\nFINAL_ANSWER = NEED_MORE_EVIDENCE",
+            "reasoning": "",
+            "final_answer": "",
+            "parse_completed": false,
+            "tool_context": "Search_Result:\nOriginal Question:\nI’m researching species that became invasive after people who kept them as pets released them. There’s a certain species of fish that was popularized as a pet by being the main character of the movie Finding Nemo. According to the USGS, where was this fish found as a nonnative species, before the year 2020? I need the answer formatted as the five-digit zip codes of the places the species was found, separated by commas if there is more than one place.\n\nAnswer Type: person\n\nVerified Candidate Answer:\n[C4] answer=Exotic; type=person; support=2; refute=0; neutral=3; confidence=0.95; risk=-\n[C5] answer=From; type=person; support=2; refute=0; neutral=3; confidence=0.95; risk=-\n[C1] answer=Mar; type=person; support=2; refute=0; neutral=4; confidence=0.6; risk=short_generic_candidate\n\nFact:\n[F19] supports C4; confidence=1.0\nClaim: Exotic pets might seem fascinating and unique, but when released into the wild, they can wreak havoc on local ecosystems.\nConstraint Match: invasive, pet, pets, released, species\n[F20] supports C4; confidence=1.0\nClaim: From pythons to goldfish, these exotic pets turned into invasive species and are now disrupting ecosystems.\nConstraint Match: fish, invasive, pet, pets, species\n[F25] supports C5; confidence=1.0\nClaim: From pythons to goldfish, these exotic pets turned into invasive species and are now disrupting ecosystems.\nConstraint Match: fish, invasive, pet, pets, species\n[F26] supports C5; confidence=1.0\nClaim: Sep 21, 2021 · The assignment of the task included the fictional character Nemo from the animated film Finding Nemo.\nConstraint Match: 2020, according, character, finding, nemo\n[F1] supports C1; confidence=1.0\nClaim: Mar 24, 2026 · the main character of the movie Finding Nemo.\nConstraint Match: 2020, according, before, character, finding, fish, found, main\n[F6] supports C1; confidence=0.955\nClaim: Feb 1, 2021 · EMA was lead author on ~54% of all USGS ...\nConstraint Match: 2020, usgs\n\nMissing Info:\nNone\n\nRisk Flags:\nshort_generic_candidate",
+            "prompt_tokens": 872,
+            "completion_tokens": 552,
+            "total_tokens": 1424,
+            "tool_calls": [],
+            "tool_results": [],
+            "trajectory": []
+          }
+        ],
+        "compressed_answer": "",
+        "compressed_reasoning": "",
+        "confidence_score": 0.0,
+        "active": false
+      },
+      {
+        "agent_id": "minicpm",
+        "model_name": "minicpm3:4b",
+        "runs": [
+          {
+            "agent_id": "minicpm",
+            "model_name": "minicpm3:4b",
+            "run_index": 1,
+            "raw_reply": "The search result did not provide any specific information about the locations where the fish was found as a nonnative species before the year 2020. Therefore, it is not possible to determine the five-digit zip codes of the places the species was found at this time. \n\nREASONING = The search results did not provide any relevant information about the locations where the fish was found as a nonnative species before the year 2020. Therefore, it is not possible to determine the five-digit zip codes of the places the species was found at this time.\n\nFIINAL_ANSWE = NEED_MORE_EVIDEnce",
+            "reasoning": "",
+            "final_answer": "",
+            "parse_completed": false,
+            "tool_context": "Search_Result:\nOriginal Question:\nI’m researching species that became invasive after people who kept them as pets released them. There’s a certain species of fish that was popularized as a pet by being the main character of the movie Finding Nemo. According to the USGS, where was this fish found as a nonnative species, before the year 2020? I need the answer formatted as the five-digit zip codes of the places the species was found, separated by commas if there is more than one place.\n\nAnswer Type: person\n\nVerified Candidate Answer:\n[C4] answer=Exotic; type=person; support=2; refute=0; neutral=3; confidence=0.95; risk=-\n[C5] answer=From; type=person; support=2; refute=0; neutral=3; confidence=0.95; risk=-\n[C1] answer=Mar; type=person; support=2; refute=0; neutral=4; confidence=0.6; risk=short_generic_candidate\n\nFact:\n[F19] supports C4; confidence=1.0\nClaim: Exotic pets might seem fascinating and unique, but when released into the wild, they can wreak havoc on local ecosystems.\nConstraint Match: invasive, pet, pets, released, species\n[F20] supports C4; confidence=1.0\nClaim: From pythons to goldfish, these exotic pets turned into invasive species and are now disrupting ecosystems.\nConstraint Match: fish, invasive, pet, pets, species\n[F25] supports C5; confidence=1.0\nClaim: From pythons to goldfish, these exotic pets turned into invasive species and are now disrupting ecosystems.\nConstraint Match: fish, invasive, pet, pets, species\n[F26] supports C5; confidence=1.0\nClaim: Sep 21, 2021 · The assignment of the task included the fictional character Nemo from the animated film Finding Nemo.\nConstraint Match: 2020, according, character, finding, nemo\n[F1] supports C1; confidence=1.0\nClaim: Mar 24, 2026 · the main character of the movie Finding Nemo.\nConstraint Match: 2020, according, before, character, finding, fish, found, main\n[F6] supports C1; confidence=0.955\nClaim: Feb 1, 2021 · EMA was lead author on ~54% of all USGS ...\nConstraint Match: 2020, usgs\n\nMissing Info:\nNone\n\nRisk Flags:\nshort_generic_candidate",
+            "prompt_tokens": 948,
+            "completion_tokens": 140,
+            "total_tokens": 1088,
+            "tool_calls": [],
+            "tool_results": [],
+            "trajectory": []
+          },
+          {
+            "agent_id": "minicpm",
+            "model_name": "minicpm3:4b",
+            "run_index": 2,
+            "raw_reply": "Step 1: The question asks for the five-digit zip codes of places where a specific species of fish was found as a nonnative species before the year 2020, according to the USGS. \nStep 2: The provided information does not include any direct answers or evidence about the locations where the fish was found.\nStep 3: Since there is no relevant information available in the given text, we cannot determine the specific zip codes for the places where the fish was found as a nonnative species before 2020.\nStep 4: Therefore, we cannot provide a final answer based on the available information.\n\nFinal Answer: NEED_MORE_EVIDEnce",
+            "reasoning": "",
+            "final_answer": "",
+            "parse_completed": false,
+            "tool_context": "Search_Result:\nOriginal Question:\nI’m researching species that became invasive after people who kept them as pets released them. There’s a certain species of fish that was popularized as a pet by being the main character of the movie Finding Nemo. According to the USGS, where was this fish found as a nonnative species, before the year 2020? I need the answer formatted as the five-digit zip codes of the places the species was found, separated by commas if there is more than one place.\n\nAnswer Type: person\n\nVerified Candidate Answer:\n[C4] answer=Exotic; type=person; support=2; refute=0; neutral=3; confidence=0.95; risk=-\n[C5] answer=From; type=person; support=2; refute=0; neutral=3; confidence=0.95; risk=-\n[C1] answer=Mar; type=person; support=2; refute=0; neutral=4; confidence=0.6; risk=short_generic_candidate\n\nFact:\n[F19] supports C4; confidence=1.0\nClaim: Exotic pets might seem fascinating and unique, but when released into the wild, they can wreak havoc on local ecosystems.\nConstraint Match: invasive, pet, pets, released, species\n[F20] supports C4; confidence=1.0\nClaim: From pythons to goldfish, these exotic pets turned into invasive species and are now disrupting ecosystems.\nConstraint Match: fish, invasive, pet, pets, species\n[F25] supports C5; confidence=1.0\nClaim: From pythons to goldfish, these exotic pets turned into invasive species and are now disrupting ecosystems.\nConstraint Match: fish, invasive, pet, pets, species\n[F26] supports C5; confidence=1.0\nClaim: Sep 21, 2021 · The assignment of the task included the fictional character Nemo from the animated film Finding Nemo.\nConstraint Match: 2020, according, character, finding, nemo\n[F1] supports C1; confidence=1.0\nClaim: Mar 24, 2026 · the main character of the movie Finding Nemo.\nConstraint Match: 2020, according, before, character, finding, fish, found, main\n[F6] supports C1; confidence=0.955\nClaim: Feb 1, 2021 · EMA was lead author on ~54% of all USGS ...\nConstraint Match: 2020, usgs\n\nMissing Info:\nNone\n\nRisk Flags:\nshort_generic_candidate",
+            "prompt_tokens": 948,
+            "completion_tokens": 148,
+            "total_tokens": 1096,
+            "tool_calls": [],
+            "tool_results": [],
+            "trajectory": []
+          },
+          {
+            "agent_id": "minicpm",
+            "model_name": "minicpm3:4b",
+            "run_index": 3,
+            "raw_reply": "Step 1: The question asks for the five-digit zip codes of places where a certain species of fish was found as a nonnative species before the year 2020.\nStep 2: The search result indicates that there is no information available about the specific zip codes.\nStep 3: However, there are mentions of other zip codes in the context of invasive species and pets.\nStep 4: It seems that the relevant information is not present in the given search results.\nStep 5: Therefore, we cannot provide a definitive answer to the question based on the available information.\n\nFINAL_ANSWE",
+            "reasoning": "",
+            "final_answer": "",
+            "parse_completed": false,
+            "tool_context": "Search_Result:\nOriginal Question:\nI’m researching species that became invasive after people who kept them as pets released them. There’s a certain species of fish that was popularized as a pet by being the main character of the movie Finding Nemo. According to the USGS, where was this fish found as a nonnative species, before the year 2020? I need the answer formatted as the five-digit zip codes of the places the species was found, separated by commas if there is more than one place.\n\nAnswer Type: person\n\nVerified Candidate Answer:\n[C4] answer=Exotic; type=person; support=2; refute=0; neutral=3; confidence=0.95; risk=-\n[C5] answer=From; type=person; support=2; refute=0; neutral=3; confidence=0.95; risk=-\n[C1] answer=Mar; type=person; support=2; refute=0; neutral=4; confidence=0.6; risk=short_generic_candidate\n\nFact:\n[F19] supports C4; confidence=1.0\nClaim: Exotic pets might seem fascinating and unique, but when released into the wild, they can wreak havoc on local ecosystems.\nConstraint Match: invasive, pet, pets, released, species\n[F20] supports C4; confidence=1.0\nClaim: From pythons to goldfish, these exotic pets turned into invasive species and are now disrupting ecosystems.\nConstraint Match: fish, invasive, pet, pets, species\n[F25] supports C5; confidence=1.0\nClaim: From pythons to goldfish, these exotic pets turned into invasive species and are now disrupting ecosystems.\nConstraint Match: fish, invasive, pet, pets, species\n[F26] supports C5; confidence=1.0\nClaim: Sep 21, 2021 · The assignment of the task included the fictional character Nemo from the animated film Finding Nemo.\nConstraint Match: 2020, according, character, finding, nemo\n[F1] supports C1; confidence=1.0\nClaim: Mar 24, 2026 · the main character of the movie Finding Nemo.\nConstraint Match: 2020, according, before, character, finding, fish, found, main\n[F6] supports C1; confidence=0.955\nClaim: Feb 1, 2021 · EMA was lead author on ~54% of all USGS ...\nConstraint Match: 2020, usgs\n\nMissing Info:\nNone\n\nRisk Flags:\nshort_generic_candidate",
+            "prompt_tokens": 948,
+            "completion_tokens": 132,
+            "total_tokens": 1080,
+            "tool_calls": [],
+            "tool_results": [],
+            "trajectory": []
+          }
+        ],
+        "compressed_answer": "",
+        "compressed_reasoning": "",
+        "confidence_score": 0.0,
+        "active": false
+      },
+      {
+        "agent_id": "qwen",
+        "model_name": "qwen3:4b",
+        "runs": [
+          {
+            "agent_id": "qwen",
+            "model_name": "qwen3:4b",
+            "run_index": 1,
+            "raw_reply": "REASONING = \nstep 1. The question asks for five-digit zip codes where a specific fish species (popularized as a pet by the movie *Finding Nemo*) was found as a nonnative invasive species before 2020, according to USGS data.\nstep 2. The movie *Finding Nemo* features Nemo, a clownfish (genus *Amphiprion*), so the target species is likely a clownfish. However, the USGS database does not list clownfish as invasive species in typical contexts, as they are native to marine environments and not commonly invasive in the US.\nstep 3. The Verified Candidate Answers provided (e.g., \"Exotic\", \"From\", \"Mar\") are generic terms with no zip code information and do not align with the required format (five-digit zip codes). The evidence does not include USGS-specific locations or zip codes for invasive clownfish before 2020.\nstep 4. The Search_Result shows no solver or attachment results, and the Facts only reference the movie character and USGS tasks without location data. The risk flags indicate \"short_generic_candidate\" and missing zip code information.\nstep 5. Since the evidence lacks specific five-digit zip codes for nonnative invasive fish species (clownfish) before 2020, and no verified candidate answers provide this data, the answer cannot be determined from available evidence.\n\nFINAL_ANSWER = NEED_MORE_EVIDENCE",
+            "reasoning": "",
+            "final_answer": "",
+            "parse_completed": false,
+            "tool_context": "Search_Result:\nOriginal Question:\nI’m researching species that became invasive after people who kept them as pets released them. There’s a certain species of fish that was popularized as a pet by being the main character of the movie Finding Nemo. According to the USGS, where was this fish found as a nonnative species, before the year 2020? I need the answer formatted as the five-digit zip codes of the places the species was found, separated by commas if there is more than one place.\n\nAnswer Type: person\n\nVerified Candidate Answer:\n[C4] answer=Exotic; type=person; support=2; refute=0; neutral=3; confidence=0.95; risk=-\n[C5] answer=From; type=person; support=2; refute=0; neutral=3; confidence=0.95; risk=-\n[C1] answer=Mar; type=person; support=2; refute=0; neutral=4; confidence=0.6; risk=short_generic_candidate\n\nFact:\n[F19] supports C4; confidence=1.0\nClaim: Exotic pets might seem fascinating and unique, but when released into the wild, they can wreak havoc on local ecosystems.\nConstraint Match: invasive, pet, pets, released, species\n[F20] supports C4; confidence=1.0\nClaim: From pythons to goldfish, these exotic pets turned into invasive species and are now disrupting ecosystems.\nConstraint Match: fish, invasive, pet, pets, species\n[F25] supports C5; confidence=1.0\nClaim: From pythons to goldfish, these exotic pets turned into invasive species and are now disrupting ecosystems.\nConstraint Match: fish, invasive, pet, pets, species\n[F26] supports C5; confidence=1.0\nClaim: Sep 21, 2021 · The assignment of the task included the fictional character Nemo from the animated film Finding Nemo.\nConstraint Match: 2020, according, character, finding, nemo\n[F1] supports C1; confidence=1.0\nClaim: Mar 24, 2026 · the main character of the movie Finding Nemo.\nConstraint Match: 2020, according, before, character, finding, fish, found, main\n[F6] supports C1; confidence=0.955\nClaim: Feb 1, 2021 · EMA was lead author on ~54% of all USGS ...\nConstraint Match: 2020, usgs\n\nMissing Info:\nNone\n\nRisk Flags:\nshort_generic_candidate",
+            "prompt_tokens": 837,
+            "completion_tokens": 2459,
+            "total_tokens": 3296,
+            "tool_calls": [],
+            "tool_results": [],
+            "trajectory": []
+          },
+          {
+            "agent_id": "qwen",
+            "model_name": "qwen3:4b",
+            "run_index": 2,
+            "raw_reply": "REASONING = \nstep 1. The question asks for five-digit zip codes where a fish species (popularized as a pet in *Finding Nemo*) was found as a nonnative invasive species before 2020 according to USGS data. The movie's main character, Nemo, is a clownfish (*Amphiprion*), but this species is not typically invasive in the US.\nstep 2. Verified Candidate Answers (Exotic, From, Mar) are generic terms with no zip code data. The Search_Result provides claims about the fish's origin and USGS relevance but lacks specific zip codes or nonnative locations.\nstep 3. USGS data for invasive species (e.g., zebra mussels, crayfish) is unrelated to clownfish, which are not classified as invasive in the US. The problem requires five-digit zip codes, but no evidence in the Search_Result contains such details.\nstep 4. The Risk Flags indicate \"short_generic_candidate,\" confirming the evidence is insufficient for zip code answers. No Evidence items support specific zip codes, and the task requires external USGS data not present in the provided results.\n\nFINAL_ANSWER = NEED_MORE_EVIDENCE",
+            "reasoning": "",
+            "final_answer": "",
+            "parse_completed": false,
+            "tool_context": "Search_Result:\nOriginal Question:\nI’m researching species that became invasive after people who kept them as pets released them. There’s a certain species of fish that was popularized as a pet by being the main character of the movie Finding Nemo. According to the USGS, where was this fish found as a nonnative species, before the year 2020? I need the answer formatted as the five-digit zip codes of the places the species was found, separated by commas if there is more than one place.\n\nAnswer Type: person\n\nVerified Candidate Answer:\n[C4] answer=Exotic; type=person; support=2; refute=0; neutral=3; confidence=0.95; risk=-\n[C5] answer=From; type=person; support=2; refute=0; neutral=3; confidence=0.95; risk=-\n[C1] answer=Mar; type=person; support=2; refute=0; neutral=4; confidence=0.6; risk=short_generic_candidate\n\nFact:\n[F19] supports C4; confidence=1.0\nClaim: Exotic pets might seem fascinating and unique, but when released into the wild, they can wreak havoc on local ecosystems.\nConstraint Match: invasive, pet, pets, released, species\n[F20] supports C4; confidence=1.0\nClaim: From pythons to goldfish, these exotic pets turned into invasive species and are now disrupting ecosystems.\nConstraint Match: fish, invasive, pet, pets, species\n[F25] supports C5; confidence=1.0\nClaim: From pythons to goldfish, these exotic pets turned into invasive species and are now disrupting ecosystems.\nConstraint Match: fish, invasive, pet, pets, species\n[F26] supports C5; confidence=1.0\nClaim: Sep 21, 2021 · The assignment of the task included the fictional character Nemo from the animated film Finding Nemo.\nConstraint Match: 2020, according, character, finding, nemo\n[F1] supports C1; confidence=1.0\nClaim: Mar 24, 2026 · the main character of the movie Finding Nemo.\nConstraint Match: 2020, according, before, character, finding, fish, found, main\n[F6] supports C1; confidence=0.955\nClaim: Feb 1, 2021 · EMA was lead author on ~54% of all USGS ...\nConstraint Match: 2020, usgs\n\nMissing Info:\nNone\n\nRisk Flags:\nshort_generic_candidate",
+            "prompt_tokens": 837,
+            "completion_tokens": 1834,
+            "total_tokens": 2671,
+            "tool_calls": [],
+            "tool_results": [],
+            "trajectory": []
+          },
+          {
+            "agent_id": "qwen",
+            "model_name": "qwen3:4b",
+            "run_index": 3,
+            "raw_reply": "REASONING = \nstep 1. The question asks for five-digit zip codes where a fish species (popularized as a pet via the movie *Finding Nemo*) was found as a nonnative invasive species before 2020, per USGS data. The movie's main character is a fictional clownfish named Nemo, so the species in question is likely a clownfish (e.g., *Pomacentrus* spp.).\nstep 2. The provided evidence (Search_Result) includes facts about *Finding Nemo* and invasive species but does not contain zip code data for nonnative fish locations. Verified Candidate Answers (e.g., \"Exotic\", \"From\", \"Mar\") are not zip codes and do not address geographic locations.\nstep 3. No evidence directly supports zip code locations for the fish species as nonnative invasive species before 2020. The USGS data required for this answer is missing from the provided evidence.\nstep 4. Since the evidence lacks zip code information and all verified candidates are irrelevant to the query, the answer cannot be determined from available data.\n\nFINAL_ANSWER = NEED_MORE_EVIDENCE",
+            "reasoning": "",
+            "final_answer": "",
+            "parse_completed": false,
+            "tool_context": "Search_Result:\nOriginal Question:\nI’m researching species that became invasive after people who kept them as pets released them. There’s a certain species of fish that was popularized as a pet by being the main character of the movie Finding Nemo. According to the USGS, where was this fish found as a nonnative species, before the year 2020? I need the answer formatted as the five-digit zip codes of the places the species was found, separated by commas if there is more than one place.\n\nAnswer Type: person\n\nVerified Candidate Answer:\n[C4] answer=Exotic; type=person; support=2; refute=0; neutral=3; confidence=0.95; risk=-\n[C5] answer=From; type=person; support=2; refute=0; neutral=3; confidence=0.95; risk=-\n[C1] answer=Mar; type=person; support=2; refute=0; neutral=4; confidence=0.6; risk=short_generic_candidate\n\nFact:\n[F19] supports C4; confidence=1.0\nClaim: Exotic pets might seem fascinating and unique, but when released into the wild, they can wreak havoc on local ecosystems.\nConstraint Match: invasive, pet, pets, released, species\n[F20] supports C4; confidence=1.0\nClaim: From pythons to goldfish, these exotic pets turned into invasive species and are now disrupting ecosystems.\nConstraint Match: fish, invasive, pet, pets, species\n[F25] supports C5; confidence=1.0\nClaim: From pythons to goldfish, these exotic pets turned into invasive species and are now disrupting ecosystems.\nConstraint Match: fish, invasive, pet, pets, species\n[F26] supports C5; confidence=1.0\nClaim: Sep 21, 2021 · The assignment of the task included the fictional character Nemo from the animated film Finding Nemo.\nConstraint Match: 2020, according, character, finding, nemo\n[F1] supports C1; confidence=1.0\nClaim: Mar 24, 2026 · the main character of the movie Finding Nemo.\nConstraint Match: 2020, according, before, character, finding, fish, found, main\n[F6] supports C1; confidence=0.955\nClaim: Feb 1, 2021 · EMA was lead author on ~54% of all USGS ...\nConstraint Match: 2020, usgs\n\nMissing Info:\nNone\n\nRisk Flags:\nshort_generic_candidate",
+            "prompt_tokens": 837,
+            "completion_tokens": 2177,
+            "total_tokens": 3014,
+            "tool_calls": [],
+            "tool_results": [],
+            "trajectory": []
+          }
+        ],
+        "compressed_answer": "",
+        "compressed_reasoning": "",
+        "confidence_score": 0.0,
+        "active": false
+      },
+      {
+        "agent_id": "gemma",
+        "model_name": "gemma3:4b",
+        "runs": [
+          {
+            "agent_id": "gemma",
+            "model_name": "gemma3:4b",
+            "run_index": 1,
+            "raw_reply": "REASONING =\nstep 1. The user is asking for the locations, formatted as comma-separated five-digit zip codes, where the fish species from *Finding Nemo* (a clownfish) was found as a nonnative species according to the USGS, specifically before the year 2020.\nstep 2. I reviewed the provided Search Results and Facts to find the required zip code information.\nstep 3. The evidence confirms the topic (invasive pets, Finding Nemo character, USGS data) (e.g., [F1], [F6]), but none of the provided evidence items contain the specific geographical data (five-digit zip codes) required to answer the question.\nstep 4. Since the necessary evidence (USGS location data in zip code format) is missing, I cannot fulfill the request.\nFINAL_ANSWER = NEED_MORE_EVIDENCE",
+            "reasoning": "",
+            "final_answer": "",
+            "parse_completed": false,
+            "tool_context": "Search_Result:\nOriginal Question:\nI’m researching species that became invasive after people who kept them as pets released them. There’s a certain species of fish that was popularized as a pet by being the main character of the movie Finding Nemo. According to the USGS, where was this fish found as a nonnative species, before the year 2020? I need the answer formatted as the five-digit zip codes of the places the species was found, separated by commas if there is more than one place.\n\nAnswer Type: person\n\nVerified Candidate Answer:\n[C4] answer=Exotic; type=person; support=2; refute=0; neutral=3; confidence=0.95; risk=-\n[C5] answer=From; type=person; support=2; refute=0; neutral=3; confidence=0.95; risk=-\n[C1] answer=Mar; type=person; support=2; refute=0; neutral=4; confidence=0.6; risk=short_generic_candidate\n\nFact:\n[F19] supports C4; confidence=1.0\nClaim: Exotic pets might seem fascinating and unique, but when released into the wild, they can wreak havoc on local ecosystems.\nConstraint Match: invasive, pet, pets, released, species\n[F20] supports C4; confidence=1.0\nClaim: From pythons to goldfish, these exotic pets turned into invasive species and are now disrupting ecosystems.\nConstraint Match: fish, invasive, pet, pets, species\n[F25] supports C5; confidence=1.0\nClaim: From pythons to goldfish, these exotic pets turned into invasive species and are now disrupting ecosystems.\nConstraint Match: fish, invasive, pet, pets, species\n[F26] supports C5; confidence=1.0\nClaim: Sep 21, 2021 · The assignment of the task included the fictional character Nemo from the animated film Finding Nemo.\nConstraint Match: 2020, according, character, finding, nemo\n[F1] supports C1; confidence=1.0\nClaim: Mar 24, 2026 · the main character of the movie Finding Nemo.\nConstraint Match: 2020, according, before, character, finding, fish, found, main\n[F6] supports C1; confidence=0.955\nClaim: Feb 1, 2021 · EMA was lead author on ~54% of all USGS ...\nConstraint Match: 2020, usgs\n\nMissing Info:\nNone\n\nRisk Flags:\nshort_generic_candidate",
+            "prompt_tokens": 873,
+            "completion_tokens": 598,
+            "total_tokens": 1471,
+            "tool_calls": [],
+            "tool_results": [],
+            "trajectory": []
+          },
+          {
+            "agent_id": "gemma",
+            "model_name": "gemma3:4b",
+            "run_index": 2,
+            "raw_reply": "REASONING =\nstep 1. The user is asking for the five-digit zip codes where the clownfish (the main character of *Finding Nemo*) was found as a nonnative species, according to the USGS, before the year 2020.\nstep 2. I reviewed the provided Search_Result, Attachment_Result, and Fact sections.\nstep 3. The evidence provided confirms the movie reference (*Finding Nemo*) but does not contain any specific USGS data, nonnative locations, or the required five-digit zip codes for the fish species.\nstep 4. Since the crucial, specific geographic data (zip codes) needed to answer the question is absent from the evidence, I cannot provide the answer.\nstep 5. I must request a search query that can provide the specific USGS data requested.\nFINAL_ANSWER = I need more evidence. Please provide a search query that can access the USGS data regarding the nonnative locations (zip codes) of clownfish (or the species associated with *Finding Nemo*) found before the year 2020.",
+            "reasoning": "",
+            "final_answer": "",
+            "parse_completed": false,
+            "tool_context": "Search_Result:\nOriginal Question:\nI’m researching species that became invasive after people who kept them as pets released them. There’s a certain species of fish that was popularized as a pet by being the main character of the movie Finding Nemo. According to the USGS, where was this fish found as a nonnative species, before the year 2020? I need the answer formatted as the five-digit zip codes of the places the species was found, separated by commas if there is more than one place.\n\nAnswer Type: person\n\nVerified Candidate Answer:\n[C4] answer=Exotic; type=person; support=2; refute=0; neutral=3; confidence=0.95; risk=-\n[C5] answer=From; type=person; support=2; refute=0; neutral=3; confidence=0.95; risk=-\n[C1] answer=Mar; type=person; support=2; refute=0; neutral=4; confidence=0.6; risk=short_generic_candidate\n\nFact:\n[F19] supports C4; confidence=1.0\nClaim: Exotic pets might seem fascinating and unique, but when released into the wild, they can wreak havoc on local ecosystems.\nConstraint Match: invasive, pet, pets, released, species\n[F20] supports C4; confidence=1.0\nClaim: From pythons to goldfish, these exotic pets turned into invasive species and are now disrupting ecosystems.\nConstraint Match: fish, invasive, pet, pets, species\n[F25] supports C5; confidence=1.0\nClaim: From pythons to goldfish, these exotic pets turned into invasive species and are now disrupting ecosystems.\nConstraint Match: fish, invasive, pet, pets, species\n[F26] supports C5; confidence=1.0\nClaim: Sep 21, 2021 · The assignment of the task included the fictional character Nemo from the animated film Finding Nemo.\nConstraint Match: 2020, according, character, finding, nemo\n[F1] supports C1; confidence=1.0\nClaim: Mar 24, 2026 · the main character of the movie Finding Nemo.\nConstraint Match: 2020, according, before, character, finding, fish, found, main\n[F6] supports C1; confidence=0.955\nClaim: Feb 1, 2021 · EMA was lead author on ~54% of all USGS ...\nConstraint Match: 2020, usgs\n\nMissing Info:\nNone\n\nRisk Flags:\nshort_generic_candidate",
+            "prompt_tokens": 873,
+            "completion_tokens": 529,
+            "total_tokens": 1402,
+            "tool_calls": [],
+            "tool_results": [],
+            "trajectory": []
+          },
+          {
+            "agent_id": "gemma",
+            "model_name": "gemma3:4b",
+            "run_index": 3,
+            "raw_reply": "REASONING =\nstep 1. The user is asking for the five-digit zip codes where the clownfish (the species featured in *Finding Nemo*) was found as a nonnative species before the year 2020, according to the USGS.\nstep 2. I reviewed the provided Evidence (Search_Result, Attachment_Result, Verified Candidate Answer, and Facts).\nstep 3. The evidence confirms the context (Finding Nemo, invasive species, USGS) but does not contain any specific geographical location data in the form of five-digit zip codes.\nstep 4. Because the required zip codes are highly specific factual data points not present in the evidence, the evidence is insufficient to answer the question.\nstep 5. I must request a search query that targets the specific geographical data needed.\nFINAL_ANSWER = I need more evidence. Please search for \"USGS nonnative locations clownfish zip codes before 2020\" to find the specific zip codes required for the answer.",
+            "reasoning": "",
+            "final_answer": "",
+            "parse_completed": false,
+            "tool_context": "Search_Result:\nOriginal Question:\nI’m researching species that became invasive after people who kept them as pets released them. There’s a certain species of fish that was popularized as a pet by being the main character of the movie Finding Nemo. According to the USGS, where was this fish found as a nonnative species, before the year 2020? I need the answer formatted as the five-digit zip codes of the places the species was found, separated by commas if there is more than one place.\n\nAnswer Type: person\n\nVerified Candidate Answer:\n[C4] answer=Exotic; type=person; support=2; refute=0; neutral=3; confidence=0.95; risk=-\n[C5] answer=From; type=person; support=2; refute=0; neutral=3; confidence=0.95; risk=-\n[C1] answer=Mar; type=person; support=2; refute=0; neutral=4; confidence=0.6; risk=short_generic_candidate\n\nFact:\n[F19] supports C4; confidence=1.0\nClaim: Exotic pets might seem fascinating and unique, but when released into the wild, they can wreak havoc on local ecosystems.\nConstraint Match: invasive, pet, pets, released, species\n[F20] supports C4; confidence=1.0\nClaim: From pythons to goldfish, these exotic pets turned into invasive species and are now disrupting ecosystems.\nConstraint Match: fish, invasive, pet, pets, species\n[F25] supports C5; confidence=1.0\nClaim: From pythons to goldfish, these exotic pets turned into invasive species and are now disrupting ecosystems.\nConstraint Match: fish, invasive, pet, pets, species\n[F26] supports C5; confidence=1.0\nClaim: Sep 21, 2021 · The assignment of the task included the fictional character Nemo from the animated film Finding Nemo.\nConstraint Match: 2020, according, character, finding, nemo\n[F1] supports C1; confidence=1.0\nClaim: Mar 24, 2026 · the main character of the movie Finding Nemo.\nConstraint Match: 2020, according, before, character, finding, fish, found, main\n[F6] supports C1; confidence=0.955\nClaim: Feb 1, 2021 · EMA was lead author on ~54% of all USGS ...\nConstraint Match: 2020, usgs\n\nMissing Info:\nNone\n\nRisk Flags:\nshort_generic_candidate",
+            "prompt_tokens": 873,
+            "completion_tokens": 703,
+            "total_tokens": 1576,
+            "tool_calls": [],
+            "tool_results": [],
+            "trajectory": []
+          }
+        ],
+        "compressed_answer": "",
+        "compressed_reasoning": "",
+        "confidence_score": 0.0,
+        "active": false
+      }
+    ],
+    "judge_results": [],
+    "agent_scores": [
+      {
+        "agent_id": "nemotron",
+        "model_name": "nemotron-mini:4b",
+        "temperature": 0.5,
+        "confidence_score": 0.0,
+        "judge_scores": [],
+        "avg_judge_score": 0.0,
+        "penalty_score": -1.0,
+        "penalty_reasons": [
+          "inactive_or_no_answer"
+        ],
+        "total_score": -Infinity
+      },
+      {
+        "agent_id": "minicpm",
+        "model_name": "minicpm3:4b",
+        "temperature": 0.5,
+        "confidence_score": 0.0,
+        "judge_scores": [],
+        "avg_judge_score": 0.0,
+        "penalty_score": -1.0,
+        "penalty_reasons": [
+          "inactive_or_no_answer"
+        ],
+        "total_score": -Infinity
+      },
+      {
+        "agent_id": "qwen",
+        "model_name": "qwen3:4b",
+        "temperature": 0.5,
+        "confidence_score": 0.0,
+        "judge_scores": [],
+        "avg_judge_score": 0.0,
+        "penalty_score": -1.0,
+        "penalty_reasons": [
+          "inactive_or_no_answer"
+        ],
+        "total_score": -Infinity
+      },
+      {
+        "agent_id": "gemma",
+        "model_name": "gemma3:4b",
+        "temperature": 0.5,
+        "confidence_score": 0.0,
+        "judge_scores": [],
+        "avg_judge_score": 0.0,
+        "penalty_score": -1.0,
+        "penalty_reasons": [
+          "inactive_or_no_answer"
+        ],
+        "total_score": -Infinity
+      }
+    ],
+    "metadata": {
+      "stage1_runs_per_agent": 3,
+      "response_time_seconds": 123.2479725999292,
+      "response_time_ms": 123247.973,
+      "token_usage": {
+        "stage1": {
+          "prompt_tokens": 10590,
+          "completion_tokens": 10063,
+          "total_tokens": 20653
+        },
+        "stage2": {
+          "prompt_tokens": 0,
+          "completion_tokens": 0,
+          "total_tokens": 0
+        },
+        "total": {
+          "prompt_tokens": 10590,
+          "completion_tokens": 10063,
+          "total_tokens": 20653
+        }
+      },
+      "max_stage1_workers": 12,
+      "max_stage2_workers": 1,
+      "stage2_max_tokens": 512,
+      "enable_stage1_tool_use": false,
+      "enable_compact_search_evidence": true,
+      "max_stage1_tool_turns": 2,
+      "enable_stage1_early_stop": false,
+      "previous_best_agent_id": "",
+      "stage1_early_stop_max_retries": 1,
+      "stage1_attempts": 1,
+      "stage1_early_stop": false,
+      "stage1_early_stop_reason": "",
+      "stage2_skipped": false,
+      "cross_agent_consensus_used": false,
+      "cross_agent_consensus_supporting_agents": [],
+      "cross_agent_consensus_answer": "",
+      "active_agent_count": 0,
+      "search_used": true,
+      "attachment_used": false,
+      "solver_used": false,
+      "routing": {
+        "use_calculator": false,
+        "use_search": true,
+        "use_deterministic_solver": false,
+        "use_python_solver": false,
+        "use_attachment": false,
+        "calculator_expression": null,
+        "task_type": "factual_search",
+        "trigger_terms": [
+          "where",
+          "who",
+          "movie",
+          "year"
+        ],
+        "tool_policy": {
+          "prefer": [
+            "search"
+          ],
+          "optional": [],
+          "avoid": []
+        },
+        "routing_reasons": [
+          "question contains factual lookup signals: where, who, movie, year",
+          "stage1 round0 system contract enables early evidence gathering"
+        ],
+        "routing_source": "system_routing_contract"
+      },
+      "tool_usage": [
+        {
+          "ok": true,
+          "tool_name": "search",
+          "output_text": "Original Question:\nI’m researching species that became invasive after people who kept them as pets released them. There’s a certain species of fish that was popularized as a pet by being the main character of the movie Finding Nemo. According to the USGS, where was this fish found as a nonnative species, before the year 2020? I need the answer formatted as the five-digit zip codes of the places the species was found, separated by commas if there is more than one place.\n\nAnswer Type: person\n\nVerified Candidate Answer:\n[C4] answer=Exotic; type=person; support=2; refute=0; neutral=3; confidence=0.95; risk=-\n[C5] answer=From; type=person; support=2; refute=0; neutral=3; confidence=0.95; risk=-\n[C1] answer=Mar; type=person; support=2; refute=0; neutral=4; confidence=0.6; risk=short_generic_candidate\n\nFact:\n[F19] supports C4; confidence=1.0\nClaim: Exotic pets might seem fascinating and unique, but when released into the wild, they can wreak havoc on local ecosystems.\nConstraint Match: invasive, pet, pets, released, species\n[F20] supports C4; confidence=1.0\nClaim: From pythons to goldfish, these exotic pets turned into invasive species and are now disrupting ecosystems.\nConstraint Match: fish, invasive, pet, pets, species\n[F25] supports C5; confidence=1.0\nClaim: From pythons to goldfish, these exotic pets turned into invasive species and are now disrupting ecosystems.\nConstraint Match: fish, invasive, pet, pets, species\n[F26] supports C5; confidence=1.0\nClaim: Sep 21, 2021 · The assignment of the task included the fictional character Nemo from the animated film Finding Nemo.\nConstraint Match: 2020, according, character, finding, nemo\n[F1] supports C1; confidence=1.0\nClaim: Mar 24, 2026 · the main character of the movie Finding Nemo.\nConstraint Match: 2020, according, before, character, finding, fish, found, main\n[F6] supports C1; confidence=0.955\nClaim: Feb 1, 2021 · EMA was lead author on ~54% of all USGS ...\nConstraint Match: 2020, usgs\n\nMissing Info:\nNone\n\nRisk Flags:\nshort_generic_candidate",
+          "raw_result": {
+            "question": "I’m researching species that became invasive after people who kept them as pets released them. There’s a certain species of fish that was popularized as a pet by being the main character of the movie Finding Nemo. According to the USGS, where was this fish found as a nonnative species, before the year 2020? I need the answer formatted as the five-digit zip codes of the places the species was found, separated by commas if there is more than one place.",
+            "queries": [
+              {
+                "query_id": "Q1",
+                "query": "I’m researching species that became invasive after people who kept them as pets released them There’s a certain species of fish that was popularized as a pet by being the main character of the movie Finding Nemo According to the USGS, where was this fish found as a nonnative species, before the year 2020 I need the answer formatted as the five-digit zip codes of the places the species was found, separated by commas if there is more than one place",
+                "purpose": "core_question",
+                "priority": 99,
+                "source_hints": [],
+                "expected_answer_type": "date",
+                "requires_full_page": true
+              },
+              {
+                "query_id": "Q2",
+                "query": "\"Finding Nemo. According\" author person 2020",
+                "purpose": "quoted_or_entity_focus",
+                "priority": 98,
+                "source_hints": [],
+                "expected_answer_type": "entity",
+                "requires_full_page": true
+              },
+              {
+                "query_id": "Q3",
+                "query": "\"USGS\" author person 2020",
+                "purpose": "source_or_keyword_focus",
+                "priority": 97,
+                "source_hints": [],
+                "expected_answer_type": "entity",
+                "requires_full_page": true
+              }
+            ],
+            "sources": [
+              {
+                "source_id": "S1",
+                "query_id": "Q1",
+                "title": "8 Exotic Pets That Became an Invasive Species - Treehugger",
+                "url": "https://www.treehugger.com/exotic-pets-released-into-wild-invasive-species-4869094",
+                "domain": "www.treehugger.com",
+                "snippet": "From pythons to goldfish, these exotic pets turned into invasive species and are now disrupting ecosystems.",
+                "raw_content": "From pythons to goldfish, these exotic pets turned into invasive species and are now disrupting ecosystems.",
+                "rank": 1,
+                "rerank_score": 20.95,
+                "fetched": true,
+                "blocked": false,
+                "block_reason": ""
+              },
+              {
+                "source_id": "S2",
+                "query_id": "Q1",
+                "title": "Never Release Pets Into the Wild: 10 Exotic Pets That Are Now Invasive ...",
+                "url": "https://www.backyardgardenlover.com/exotic-pets-that-irresponsibly-became-invasive-species/",
+                "domain": "www.backyardgardenlover.com",
+                "snippet": "Exotic pets might seem fascinating and unique, but when released into the wild, they can wreak havoc on local ecosystems. These pets, either intentionally or accidentally introduced, have often become invasive species, displacing native plants and animals, causing environmental problems, and even disrupting human livelihoods. Here are 10 species that highlight how this issue has unfolded ...",
+                "raw_content": "Exotic pets might seem fascinating and unique, but when released into the wild, they can wreak havoc on local ecosystems. These pets, either intentionally or accidentally introduced, have often become invasive species, displacing native plants and animals, causing environmental problems, and even disrupting human livelihoods. Here are 10 species that highlight how this issue has unfolded ...",
+                "rank": 2,
+                "rerank_score": 15.85,
+                "fetched": true,
+                "blocked": false,
+                "block_reason": ""
+              },
+              {
+                "source_id": "S6",
+                "query_id": "Q2",
+                "title": "[PDF] secondary school students' ability to work with the tasks designed for",
+                "url": "https://files.eric.ed.gov/fulltext/EJ1315436.pdf",
+                "domain": "files.eric.ed.gov",
+                "snippet": "Sep 21, 2021 · The assignment of the task included the fictional character Nemo from the animated film Finding Nemo. According to Havlíčková (2020), the ...",
+                "raw_content": "Sep 21, 2021 · The assignment of the task included the fictional character Nemo from the animated film Finding Nemo. According to Havlíčková (2020), the ...",
+                "rank": 1,
+                "rerank_score": 8.3,
+                "fetched": true,
+                "blocked": false,
+                "block_reason": ""
+              },
+              {
+                "source_id": "S8",
+                "query_id": "Q2",
+                "title": "Training Multi-Agent Systems with M-GRPO - arXiv",
+                "url": "https://arxiv.org/html/2511.13288v1",
+                "domain": "arxiv.org",
+                "snippet": "Nov 17, 2025 · Authors: achieve the best ... Finding Nemo. According to the USGS, where was this fish found as a nonnative species, before the year 2020?",
+                "raw_content": "Nov 17, 2025 · Authors: achieve the best ... Finding Nemo. According to the USGS, where was this fish found as a nonnative species, before the year 2020?",
+                "rank": 3,
+                "rerank_score": 8.15,
+                "fetched": true,
+                "blocked": false,
+                "block_reason": ""
+              },
+              {
+                "source_id": "S10",
+                "query_id": "Q2",
+                "title": "[PDF] Process Evaluation for Agentic Systems - ACL Anthology",
+                "url": "https://aclanthology.org/2026.findings-eacl.140.pdf",
+                "domain": "aclanthology.org",
+                "snippet": "Mar 24, 2026 · the main character of the movie Finding Nemo. According to the USGS, where was this fish found as a nonnative species, before the year 2020?",
+                "raw_content": "Mar 24, 2026 · the main character of the movie Finding Nemo. According to the USGS, where was this fish found as a nonnative species, before the year 2020?",
+                "rank": 5,
+                "rerank_score": 6.85,
+                "fetched": true,
+                "blocked": false,
+                "block_reason": ""
+              },
+              {
+                "source_id": "S11",
+                "query_id": "Q3",
+                "title": "ScienceBase Updates - Summer 2020 | U.S. Geological Survey - USGS.gov",
+                "url": "https://www.usgs.gov/sciencebase-instructions-and-documentation/sciencebase-updates-summer-2020",
+                "domain": "www.usgs.gov",
+                "snippet": "The USGS Science Data Management (SDM) Branch is working to ensure that these connections are documented and available to users of our USGS data. Related ...",
+                "raw_content": "The USGS Science Data Management (SDM) Branch is working to ensure that these connections are documented and available to users of our USGS data. Related ...",
+                "rank": 1,
+                "rerank_score": 11.1,
+                "fetched": true,
+                "blocked": false,
+                "block_reason": ""
+              },
+              {
+                "source_id": "S12",
+                "query_id": "Q3",
+                "title": "[PDF] U.S. Geological Survey (USGS) Transition Briefing Document for the ...",
+                "url": "https://www.governmentattic.org/39docs/USGStransBriefBiden_2020.pdf",
+                "domain": "www.governmentattic.org",
+                "snippet": "Feb 1, 2021 · EMA was lead author on ~54% of all USGS ... The 2020 enacted budget is $1.27 billion. USGS 2020 Enacted - 2021 Congressional Marks.",
+                "raw_content": "Feb 1, 2021 · EMA was lead author on ~54% of all USGS ... The 2020 enacted budget is $1.27 billion. USGS 2020 Enacted - 2021 Congressional Marks.",
+                "rank": 2,
+                "rerank_score": 9.6,
+                "fetched": true,
+                "blocked": false,
+                "block_reason": ""
+              },
+              {
+                "source_id": "S13",
+                "query_id": "Q3",
+                "title": "How should I cite a USGS website or publication? | U.S. Geological Survey",
+                "url": "https://www.usgs.gov/faqs/how-should-i-cite-a-usgs-website-or-publication",
+                "domain": "www.usgs.gov",
+                "snippet": "Jun 5, 2024 · The author of a USGS website is almost always \"US Geological Survey.\" Also acceptable: \"United States Geological Survey\" or \"USGS.\"",
+                "raw_content": "Jun 5, 2024 · The author of a USGS website is almost always \"US Geological Survey.\" Also acceptable: \"United States Geological Survey\" or \"USGS.\"",
+                "rank": 3,
+                "rerank_score": 6.4,
+                "fetched": true,
+                "blocked": false,
+                "block_reason": ""
+              },
+              {
+                "source_id": "S14",
+                "query_id": "Q3",
+                "title": "[PDF] History of U.S. Geological Survey Scientific Peer Review and ...",
+                "url": "https://pubs.usgs.gov/fs/2020/3050/fs20203050.pdf",
+                "domain": "pubs.usgs.gov",
+                "snippet": "USGS prepared a series of manuals designed to aid USGS authors in the preparation of manuscript reports, collectively referred to as “Suggestions to Authors ...",
+                "raw_content": "USGS prepared a series of manuals designed to aid USGS authors in the preparation of manuscript reports, collectively referred to as “Suggestions to Authors ...",
+                "rank": 4,
+                "rerank_score": 3.85,
+                "fetched": true,
+                "blocked": false,
+                "block_reason": ""
+              },
+              {
+                "source_id": "S15",
+                "query_id": "Q3",
+                "title": "The US Geological Survey's Updated Scientific Integrity Policy Strives to ...",
+                "url": "https://blog.ucs.org/genna-reed/the-us-geological-surveys-updated-scientific-integrity-policy-strives-to-combat-harassment-and-promote-equity/",
+                "domain": "blog.ucs.org",
+                "snippet": "Aug 10, 2022 · The US Geological Survey's Updated Scientific Integrity Policy Strives to Combat Harassment and Promote Equity. August 10, 2022 | 9:34 am. usgs ...",
+                "raw_content": "Aug 10, 2022 · The US Geological Survey's Updated Scientific Integrity Policy Strives to Combat Harassment and Promote Equity. August 10, 2022 | 9:34 am. usgs ...",
+                "rank": 5,
+                "rerank_score": 1.1,
+                "fetched": true,
+                "blocked": false,
+                "block_reason": ""
+              }
+            ],
+            "evidence_items": [
+              {
+                "evidence_id": "E1",
+                "source_id": "S10",
+                "query_id": "Q2",
+                "text": "Mar 24, 2026 · the main character of the movie Finding Nemo. According to the USGS, where was this fish found as a nonnative species, before the year 2020?",
+                "title": "[PDF] Process Evaluation for Agentic Systems - ACL Anthology",
+                "url": "https://aclanthology.org/2026.findings-eacl.140.pdf",
+                "relevance_score": 34.25,
+                "matched_terms": [
+                  "2020",
+                  "according",
+                  "before",
+                  "character",
+                  "finding",
+                  "fish",
+                  "found",
+                  "main",
+                  "movie",
+                  "nemo",
+                  "nonnative",
+                  "species"
+                ],
+                "extracted_answer": ""
+              },
+              {
+                "evidence_id": "E2",
+                "source_id": "S8",
+                "query_id": "Q2",
+                "text": "Nov 17, 2025 · Authors: achieve the best ... Finding Nemo. According to the USGS, where was this fish found as a nonnative species, before the year 2020?",
+                "title": "Training Multi-Agent Systems with M-GRPO - arXiv",
+                "url": "https://arxiv.org/html/2511.13288v1",
+                "relevance_score": 28.25,
+                "matched_terms": [
+                  "2020",
+                  "according",
+                  "before",
+                  "finding",
+                  "fish",
+                  "found",
+                  "nemo",
+                  "nonnative",
+                  "species",
+                  "this",
+                  "usgs",
+                  "year"
+                ],
+                "extracted_answer": ""
+              },
+              {
+                "evidence_id": "E3",
+                "source_id": "S2",
+                "query_id": "Q1",
+                "text": "Exotic pets might seem fascinating and unique, but when released into the wild, they can wreak havoc on local ecosystems. These pets, either intentionally or accidentally introduced, have often become invasive species, displacing native plants and animals, causing environmental problems, and even disrupting human livelihoods. Here are 10 species that highlight how this issue has unfolded ...",
+                "title": "Never Release Pets Into the Wild: 10 Exotic Pets That Are Now Invasive ...",
+                "url": "https://www.backyardgardenlover.com/exotic-pets-that-irresponsibly-became-invasive-species/",
+                "relevance_score": 19.25,
+                "matched_terms": [
+                  "invasive",
+                  "pet",
+                  "pets",
+                  "released",
+                  "species",
+                  "that",
+                  "this"
+                ],
+                "extracted_answer": ""
+              },
+              {
+                "evidence_id": "E4",
+                "source_id": "S1",
+                "query_id": "Q1",
+                "text": "From pythons to goldfish, these exotic pets turned into invasive species and are now disrupting ecosystems.",
+                "title": "8 Exotic Pets That Became an Invasive Species - Treehugger",
+                "url": "https://www.treehugger.com/exotic-pets-released-into-wild-invasive-species-4869094",
+                "relevance_score": 15.0,
+                "matched_terms": [
+                  "fish",
+                  "invasive",
+                  "pet",
+                  "pets",
+                  "species"
+                ],
+                "extracted_answer": ""
+              },
+              {
+                "evidence_id": "E5",
+                "source_id": "S6",
+                "query_id": "Q2",
+                "text": "Sep 21, 2021 · The assignment of the task included the fictional character Nemo from the animated film Finding Nemo. According to Havlíčková (2020), the ...",
+                "title": "[PDF] secondary school students' ability to work with the tasks designed for",
+                "url": "https://files.eric.ed.gov/fulltext/EJ1315436.pdf",
+                "relevance_score": 14.25,
+                "matched_terms": [
+                  "2020",
+                  "according",
+                  "character",
+                  "finding",
+                  "nemo"
+                ],
+                "extracted_answer": ""
+              },
+              {
+                "evidence_id": "E6",
+                "source_id": "S12",
+                "query_id": "Q3",
+                "text": "Feb 1, 2021 · EMA was lead author on ~54% of all USGS ... The 2020 enacted budget is $1.27 billion. USGS 2020 Enacted - 2021 Congressional Marks.",
+                "title": "[PDF] U.S. Geological Survey (USGS) Transition Briefing Document for the ...",
+                "url": "https://www.governmentattic.org/39docs/USGStransBriefBiden_2020.pdf",
+                "relevance_score": 9.75,
+                "matched_terms": [
+                  "2020",
+                  "usgs"
+                ],
+                "extracted_answer": ""
+              },
+              {
+                "evidence_id": "E7",
+                "source_id": "S11",
+                "query_id": "Q3",
+                "text": "The USGS Science Data Management (SDM) Branch is working to ensure that these connections are documented and available to users of our USGS data. Related ...",
+                "title": "ScienceBase Updates - Summer 2020 | U.S. Geological Survey - USGS.gov",
+                "url": "https://www.usgs.gov/sciencebase-instructions-and-documentation/sciencebase-updates-summer-2020",
+                "relevance_score": 9.0,
+                "matched_terms": [
+                  "that",
+                  "usgs"
+                ],
+                "extracted_answer": ""
+              },
+              {
+                "evidence_id": "E8",
+                "source_id": "S13",
+                "query_id": "Q3",
+                "text": "Jun 5, 2024 · The author of a USGS website is almost always \"US Geological Survey.\" Also acceptable: \"United States Geological Survey\" or \"USGS.\"",
+                "title": "How should I cite a USGS website or publication? | U.S. Geological Survey",
+                "url": "https://www.usgs.gov/faqs/how-should-i-cite-a-usgs-website-or-publication",
+                "relevance_score": 4.75,
+                "matched_terms": [
+                  "usgs"
+                ],
+                "extracted_answer": ""
+              }
+            ],
+            "candidates": [
+              {
+                "answer": "Mar",
+                "answer_type": "person",
+                "support_count": 1,
+                "verification_score": 38.25,
+                "evidence_ids": [
+                  "E1"
+                ],
+                "source_ids": [
+                  "S10"
+                ],
+                "verified": true
+              },
+              {
+                "answer": "Nov",
+                "answer_type": "person",
+                "support_count": 1,
+                "verification_score": 32.25,
+                "evidence_ids": [
+                  "E2"
+                ],
+                "source_ids": [
+                  "S8"
+                ],
+                "verified": true
+              },
+              {
+                "answer": "Authors",
+                "answer_type": "person",
+                "support_count": 1,
+                "verification_score": 32.25,
+                "evidence_ids": [
+                  "E2"
+                ],
+                "source_ids": [
+                  "S8"
+                ],
+                "verified": true
+              },
+              {
+                "answer": "Exotic",
+                "answer_type": "person",
+                "support_count": 1,
+                "verification_score": 23.25,
+                "evidence_ids": [
+                  "E3"
+                ],
+                "source_ids": [
+                  "S2"
+                ],
+                "verified": true
+              },
+              {
+                "answer": "From",
+                "answer_type": "person",
+                "support_count": 1,
+                "verification_score": 19.0,
+                "evidence_ids": [
+                  "E4"
+                ],
+                "source_ids": [
+                  "S1"
+                ],
+                "verified": true
+              }
+            ],
+            "summary": "Original Question:\nI’m researching species that became invasive after people who kept them as pets released them. There’s a certain species of fish that was popularized as a pet by being the main character of the movie Finding Nemo. According to the USGS, where was this fish found as a nonnative species, before the year 2020? I need the answer formatted as the five-digit zip codes of the places the species was found, separated by commas if there is more than one place.\n\nAnswer Type: person\n\nVerified Candidate Answer:\n[C4] answer=Exotic; type=person; support=2; refute=0; neutral=3; confidence=0.95; risk=-\n[C5] answer=From; type=person; support=2; refute=0; neutral=3; confidence=0.95; risk=-\n[C1] answer=Mar; type=person; support=2; refute=0; neutral=4; confidence=0.6; risk=short_generic_candidate\n\nFact:\n[F19] supports C4; confidence=1.0\nClaim: Exotic pets might seem fascinating and unique, but when released into the wild, they can wreak havoc on local ecosystems.\nConstraint Match: invasive, pet, pets, released, species\n[F20] supports C4; confidence=1.0\nClaim: From pythons to goldfish, these exotic pets turned into invasive species and are now disrupting ecosystems.\nConstraint Match: fish, invasive, pet, pets, species\n[F25] supports C5; confidence=1.0\nClaim: From pythons to goldfish, these exotic pets turned into invasive species and are now disrupting ecosystems.\nConstraint Match: fish, invasive, pet, pets, species\n[F26] supports C5; confidence=1.0\nClaim: Sep 21, 2021 · The assignment of the task included the fictional character Nemo from the animated film Finding Nemo.\nConstraint Match: 2020, according, character, finding, nemo\n[F1] supports C1; confidence=1.0\nClaim: Mar 24, 2026 · the main character of the movie Finding Nemo.\nConstraint Match: 2020, according, before, character, finding, fish, found, main\n[F6] supports C1; confidence=0.955\nClaim: Feb 1, 2021 · EMA was lead author on ~54% of all USGS ...\nConstraint Match: 2020, usgs\n\nMissing Info:\nNone\n\nRisk Flags:\nshort_generic_candidate",
+            "verified_candidates": [
+              {
+                "candidate_id": "C4",
+                "answer": "Exotic",
+                "answer_type": "person",
+                "support_count": 2,
+                "refute_count": 0,
+                "neutral_count": 3,
+                "confidence": 0.95,
+                "evidence_ids": [
+                  "E3"
+                ],
+                "support_fact_ids": [
+                  "F19",
+                  "F20"
+                ],
+                "refute_fact_ids": [],
+                "risk_flags": []
+              },
+              {
+                "candidate_id": "C5",
+                "answer": "From",
+                "answer_type": "person",
+                "support_count": 2,
+                "refute_count": 0,
+                "neutral_count": 3,
+                "confidence": 0.95,
+                "evidence_ids": [
+                  "E4"
+                ],
+                "support_fact_ids": [
+                  "F25",
+                  "F26"
+                ],
+                "refute_fact_ids": [],
+                "risk_flags": []
+              },
+              {
+                "candidate_id": "C1",
+                "answer": "Mar",
+                "answer_type": "person",
+                "support_count": 2,
+                "refute_count": 0,
+                "neutral_count": 4,
+                "confidence": 0.6,
+                "evidence_ids": [
+                  "E1"
+                ],
+                "support_fact_ids": [
+                  "F1",
+                  "F6"
+                ],
+                "refute_fact_ids": [],
+                "risk_flags": [
+                  "short_generic_candidate"
+                ]
+              },
+              {
+                "candidate_id": "C3",
+                "answer": "Authors",
+                "answer_type": "person",
+                "support_count": 1,
+                "refute_count": 0,
+                "neutral_count": 4,
+                "confidence": 0.45,
+                "evidence_ids": [
+                  "E2"
+                ],
+                "support_fact_ids": [
+                  "F13"
+                ],
+                "refute_fact_ids": [],
+                "risk_flags": []
+              },
+              {
+                "candidate_id": "C2",
+                "answer": "Nov",
+                "answer_type": "person",
+                "support_count": 1,
+                "refute_count": 0,
+                "neutral_count": 4,
+                "confidence": 0.1,
+                "evidence_ids": [
+                  "E2"
+                ],
+                "support_fact_ids": [
+                  "F8"
+                ],
+                "refute_fact_ids": [],
+                "risk_flags": [
+                  "short_generic_candidate"
+                ]
+              }
+            ],
+            "fact_cards": [
+              {
+                "fact_id": "F1",
+                "claim": "Mar 24, 2026 · the main character of the movie Finding Nemo.",
+                "relation": "support",
+                "candidate_id": "C1",
+                "source_id": "S10",
+                "evidence_id": "E1",
+                "confidence": 1.0,
+                "constraint_matches": [
+                  "2020",
+                  "according",
+                  "before",
+                  "character",
+                  "finding",
+                  "fish",
+                  "found",
+                  "main"
+                ]
+              },
+              {
+                "fact_id": "F2",
+                "claim": "Nov 17, 2025 · Authors: achieve the best ...",
+                "relation": "neutral",
+                "candidate_id": "C1",
+                "source_id": "S8",
+                "evidence_id": "E2",
+                "confidence": 0.5,
+                "constraint_matches": [
+                  "2020",
+                  "according",
+                  "before",
+                  "finding",
+                  "fish",
+                  "found",
+                  "nemo",
+                  "nonnative"
+                ]
+              },
+              {
+                "fact_id": "F3",
+                "claim": "Exotic pets might seem fascinating and unique, but when released into the wild, they can wreak havoc on local ecosystems.",
+                "relation": "neutral",
+                "candidate_id": "C1",
+                "source_id": "S2",
+                "evidence_id": "E3",
+                "confidence": 0.5,
+                "constraint_matches": [
+                  "invasive",
+                  "pet",
+                  "pets",
+                  "released",
+                  "species"
+                ]
+              },
+              {
+                "fact_id": "F4",
+                "claim": "From pythons to goldfish, these exotic pets turned into invasive species and are now disrupting ecosystems.",
+                "relation": "neutral",
+                "candidate_id": "C1",
+                "source_id": "S1",
+                "evidence_id": "E4",
+                "confidence": 0.5,
+                "constraint_matches": [
+                  "fish",
+                  "invasive",
+                  "pet",
+                  "pets",
+                  "species"
+                ]
+              },
+              {
+                "fact_id": "F5",
+                "claim": "Sep 21, 2021 · The assignment of the task included the fictional character Nemo from the animated film Finding Nemo.",
+                "relation": "neutral",
+                "candidate_id": "C1",
+                "source_id": "S6",
+                "evidence_id": "E5",
+                "confidence": 0.5,
+                "constraint_matches": [
+                  "2020",
+                  "according",
+                  "character",
+                  "finding",
+                  "nemo"
+                ]
+              },
+              {
+                "fact_id": "F6",
+                "claim": "Feb 1, 2021 · EMA was lead author on ~54% of all USGS ...",
+                "relation": "support",
+                "candidate_id": "C1",
+                "source_id": "S12",
+                "evidence_id": "E6",
+                "confidence": 0.955,
+                "constraint_matches": [
+                  "2020",
+                  "usgs"
+                ]
+              },
+              {
+                "fact_id": "F7",
+                "claim": "Mar 24, 2026 · the main character of the movie Finding Nemo.",
+                "relation": "neutral",
+                "candidate_id": "C2",
+                "source_id": "S10",
+                "evidence_id": "E1",
+                "confidence": 0.5,
+                "constraint_matches": [
+                  "2020",
+                  "according",
+                  "before",
+                  "character",
+                  "finding",
+                  "fish",
+                  "found",
+                  "main"
+                ]
+              },
+              {
+                "fact_id": "F8",
+                "claim": "Nov 17, 2025 · Authors: achieve the best ...",
+                "relation": "support",
+                "candidate_id": "C2",
+                "source_id": "S8",
+                "evidence_id": "E2",
+                "confidence": 1.0,
+                "constraint_matches": [
+                  "2020",
+                  "according",
+                  "before",
+                  "finding",
+                  "fish",
+                  "found",
+                  "nemo",
+                  "nonnative"
+                ]
+              },
+              {
+                "fact_id": "F9",
+                "claim": "Exotic pets might seem fascinating and unique, but when released into the wild, they can wreak havoc on local ecosystems.",
+                "relation": "neutral",
+                "candidate_id": "C2",
+                "source_id": "S2",
+                "evidence_id": "E3",
+                "confidence": 0.5,
+                "constraint_matches": [
+                  "invasive",
+                  "pet",
+                  "pets",
+                  "released",
+                  "species"
+                ]
+              },
+              {
+                "fact_id": "F10",
+                "claim": "From pythons to goldfish, these exotic pets turned into invasive species and are now disrupting ecosystems.",
+                "relation": "neutral",
+                "candidate_id": "C2",
+                "source_id": "S1",
+                "evidence_id": "E4",
+                "confidence": 0.5,
+                "constraint_matches": [
+                  "fish",
+                  "invasive",
+                  "pet",
+                  "pets",
+                  "species"
+                ]
+              },
+              {
+                "fact_id": "F11",
+                "claim": "Sep 21, 2021 · The assignment of the task included the fictional character Nemo from the animated film Finding Nemo.",
+                "relation": "neutral",
+                "candidate_id": "C2",
+                "source_id": "S6",
+                "evidence_id": "E5",
+                "confidence": 0.5,
+                "constraint_matches": [
+                  "2020",
+                  "according",
+                  "character",
+                  "finding",
+                  "nemo"
+                ]
+              },
+              {
+                "fact_id": "F12",
+                "claim": "Mar 24, 2026 · the main character of the movie Finding Nemo.",
+                "relation": "neutral",
+                "candidate_id": "C3",
+                "source_id": "S10",
+                "evidence_id": "E1",
+                "confidence": 0.5,
+                "constraint_matches": [
+                  "2020",
+                  "according",
+                  "before",
+                  "character",
+                  "finding",
+                  "fish",
+                  "found",
+                  "main"
+                ]
+              },
+              {
+                "fact_id": "F13",
+                "claim": "Nov 17, 2025 · Authors: achieve the best ...",
+                "relation": "support",
+                "candidate_id": "C3",
+                "source_id": "S8",
+                "evidence_id": "E2",
+                "confidence": 1.0,
+                "constraint_matches": [
+                  "2020",
+                  "according",
+                  "before",
+                  "finding",
+                  "fish",
+                  "found",
+                  "nemo",
+                  "nonnative"
+                ]
+              },
+              {
+                "fact_id": "F14",
+                "claim": "Exotic pets might seem fascinating and unique, but when released into the wild, they can wreak havoc on local ecosystems.",
+                "relation": "neutral",
+                "candidate_id": "C3",
+                "source_id": "S2",
+                "evidence_id": "E3",
+                "confidence": 0.5,
+                "constraint_matches": [
+                  "invasive",
+                  "pet",
+                  "pets",
+                  "released",
+                  "species"
+                ]
+              },
+              {
+                "fact_id": "F15",
+                "claim": "From pythons to goldfish, these exotic pets turned into invasive species and are now disrupting ecosystems.",
+                "relation": "neutral",
+                "candidate_id": "C3",
+                "source_id": "S1",
+                "evidence_id": "E4",
+                "confidence": 0.5,
+                "constraint_matches": [
+                  "fish",
+                  "invasive",
+                  "pet",
+                  "pets",
+                  "species"
+                ]
+              },
+              {
+                "fact_id": "F16",
+                "claim": "Sep 21, 2021 · The assignment of the task included the fictional character Nemo from the animated film Finding Nemo.",
+                "relation": "neutral",
+                "candidate_id": "C3",
+                "source_id": "S6",
+                "evidence_id": "E5",
+                "confidence": 0.5,
+                "constraint_matches": [
+                  "2020",
+                  "according",
+                  "character",
+                  "finding",
+                  "nemo"
+                ]
+              },
+              {
+                "fact_id": "F17",
+                "claim": "Mar 24, 2026 · the main character of the movie Finding Nemo.",
+                "relation": "neutral",
+                "candidate_id": "C4",
+                "source_id": "S10",
+                "evidence_id": "E1",
+                "confidence": 0.5,
+                "constraint_matches": [
+                  "2020",
+                  "according",
+                  "before",
+                  "character",
+                  "finding",
+                  "fish",
+                  "found",
+                  "main"
+                ]
+              },
+              {
+                "fact_id": "F18",
+                "claim": "Nov 17, 2025 · Authors: achieve the best ...",
+                "relation": "neutral",
+                "candidate_id": "C4",
+                "source_id": "S8",
+                "evidence_id": "E2",
+                "confidence": 0.5,
+                "constraint_matches": [
+                  "2020",
+                  "according",
+                  "before",
+                  "finding",
+                  "fish",
+                  "found",
+                  "nemo",
+                  "nonnative"
+                ]
+              },
+              {
+                "fact_id": "F19",
+                "claim": "Exotic pets might seem fascinating and unique, but when released into the wild, they can wreak havoc on local ecosystems.",
+                "relation": "support",
+                "candidate_id": "C4",
+                "source_id": "S2",
+                "evidence_id": "E3",
+                "confidence": 1.0,
+                "constraint_matches": [
+                  "invasive",
+                  "pet",
+                  "pets",
+                  "released",
+                  "species"
+                ]
+              },
+              {
+                "fact_id": "F20",
+                "claim": "From pythons to goldfish, these exotic pets turned into invasive species and are now disrupting ecosystems.",
+                "relation": "support",
+                "candidate_id": "C4",
+                "source_id": "S1",
+                "evidence_id": "E4",
+                "confidence": 1.0,
+                "constraint_matches": [
+                  "fish",
+                  "invasive",
+                  "pet",
+                  "pets",
+                  "species"
+                ]
+              },
+              {
+                "fact_id": "F21",
+                "claim": "Sep 21, 2021 · The assignment of the task included the fictional character Nemo from the animated film Finding Nemo.",
+                "relation": "neutral",
+                "candidate_id": "C4",
+                "source_id": "S6",
+                "evidence_id": "E5",
+                "confidence": 0.5,
+                "constraint_matches": [
+                  "2020",
+                  "according",
+                  "character",
+                  "finding",
+                  "nemo"
+                ]
+              },
+              {
+                "fact_id": "F22",
+                "claim": "Mar 24, 2026 · the main character of the movie Finding Nemo.",
+                "relation": "neutral",
+                "candidate_id": "C5",
+                "source_id": "S10",
+                "evidence_id": "E1",
+                "confidence": 0.5,
+                "constraint_matches": [
+                  "2020",
+                  "according",
+                  "before",
+                  "character",
+                  "finding",
+                  "fish",
+                  "found",
+                  "main"
+                ]
+              },
+              {
+                "fact_id": "F23",
+                "claim": "Nov 17, 2025 · Authors: achieve the best ...",
+                "relation": "neutral",
+                "candidate_id": "C5",
+                "source_id": "S8",
+                "evidence_id": "E2",
+                "confidence": 0.5,
+                "constraint_matches": [
+                  "2020",
+                  "according",
+                  "before",
+                  "finding",
+                  "fish",
+                  "found",
+                  "nemo",
+                  "nonnative"
+                ]
+              },
+              {
+                "fact_id": "F24",
+                "claim": "Exotic pets might seem fascinating and unique, but when released into the wild, they can wreak havoc on local ecosystems.",
+                "relation": "neutral",
+                "candidate_id": "C5",
+                "source_id": "S2",
+                "evidence_id": "E3",
+                "confidence": 0.5,
+                "constraint_matches": [
+                  "invasive",
+                  "pet",
+                  "pets",
+                  "released",
+                  "species"
+                ]
+              },
+              {
+                "fact_id": "F25",
+                "claim": "From pythons to goldfish, these exotic pets turned into invasive species and are now disrupting ecosystems.",
+                "relation": "support",
+                "candidate_id": "C5",
+                "source_id": "S1",
+                "evidence_id": "E4",
+                "confidence": 1.0,
+                "constraint_matches": [
+                  "fish",
+                  "invasive",
+                  "pet",
+                  "pets",
+                  "species"
+                ]
+              },
+              {
+                "fact_id": "F26",
+                "claim": "Sep 21, 2021 · The assignment of the task included the fictional character Nemo from the animated film Finding Nemo.",
+                "relation": "support",
+                "candidate_id": "C5",
+                "source_id": "S6",
+                "evidence_id": "E5",
+                "confidence": 1.0,
+                "constraint_matches": [
+                  "2020",
+                  "according",
+                  "character",
+                  "finding",
+                  "nemo"
+                ]
+              }
+            ],
+            "agent_packet": {
+              "question": "I’m researching species that became invasive after people who kept them as pets released them. There’s a certain species of fish that was popularized as a pet by being the main character of the movie Finding Nemo. According to the USGS, where was this fish found as a nonnative species, before the year 2020? I need the answer formatted as the five-digit zip codes of the places the species was found, separated by commas if there is more than one place.",
+              "answer_type": "person",
+              "candidates": [
+                {
+                  "candidate_id": "C4",
+                  "answer": "Exotic",
+                  "answer_type": "person",
+                  "support_count": 2,
+                  "refute_count": 0,
+                  "neutral_count": 3,
+                  "confidence": 0.95,
+                  "evidence_ids": [
+                    "E3"
+                  ],
+                  "support_fact_ids": [
+                    "F19",
+                    "F20"
+                  ],
+                  "refute_fact_ids": [],
+                  "risk_flags": []
+                },
+                {
+                  "candidate_id": "C5",
+                  "answer": "From",
+                  "answer_type": "person",
+                  "support_count": 2,
+                  "refute_count": 0,
+                  "neutral_count": 3,
+                  "confidence": 0.95,
+                  "evidence_ids": [
+                    "E4"
+                  ],
+                  "support_fact_ids": [
+                    "F25",
+                    "F26"
+                  ],
+                  "refute_fact_ids": [],
+                  "risk_flags": []
+                },
+                {
+                  "candidate_id": "C1",
+                  "answer": "Mar",
+                  "answer_type": "person",
+                  "support_count": 2,
+                  "refute_count": 0,
+                  "neutral_count": 4,
+                  "confidence": 0.6,
+                  "evidence_ids": [
+                    "E1"
+                  ],
+                  "support_fact_ids": [
+                    "F1",
+                    "F6"
+                  ],
+                  "refute_fact_ids": [],
+                  "risk_flags": [
+                    "short_generic_candidate"
+                  ]
+                }
+              ],
+              "facts": [
+                {
+                  "fact_id": "F19",
+                  "claim": "Exotic pets might seem fascinating and unique, but when released into the wild, they can wreak havoc on local ecosystems.",
+                  "relation": "support",
+                  "candidate_id": "C4",
+                  "source_id": "S2",
+                  "evidence_id": "E3",
+                  "confidence": 1.0,
+                  "constraint_matches": [
+                    "invasive",
+                    "pet",
+                    "pets",
+                    "released",
+                    "species"
+                  ]
+                },
+                {
+                  "fact_id": "F20",
+                  "claim": "From pythons to goldfish, these exotic pets turned into invasive species and are now disrupting ecosystems.",
+                  "relation": "support",
+                  "candidate_id": "C4",
+                  "source_id": "S1",
+                  "evidence_id": "E4",
+                  "confidence": 1.0,
+                  "constraint_matches": [
+                    "fish",
+                    "invasive",
+                    "pet",
+                    "pets",
+                    "species"
+                  ]
+                },
+                {
+                  "fact_id": "F25",
+                  "claim": "From pythons to goldfish, these exotic pets turned into invasive species and are now disrupting ecosystems.",
+                  "relation": "support",
+                  "candidate_id": "C5",
+                  "source_id": "S1",
+                  "evidence_id": "E4",
+                  "confidence": 1.0,
+                  "constraint_matches": [
+                    "fish",
+                    "invasive",
+                    "pet",
+                    "pets",
+                    "species"
+                  ]
+                },
+                {
+                  "fact_id": "F26",
+                  "claim": "Sep 21, 2021 · The assignment of the task included the fictional character Nemo from the animated film Finding Nemo.",
+                  "relation": "support",
+                  "candidate_id": "C5",
+                  "source_id": "S6",
+                  "evidence_id": "E5",
+                  "confidence": 1.0,
+                  "constraint_matches": [
+                    "2020",
+                    "according",
+                    "character",
+                    "finding",
+                    "nemo"
+                  ]
+                },
+                {
+                  "fact_id": "F1",
+                  "claim": "Mar 24, 2026 · the main character of the movie Finding Nemo.",
+                  "relation": "support",
+                  "candidate_id": "C1",
+                  "source_id": "S10",
+                  "evidence_id": "E1",
+                  "confidence": 1.0,
+                  "constraint_matches": [
+                    "2020",
+                    "according",
+                    "before",
+                    "character",
+                    "finding",
+                    "fish",
+                    "found",
+                    "main"
+                  ]
+                },
+                {
+                  "fact_id": "F6",
+                  "claim": "Feb 1, 2021 · EMA was lead author on ~54% of all USGS ...",
+                  "relation": "support",
+                  "candidate_id": "C1",
+                  "source_id": "S12",
+                  "evidence_id": "E6",
+                  "confidence": 0.955,
+                  "constraint_matches": [
+                    "2020",
+                    "usgs"
+                  ]
+                }
+              ],
+              "missing_info": [],
+              "risk_flags": [
+                "short_generic_candidate"
+              ]
+            },
+            "tool_usage": [
+              {
+                "ok": true,
+                "tool_name": "search",
+                "output_text": "{'results': [{'title': '8 Exotic Pets That Became an Invasive Species - Treehugger', 'url': 'https://www.treehugger.com/exotic-pets-released-into-wild-invasive-species-4869094', 'content': 'From pythons to goldfish, these exotic pets turned into invasive species and are now disrupting ecosystems.', 'raw_content': 'From pythons to goldfish, these exotic pets turned into invasive species and are now disrupting ecosystems.', 'rerank_score': 20.95}, {'title': 'Never Release Pets Into the Wild: 10 Exotic Pets That Are Now Invasive ...', 'url': 'https://www.backyardgardenlover.com/exotic-pets-that-irresponsibly-became-invasive-species/', 'content': 'Exotic pets might seem fascinating and unique, but when released into the wild, they can wreak havoc on local ecosystems. These pets, either intentionally or accidentally introduced, have often become invasive species, displacing native plants and animals, causing environmental problems, and even disrupting human livelihoods. Here are 10 species that highlight how this issue has unfolded ...', 'raw_content': 'Exotic pets might seem fascinating and unique, but when released into the wild, they can wreak havoc on local ecosystems. These pets, either intentionally or accidentally introduced, have often become invasive species, displacing native plants and animals, causing environmental problems, and even disrupting human livelihoods. Here are 10 species that highlight how this issue has unfolded ...', 'rerank_score': 15.85}, {'title': 'OpenResearcher/web-bench · Datasets at Hugging Face', 'url': 'https://huggingface.co/datasets/OpenResearcher/web-bench/viewer/default/gaia_text', 'content': \"I'm researching species that became invasive after people who kept them as pets released them. There's a certain species of fish that was popularized as a ...\", 'raw_content': \"I'm researching species that became invasive after people who kept them as pets released them. There's a certain species of fish that was popularized as a ...\", 'rerank_score': 15.3}, {'title': 'My Notes on Open Deep Researcher - Shekhar Gulati', 'url': 'https://shekhargulati.com/2025/02/05/my-notes-on-open-deep-researcher/', 'content': 'Feb 5, 2025 · According to the USGS, where was this fish found as a nonnative species, before the year 2020? I need the answer formatted as the five-digit ...', 'raw_content': 'Feb 5, 2025 · According to the USGS, where was this fish found as a nonnative species, before the year 2020? I need the answer formatted as the five-digit ...', 'rerank_score': 2.2}, {'title': 'Flushing Nemo? Pet fish pose ocean threat - NBC News', 'url': 'https://www.nbcnews.com/news/all/flushing-nemo-pet-fish-pose-ocean-threat-flna1b7928078', 'content': 'Jan 10, 2013 · Exotic and colorful aquarium fish, such as those made famous by the Disney film \"Finding Nemo,\" are escaping to the open ocean in real life and ...Missing: I\\' m researching character', 'raw_content': 'Jan 10, 2013 · Exotic and colorful aquarium fish, such as those made famous by the Disney film \"Finding Nemo,\" are escaping to the open ocean in real life and ...Missing: I\\' m researching character', 'rerank_score': 1.2}], 'backend': 'searxng', 'answer': None, 'notices': []}",
+                "raw_result": {
+                  "results": [
+                    {
+                      "title": "8 Exotic Pets That Became an Invasive Species - Treehugger",
+                      "url": "https://www.treehugger.com/exotic-pets-released-into-wild-invasive-species-4869094",
+                      "content": "From pythons to goldfish, these exotic pets turned into invasive species and are now disrupting ecosystems.",
+                      "raw_content": "From pythons to goldfish, these exotic pets turned into invasive species and are now disrupting ecosystems.",
+                      "rerank_score": 20.95
+                    },
+                    {
+                      "title": "Never Release Pets Into the Wild: 10 Exotic Pets That Are Now Invasive ...",
+                      "url": "https://www.backyardgardenlover.com/exotic-pets-that-irresponsibly-became-invasive-species/",
+                      "content": "Exotic pets might seem fascinating and unique, but when released into the wild, they can wreak havoc on local ecosystems. These pets, either intentionally or accidentally introduced, have often become invasive species, displacing native plants and animals, causing environmental problems, and even disrupting human livelihoods. Here are 10 species that highlight how this issue has unfolded ...",
+                      "raw_content": "Exotic pets might seem fascinating and unique, but when released into the wild, they can wreak havoc on local ecosystems. These pets, either intentionally or accidentally introduced, have often become invasive species, displacing native plants and animals, causing environmental problems, and even disrupting human livelihoods. Here are 10 species that highlight how this issue has unfolded ...",
+                      "rerank_score": 15.85
+                    },
+                    {
+                      "title": "OpenResearcher/web-bench · Datasets at Hugging Face",
+                      "url": "https://huggingface.co/datasets/OpenResearcher/web-bench/viewer/default/gaia_text",
+                      "content": "I'm researching species that became invasive after people who kept them as pets released them. There's a certain species of fish that was popularized as a ...",
+                      "raw_content": "I'm researching species that became invasive after people who kept them as pets released them. There's a certain species of fish that was popularized as a ...",
+                      "rerank_score": 15.3
+                    },
+                    {
+                      "title": "My Notes on Open Deep Researcher - Shekhar Gulati",
+                      "url": "https://shekhargulati.com/2025/02/05/my-notes-on-open-deep-researcher/",
+                      "content": "Feb 5, 2025 · According to the USGS, where was this fish found as a nonnative species, before the year 2020? I need the answer formatted as the five-digit ...",
+                      "raw_content": "Feb 5, 2025 · According to the USGS, where was this fish found as a nonnative species, before the year 2020? I need the answer formatted as the five-digit ...",
+                      "rerank_score": 2.2
+                    },
+                    {
+                      "title": "Flushing Nemo? Pet fish pose ocean threat - NBC News",
+                      "url": "https://www.nbcnews.com/news/all/flushing-nemo-pet-fish-pose-ocean-threat-flna1b7928078",
+                      "content": "Jan 10, 2013 · Exotic and colorful aquarium fish, such as those made famous by the Disney film \"Finding Nemo,\" are escaping to the open ocean in real life and ...Missing: I' m researching character",
+                      "raw_content": "Jan 10, 2013 · Exotic and colorful aquarium fish, such as those made famous by the Disney film \"Finding Nemo,\" are escaping to the open ocean in real life and ...Missing: I' m researching character",
+                      "rerank_score": 1.2
+                    }
+                  ],
+                  "backend": "searxng",
+                  "answer": null,
+                  "notices": []
+                },
+                "error": null
+              },
+              {
+                "ok": true,
+                "tool_name": "search",
+                "output_text": "{'results': [{'title': \"[PDF] secondary school students' ability to work with the tasks designed for\", 'url': 'https://files.eric.ed.gov/fulltext/EJ1315436.pdf', 'content': 'Sep 21, 2021 · The assignment of the task included the fictional character Nemo from the animated film Finding Nemo. According to Havlíčková (2020), the ...', 'raw_content': 'Sep 21, 2021 · The assignment of the task included the fictional character Nemo from the animated film Finding Nemo. According to Havlíčková (2020), the ...', 'rerank_score': 8.3}, {'title': 'Datasets at Hugging Face', 'url': 'https://huggingface.co/datasets/Intelligent-Internet/GAIA-Subset-Benchmark', 'content': '... Finding Nemo. According to the USGS, where was this fish found as a nonnative species, before the year 2020? ... author who had prior publications among ...', 'raw_content': '... Finding Nemo. According to the USGS, where was this fish found as a nonnative species, before the year 2020? ... author who had prior publications among ...', 'rerank_score': 8.2}, {'title': 'Training Multi-Agent Systems with M-GRPO - arXiv', 'url': 'https://arxiv.org/html/2511.13288v1', 'content': 'Nov 17, 2025 · Authors: achieve the best ... Finding Nemo. According to the USGS, where was this fish found as a nonnative species, before the year 2020?', 'raw_content': 'Nov 17, 2025 · Authors: achieve the best ... Finding Nemo. According to the USGS, where was this fish found as a nonnative species, before the year 2020?', 'rerank_score': 8.15}, {'title': 'WebVoyager/data/GAIA_web.jsonl at main - GitHub', 'url': 'https://github.com/MinorJerry/WebVoyager/blob/main/data/GAIA_web.jsonl', 'content': '... character of the movie Finding Nemo. According to the USGS, where was this fish found as a nonnative species, before the year 2020? I need the answer ...', 'raw_content': '... character of the movie Finding Nemo. According to the USGS, where was this fish found as a nonnative species, before the year 2020? I need the answer ...', 'rerank_score': 6.9}, {'title': '[PDF] Process Evaluation for Agentic Systems - ACL Anthology', 'url': 'https://aclanthology.org/2026.findings-eacl.140.pdf', 'content': 'Mar 24, 2026 · the main character of the movie Finding Nemo. According to the USGS, where was this fish found as a nonnative species, before the year 2020?', 'raw_content': 'Mar 24, 2026 · the main character of the movie Finding Nemo. According to the USGS, where was this fish found as a nonnative species, before the year 2020?', 'rerank_score': 6.85}], 'backend': 'searxng', 'answer': None, 'notices': []}",
+                "raw_result": {
+                  "results": [
+                    {
+                      "title": "[PDF] secondary school students' ability to work with the tasks designed for",
+                      "url": "https://files.eric.ed.gov/fulltext/EJ1315436.pdf",
+                      "content": "Sep 21, 2021 · The assignment of the task included the fictional character Nemo from the animated film Finding Nemo. According to Havlíčková (2020), the ...",
+                      "raw_content": "Sep 21, 2021 · The assignment of the task included the fictional character Nemo from the animated film Finding Nemo. According to Havlíčková (2020), the ...",
+                      "rerank_score": 8.3
+                    },
+                    {
+                      "title": "Datasets at Hugging Face",
+                      "url": "https://huggingface.co/datasets/Intelligent-Internet/GAIA-Subset-Benchmark",
+                      "content": "... Finding Nemo. According to the USGS, where was this fish found as a nonnative species, before the year 2020? ... author who had prior publications among ...",
+                      "raw_content": "... Finding Nemo. According to the USGS, where was this fish found as a nonnative species, before the year 2020? ... author who had prior publications among ...",
+                      "rerank_score": 8.2
+                    },
+                    {
+                      "title": "Training Multi-Agent Systems with M-GRPO - arXiv",
+                      "url": "https://arxiv.org/html/2511.13288v1",
+                      "content": "Nov 17, 2025 · Authors: achieve the best ... Finding Nemo. According to the USGS, where was this fish found as a nonnative species, before the year 2020?",
+                      "raw_content": "Nov 17, 2025 · Authors: achieve the best ... Finding Nemo. According to the USGS, where was this fish found as a nonnative species, before the year 2020?",
+                      "rerank_score": 8.15
+                    },
+                    {
+                      "title": "WebVoyager/data/GAIA_web.jsonl at main - GitHub",
+                      "url": "https://github.com/MinorJerry/WebVoyager/blob/main/data/GAIA_web.jsonl",
+                      "content": "... character of the movie Finding Nemo. According to the USGS, where was this fish found as a nonnative species, before the year 2020? I need the answer ...",
+                      "raw_content": "... character of the movie Finding Nemo. According to the USGS, where was this fish found as a nonnative species, before the year 2020? I need the answer ...",
+                      "rerank_score": 6.9
+                    },
+                    {
+                      "title": "[PDF] Process Evaluation for Agentic Systems - ACL Anthology",
+                      "url": "https://aclanthology.org/2026.findings-eacl.140.pdf",
+                      "content": "Mar 24, 2026 · the main character of the movie Finding Nemo. According to the USGS, where was this fish found as a nonnative species, before the year 2020?",
+                      "raw_content": "Mar 24, 2026 · the main character of the movie Finding Nemo. According to the USGS, where was this fish found as a nonnative species, before the year 2020?",
+                      "rerank_score": 6.85
+                    }
+                  ],
+                  "backend": "searxng",
+                  "answer": null,
+                  "notices": []
+                },
+                "error": null
+              },
+              {
+                "ok": true,
+                "tool_name": "search",
+                "output_text": "{'results': [{'title': 'ScienceBase Updates - Summer 2020 | U.S. Geological Survey - USGS.gov', 'url': 'https://www.usgs.gov/sciencebase-instructions-and-documentation/sciencebase-updates-summer-2020', 'content': 'The USGS Science Data Management (SDM) Branch is working to ensure that these connections are documented and available to users of our USGS data. Related ...', 'raw_content': 'The USGS Science Data Management (SDM) Branch is working to ensure that these connections are documented and available to users of our USGS data. Related ...', 'rerank_score': 11.1}, {'title': '[PDF] U.S. Geological Survey (USGS) Transition Briefing Document for the ...', 'url': 'https://www.governmentattic.org/39docs/USGStransBriefBiden_2020.pdf', 'content': 'Feb 1, 2021 · EMA was lead author on ~54% of all USGS ... The 2020 enacted budget is $1.27 billion. USGS 2020 Enacted - 2021 Congressional Marks.', 'raw_content': 'Feb 1, 2021 · EMA was lead author on ~54% of all USGS ... The 2020 enacted budget is $1.27 billion. USGS 2020 Enacted - 2021 Congressional Marks.', 'rerank_score': 9.6}, {'title': 'How should I cite a USGS website or publication? | U.S. Geological Survey', 'url': 'https://www.usgs.gov/faqs/how-should-i-cite-a-usgs-website-or-publication', 'content': 'Jun 5, 2024 · The author of a USGS website is almost always \"US Geological Survey.\" Also acceptable: \"United States Geological Survey\" or \"USGS.\"', 'raw_content': 'Jun 5, 2024 · The author of a USGS website is almost always \"US Geological Survey.\" Also acceptable: \"United States Geological Survey\" or \"USGS.\"', 'rerank_score': 6.4}, {'title': '[PDF] History of U.S. Geological Survey Scientific Peer Review and ...', 'url': 'https://pubs.usgs.gov/fs/2020/3050/fs20203050.pdf', 'content': 'USGS prepared a series of manuals designed to aid USGS authors in the preparation of manuscript reports, collectively referred to as “Suggestions to Authors ...', 'raw_content': 'USGS prepared a series of manuals designed to aid USGS authors in the preparation of manuscript reports, collectively referred to as “Suggestions to Authors ...', 'rerank_score': 3.85}, {'title': \"The US Geological Survey's Updated Scientific Integrity Policy Strives to ...\", 'url': 'https://blog.ucs.org/genna-reed/the-us-geological-surveys-updated-scientific-integrity-policy-strives-to-combat-harassment-and-promote-equity/', 'content': \"Aug 10, 2022 · The US Geological Survey's Updated Scientific Integrity Policy Strives to Combat Harassment and Promote Equity. August 10, 2022 | 9:34 am. usgs ...\", 'raw_content': \"Aug 10, 2022 · The US Geological Survey's Updated Scientific Integrity Policy Strives to Combat Harassment and Promote Equity. August 10, 2022 | 9:34 am. usgs ...\", 'rerank_score': 1.1}], 'backend': 'searxng', 'answer': None, 'notices': []}",
+                "raw_result": {
+                  "results": [
+                    {
+                      "title": "ScienceBase Updates - Summer 2020 | U.S. Geological Survey - USGS.gov",
+                      "url": "https://www.usgs.gov/sciencebase-instructions-and-documentation/sciencebase-updates-summer-2020",
+                      "content": "The USGS Science Data Management (SDM) Branch is working to ensure that these connections are documented and available to users of our USGS data. Related ...",
+                      "raw_content": "The USGS Science Data Management (SDM) Branch is working to ensure that these connections are documented and available to users of our USGS data. Related ...",
+                      "rerank_score": 11.1
+                    },
+                    {
+                      "title": "[PDF] U.S. Geological Survey (USGS) Transition Briefing Document for the ...",
+                      "url": "https://www.governmentattic.org/39docs/USGStransBriefBiden_2020.pdf",
+                      "content": "Feb 1, 2021 · EMA was lead author on ~54% of all USGS ... The 2020 enacted budget is $1.27 billion. USGS 2020 Enacted - 2021 Congressional Marks.",
+                      "raw_content": "Feb 1, 2021 · EMA was lead author on ~54% of all USGS ... The 2020 enacted budget is $1.27 billion. USGS 2020 Enacted - 2021 Congressional Marks.",
+                      "rerank_score": 9.6
+                    },
+                    {
+                      "title": "How should I cite a USGS website or publication? | U.S. Geological Survey",
+                      "url": "https://www.usgs.gov/faqs/how-should-i-cite-a-usgs-website-or-publication",
+                      "content": "Jun 5, 2024 · The author of a USGS website is almost always \"US Geological Survey.\" Also acceptable: \"United States Geological Survey\" or \"USGS.\"",
+                      "raw_content": "Jun 5, 2024 · The author of a USGS website is almost always \"US Geological Survey.\" Also acceptable: \"United States Geological Survey\" or \"USGS.\"",
+                      "rerank_score": 6.4
+                    },
+                    {
+                      "title": "[PDF] History of U.S. Geological Survey Scientific Peer Review and ...",
+                      "url": "https://pubs.usgs.gov/fs/2020/3050/fs20203050.pdf",
+                      "content": "USGS prepared a series of manuals designed to aid USGS authors in the preparation of manuscript reports, collectively referred to as “Suggestions to Authors ...",
+                      "raw_content": "USGS prepared a series of manuals designed to aid USGS authors in the preparation of manuscript reports, collectively referred to as “Suggestions to Authors ...",
+                      "rerank_score": 3.85
+                    },
+                    {
+                      "title": "The US Geological Survey's Updated Scientific Integrity Policy Strives to ...",
+                      "url": "https://blog.ucs.org/genna-reed/the-us-geological-surveys-updated-scientific-integrity-policy-strives-to-combat-harassment-and-promote-equity/",
+                      "content": "Aug 10, 2022 · The US Geological Survey's Updated Scientific Integrity Policy Strives to Combat Harassment and Promote Equity. August 10, 2022 | 9:34 am. usgs ...",
+                      "raw_content": "Aug 10, 2022 · The US Geological Survey's Updated Scientific Integrity Policy Strives to Combat Harassment and Promote Equity. August 10, 2022 | 9:34 am. usgs ...",
+                      "rerank_score": 1.1
+                    }
+                  ],
+                  "backend": "searxng",
+                  "answer": null,
+                  "notices": []
+                },
+                "error": null
+              }
+            ],
+            "blocked_sources": [
+              {
+                "source_id": "S3",
+                "query_id": "Q1",
+                "title": "OpenResearcher/web-bench · Datasets at Hugging Face",
+                "url": "https://huggingface.co/datasets/OpenResearcher/web-bench/viewer/default/gaia_text",
+                "domain": "huggingface.co",
+                "snippet": "I'm researching species that became invasive after people who kept them as pets released them. There's a certain species of fish that was popularized as a ...",
+                "raw_content": "I'm researching species that became invasive after people who kept them as pets released them. There's a certain species of fish that was popularized as a ...",
+                "rank": 3,
+                "rerank_score": 15.3,
+                "fetched": true,
+                "blocked": true,
+                "block_reason": "benchmark_or_dataset_source"
+              },
+              {
+                "source_id": "S4",
+                "query_id": "Q1",
+                "title": "My Notes on Open Deep Researcher - Shekhar Gulati",
+                "url": "https://shekhargulati.com/2025/02/05/my-notes-on-open-deep-researcher/",
+                "domain": "shekhargulati.com",
+                "snippet": "Feb 5, 2025 · According to the USGS, where was this fish found as a nonnative species, before the year 2020? I need the answer formatted as the five-digit ...",
+                "raw_content": "Feb 5, 2025 · According to the USGS, where was this fish found as a nonnative species, before the year 2020? I need the answer formatted as the five-digit ...",
+                "rank": 4,
+                "rerank_score": 2.2,
+                "fetched": true,
+                "blocked": true,
+                "block_reason": "benchmark_or_dataset_source"
+              },
+              {
+                "source_id": "S5",
+                "query_id": "Q1",
+                "title": "Flushing Nemo? Pet fish pose ocean threat - NBC News",
+                "url": "https://www.nbcnews.com/news/all/flushing-nemo-pet-fish-pose-ocean-threat-flna1b7928078",
+                "domain": "www.nbcnews.com",
+                "snippet": "Jan 10, 2013 · Exotic and colorful aquarium fish, such as those made famous by the Disney film \"Finding Nemo,\" are escaping to the open ocean in real life and ...Missing: I' m researching character",
+                "raw_content": "Jan 10, 2013 · Exotic and colorful aquarium fish, such as those made famous by the Disney film \"Finding Nemo,\" are escaping to the open ocean in real life and ...Missing: I' m researching character",
+                "rank": 5,
+                "rerank_score": 1.2,
+                "fetched": true,
+                "blocked": true,
+                "block_reason": "no_result_or_login_page"
+              },
+              {
+                "source_id": "S7",
+                "query_id": "Q2",
+                "title": "Datasets at Hugging Face",
+                "url": "https://huggingface.co/datasets/Intelligent-Internet/GAIA-Subset-Benchmark",
+                "domain": "huggingface.co",
+                "snippet": "... Finding Nemo. According to the USGS, where was this fish found as a nonnative species, before the year 2020? ... author who had prior publications among ...",
+                "raw_content": "... Finding Nemo. According to the USGS, where was this fish found as a nonnative species, before the year 2020? ... author who had prior publications among ...",
+                "rank": 2,
+                "rerank_score": 8.2,
+                "fetched": true,
+                "blocked": true,
+                "block_reason": "benchmark_or_dataset_source"
+              },
+              {
+                "source_id": "S9",
+                "query_id": "Q2",
+                "title": "WebVoyager/data/GAIA_web.jsonl at main - GitHub",
+                "url": "https://github.com/MinorJerry/WebVoyager/blob/main/data/GAIA_web.jsonl",
+                "domain": "github.com",
+                "snippet": "... character of the movie Finding Nemo. According to the USGS, where was this fish found as a nonnative species, before the year 2020? I need the answer ...",
+                "raw_content": "... character of the movie Finding Nemo. According to the USGS, where was this fish found as a nonnative species, before the year 2020? I need the answer ...",
+                "rank": 4,
+                "rerank_score": 6.9,
+                "fetched": true,
+                "blocked": true,
+                "block_reason": "benchmark_or_dataset_source"
+              }
+            ]
+          },
+          "error": null
+        }
+      ],
+      "penalty_results": [
+        {
+          "agent_id": "nemotron",
+          "penalty": -1.0,
+          "reasons": [
+            "inactive_or_no_answer"
+          ]
+        },
+        {
+          "agent_id": "minicpm",
+          "penalty": -1.0,
+          "reasons": [
+            "inactive_or_no_answer"
+          ]
+        },
+        {
+          "agent_id": "qwen",
+          "penalty": -1.0,
+          "reasons": [
+            "inactive_or_no_answer"
+          ]
+        },
+        {
+          "agent_id": "gemma",
+          "penalty": -1.0,
+          "reasons": [
+            "inactive_or_no_answer"
+          ]
+        }
+      ]
+    }
+  }
+}

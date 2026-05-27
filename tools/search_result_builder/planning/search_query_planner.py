@@ -67,6 +67,8 @@ class SearchQueryPlanner:
         "would",
         "you",
         "your",
+        "according",
+        "there",
     }
 
     SOURCE_MARKERS = {
@@ -94,7 +96,10 @@ class SearchQueryPlanner:
         "An",
         "How",
         "If",
+        "In",
         "Please",
+        "According",
+        "There",
         "The",
         "What",
         "When",

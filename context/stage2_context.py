@@ -41,7 +41,14 @@ Scoring Rules:
 - Invents Evidence.
 - Misuses tool results.
 - Supports a wrong or malformed final answer.
-- Evidence says A, but reasoning/final answer says B."""
+- Evidence says A, but reasoning/final answer says B.
+
+Compact Evidence Rules:
+- If Verified Candidate Answer is present, judge whether the reasoning selects the best supported candidate.
+- If a Fact supports a candidate, reward reasoning that uses that candidate correctly.
+- If a Fact refutes a candidate, score steps supporting that candidate -1.0.
+- If reasoning invents an answer outside verified candidates, score at most -0.5 unless evidence clearly requires it.
+- If all candidates are marked weak or missing, do not reward unsupported guessing."""
 
 
 STAGE2_USER_PROMPT = """Question:

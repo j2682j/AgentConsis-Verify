@@ -11,6 +11,9 @@ Use Evidence only when it directly supports the answer.
 If Evidence is insufficient, request another search query.
 Do not answer from general knowledge when the task asks for a specific external fact.
 Final answer must be supported by at least one Evidence item.
+When Verified Candidate Answer is present, prefer the best supported candidate.
+Do not invent an answer outside verified candidates unless all candidates are weak or conflicting.
+If all candidates are weak, output NEED_MORE_EVIDENCE instead of guessing.
 """
 
 

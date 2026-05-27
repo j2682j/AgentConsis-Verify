@@ -1,0 +1,1528 @@
+{
+  "task_id": "87c610df-bef7-4932-b950-1d83ef4e282b",
+  "level": "2",
+  "question": "In April of 1977, who was the Prime Minister of the first place mentioned by name in the Book of Esther (in the New International Version)?",
+  "attachment": {},
+  "predicted": "House",
+  "expected": "Morarji Desai",
+  "exact_match": false,
+  "partial_match": false,
+  "score": 0.0,
+  "winner_agent_id": "qwen",
+  "response_time_seconds": 259.9077651000116,
+  "total_tokens": 30460,
+  "token_usage": {
+    "stage1": {
+      "prompt_tokens": 7695,
+      "completion_tokens": 19474,
+      "total_tokens": 27169
+    },
+    "stage2": {
+      "prompt_tokens": 2267,
+      "completion_tokens": 1024,
+      "total_tokens": 3291
+    },
+    "total": {
+      "prompt_tokens": 9962,
+      "completion_tokens": 20498,
+      "total_tokens": 30460
+    }
+  },
+  "search_summary": {
+    "candidate_count": 3,
+    "fact_count": 4,
+    "top_candidate": "House",
+    "top_candidate_confidence": 0.95,
+    "top_candidate_support": 2,
+    "top_candidate_refute": 0,
+    "missing_info": [],
+    "risk_flags": []
+  },
+  "execution_time": 259.9223756790161,
+  "error": "",
+  "network_summary": {
+    "question": "In April of 1977, who was the Prime Minister of the first place mentioned by name in the Book of Esther (in the New International Version)?",
+    "final_answer": "House",
+    "winner_agent_id": "qwen",
+    "stage1_results": [
+      {
+        "agent_id": "nemotron",
+        "model_name": "nemotron-mini:4b",
+        "runs": [
+          {
+            "agent_id": "nemotron",
+            "model_name": "nemotron-mini:4b",
+            "run_index": 1,
+            "raw_reply": "REASONING =\nstep 1. The Book of Esther (NIV) first mentions the name “Xerxes” as the king of the land.  \nstep 2. No evidence links Xerxes to a Prime Minister in 1977; the only 1977 Prime Minister referenced in the facts is Malcolm Fraser (Australia), which is unrelated to Xerxes.  \nstep 3. The candidate answers (House, Answers, Esther NIB) are either nonsensical or lack supporting evidence for the question.  \nFINAL_ANSWER = NEED_MORE_EVIDENCE",
+            "reasoning": "",
+            "final_answer": "",
+            "parse_completed": false,
+            "tool_context": "Search_Result:\nOriginal Question:\nIn April of 1977, who was the Prime Minister of the first place mentioned by name in the Book of Esther (in the New International Version)?\n\nAnswer Type: person\n\nVerified Candidate Answer:\n[C1] answer=House; type=person; support=2; refute=0; neutral=2; confidence=0.95; risk=-\n[C2] answer=Answers; type=person; support=1; refute=0; neutral=2; confidence=0.45; risk=-\n[C3] answer=Esther NIB; type=person; support=1; refute=0; neutral=2; confidence=0.45; risk=-\n\nFact:\n[F3] supports C1; confidence=1.0\nClaim: 1977 · As the Prime Minister of Canada and an elected Member of the House of Commons of Canada, the Right Honourable Pierre Trudeau would be awarded the medal as ...\nConstraint Match: 1977, minister, prime\n[F4] supports C1; confidence=0.935\nClaim: Malcolm Fraser was the Prime Minister of Australia from 1975 to 1983.\nConstraint Match: minister, prime\n[F5] supports C2; confidence=1.0\nClaim: Answers for prime minister of first named location in Esther NIB in 1977 crossword clue, 7 letters.\nConstraint Match: 1977, esther, first, minister, name, prime\n[F8] supports C3; confidence=1.0\nClaim: Answers for prime minister of first named location in Esther NIB in 1977 crossword clue, 7 letters.\nConstraint Match: 1977, esther, first, minister, name, prime\n\nMissing Info:\nNone\n\nRisk Flags:\nNone",
+            "prompt_tokens": 630,
+            "completion_tokens": 1244,
+            "total_tokens": 1874,
+            "tool_calls": [],
+            "tool_results": [],
+            "trajectory": []
+          },
+          {
+            "agent_id": "nemotron",
+            "model_name": "nemotron-mini:4b",
+            "run_index": 2,
+            "raw_reply": "REASONING =\nstep 1. The first person named in the Book of Esther (NIV) is King Xerxes.  \nstep 2. Xerxes is a historical figure; there is no modern Prime Minister of Xerxes in 1977.  \nstep 3. The candidate answers C1, C2, and C3 are either nonsensical (C1: “House”) or vague (C2, C3) and do not correctly identify a 1977 Prime Minister.  \nstep 4. The provided Evidence (C1 supported by Fact F3) refers to Pierre Trudeau, not “House,” and C2/C3 lack specificity.  \nFINAL_ANSWER = NEED_MORE_EVIDENCE",
+            "reasoning": "",
+            "final_answer": "",
+            "parse_completed": false,
+            "tool_context": "Search_Result:\nOriginal Question:\nIn April of 1977, who was the Prime Minister of the first place mentioned by name in the Book of Esther (in the New International Version)?\n\nAnswer Type: person\n\nVerified Candidate Answer:\n[C1] answer=House; type=person; support=2; refute=0; neutral=2; confidence=0.95; risk=-\n[C2] answer=Answers; type=person; support=1; refute=0; neutral=2; confidence=0.45; risk=-\n[C3] answer=Esther NIB; type=person; support=1; refute=0; neutral=2; confidence=0.45; risk=-\n\nFact:\n[F3] supports C1; confidence=1.0\nClaim: 1977 · As the Prime Minister of Canada and an elected Member of the House of Commons of Canada, the Right Honourable Pierre Trudeau would be awarded the medal as ...\nConstraint Match: 1977, minister, prime\n[F4] supports C1; confidence=0.935\nClaim: Malcolm Fraser was the Prime Minister of Australia from 1975 to 1983.\nConstraint Match: minister, prime\n[F5] supports C2; confidence=1.0\nClaim: Answers for prime minister of first named location in Esther NIB in 1977 crossword clue, 7 letters.\nConstraint Match: 1977, esther, first, minister, name, prime\n[F8] supports C3; confidence=1.0\nClaim: Answers for prime minister of first named location in Esther NIB in 1977 crossword clue, 7 letters.\nConstraint Match: 1977, esther, first, minister, name, prime\n\nMissing Info:\nNone\n\nRisk Flags:\nNone",
+            "prompt_tokens": 630,
+            "completion_tokens": 1532,
+            "total_tokens": 2162,
+            "tool_calls": [],
+            "tool_results": [],
+            "trajectory": []
+          },
+          {
+            "agent_id": "nemotron",
+            "model_name": "nemotron-mini:4b",
+            "run_index": 3,
+            "raw_reply": "REASONING =\nstep 1. The first place mentioned by name in the Book of Esther (NIV) is “Esther”.\nstep 2. In April 1977 the Prime Minister of Canada was Pierre Trudeau and the Prime Minister of Australia was Malcolm Fraser, but neither is linked to the name “Esther”.\nstep 3. The candidate answers (House, Answers, Esther NIB) are not supported by any evidence that connects a person to being the Prime Minister of “Esther” in 1977.\nFINAL_ANSWER = NEED_MORE_EVIDENCE",
+            "reasoning": "",
+            "final_answer": "",
+            "parse_completed": false,
+            "tool_context": "Search_Result:\nOriginal Question:\nIn April of 1977, who was the Prime Minister of the first place mentioned by name in the Book of Esther (in the New International Version)?\n\nAnswer Type: person\n\nVerified Candidate Answer:\n[C1] answer=House; type=person; support=2; refute=0; neutral=2; confidence=0.95; risk=-\n[C2] answer=Answers; type=person; support=1; refute=0; neutral=2; confidence=0.45; risk=-\n[C3] answer=Esther NIB; type=person; support=1; refute=0; neutral=2; confidence=0.45; risk=-\n\nFact:\n[F3] supports C1; confidence=1.0\nClaim: 1977 · As the Prime Minister of Canada and an elected Member of the House of Commons of Canada, the Right Honourable Pierre Trudeau would be awarded the medal as ...\nConstraint Match: 1977, minister, prime\n[F4] supports C1; confidence=0.935\nClaim: Malcolm Fraser was the Prime Minister of Australia from 1975 to 1983.\nConstraint Match: minister, prime\n[F5] supports C2; confidence=1.0\nClaim: Answers for prime minister of first named location in Esther NIB in 1977 crossword clue, 7 letters.\nConstraint Match: 1977, esther, first, minister, name, prime\n[F8] supports C3; confidence=1.0\nClaim: Answers for prime minister of first named location in Esther NIB in 1977 crossword clue, 7 letters.\nConstraint Match: 1977, esther, first, minister, name, prime\n\nMissing Info:\nNone\n\nRisk Flags:\nNone",
+            "prompt_tokens": 630,
+            "completion_tokens": 1469,
+            "total_tokens": 2099,
+            "tool_calls": [],
+            "tool_results": [],
+            "trajectory": []
+          }
+        ],
+        "compressed_answer": "",
+        "compressed_reasoning": "",
+        "confidence_score": 0.0,
+        "active": false
+      },
+      {
+        "agent_id": "minicpm",
+        "model_name": "minicpm3:4b",
+        "runs": [
+          {
+            "agent_id": "minicpm",
+            "model_name": "minicpm3:4b",
+            "run_index": 1,
+            "raw_reply": "REASONING =\nThere is no direct mention of the Prime Minister of the first place mentioned by name in the Book of Esther (in the New International Version) in April of 1977. The search results do not provide a clear answer. However, based on the constraints and claims provided, it seems that the answer might be related to Pierre Trudeau or Malcolm Fraser, but there is no direct evidence to support this claim.\n\nFIINAL_ANSWE",
+            "reasoning": "",
+            "final_answer": "",
+            "parse_completed": false,
+            "tool_context": "Search_Result:\nOriginal Question:\nIn April of 1977, who was the Prime Minister of the first place mentioned by name in the Book of Esther (in the New International Version)?\n\nAnswer Type: person\n\nVerified Candidate Answer:\n[C1] answer=House; type=person; support=2; refute=0; neutral=2; confidence=0.95; risk=-\n[C2] answer=Answers; type=person; support=1; refute=0; neutral=2; confidence=0.45; risk=-\n[C3] answer=Esther NIB; type=person; support=1; refute=0; neutral=2; confidence=0.45; risk=-\n\nFact:\n[F3] supports C1; confidence=1.0\nClaim: 1977 · As the Prime Minister of Canada and an elected Member of the House of Commons of Canada, the Right Honourable Pierre Trudeau would be awarded the medal as ...\nConstraint Match: 1977, minister, prime\n[F4] supports C1; confidence=0.935\nClaim: Malcolm Fraser was the Prime Minister of Australia from 1975 to 1983.\nConstraint Match: minister, prime\n[F5] supports C2; confidence=1.0\nClaim: Answers for prime minister of first named location in Esther NIB in 1977 crossword clue, 7 letters.\nConstraint Match: 1977, esther, first, minister, name, prime\n[F8] supports C3; confidence=1.0\nClaim: Answers for prime minister of first named location in Esther NIB in 1977 crossword clue, 7 letters.\nConstraint Match: 1977, esther, first, minister, name, prime\n\nMissing Info:\nNone\n\nRisk Flags:\nNone",
+            "prompt_tokens": 693,
+            "completion_tokens": 102,
+            "total_tokens": 795,
+            "tool_calls": [],
+            "tool_results": [],
+            "trajectory": []
+          },
+          {
+            "agent_id": "minicpm",
+            "model_name": "minicpm3:4b",
+            "run_index": 2,
+            "raw_reply": "REASONING =\nThere is no direct mention of the Prime Minister of the first place mentioned by name in the Book of Esther (in the New International Version) in April of 1977. The search results do not provide any relevant information about the Prime Minister of the first place mentioned by name in the Book of Esther (in the New International Version) in April of 1977.\n\nStep 1: Analyze the search results to identify any relevant information about the Prime Minister of the first place mentioned by name in the Book of Esther (in the New International Version) in April of 1977.\nStep 2: Since there is no direct mention of the Prime Minister of the first place mentioned by name in the Book of Esther (in the New International Version) in April of 1977, we cannot determine the answer to this question based on the provided information.\nStep 3: The search results do not provide any relevant information about the Prime Minister of the first place mentioned by name in the Book of Esther (in the New International Version) in April of 1977.\n\nFIINAL_ANSWE",
+            "reasoning": "",
+            "final_answer": "",
+            "parse_completed": false,
+            "tool_context": "Search_Result:\nOriginal Question:\nIn April of 1977, who was the Prime Minister of the first place mentioned by name in the Book of Esther (in the New International Version)?\n\nAnswer Type: person\n\nVerified Candidate Answer:\n[C1] answer=House; type=person; support=2; refute=0; neutral=2; confidence=0.95; risk=-\n[C2] answer=Answers; type=person; support=1; refute=0; neutral=2; confidence=0.45; risk=-\n[C3] answer=Esther NIB; type=person; support=1; refute=0; neutral=2; confidence=0.45; risk=-\n\nFact:\n[F3] supports C1; confidence=1.0\nClaim: 1977 · As the Prime Minister of Canada and an elected Member of the House of Commons of Canada, the Right Honourable Pierre Trudeau would be awarded the medal as ...\nConstraint Match: 1977, minister, prime\n[F4] supports C1; confidence=0.935\nClaim: Malcolm Fraser was the Prime Minister of Australia from 1975 to 1983.\nConstraint Match: minister, prime\n[F5] supports C2; confidence=1.0\nClaim: Answers for prime minister of first named location in Esther NIB in 1977 crossword clue, 7 letters.\nConstraint Match: 1977, esther, first, minister, name, prime\n[F8] supports C3; confidence=1.0\nClaim: Answers for prime minister of first named location in Esther NIB in 1977 crossword clue, 7 letters.\nConstraint Match: 1977, esther, first, minister, name, prime\n\nMissing Info:\nNone\n\nRisk Flags:\nNone",
+            "prompt_tokens": 693,
+            "completion_tokens": 249,
+            "total_tokens": 942,
+            "tool_calls": [],
+            "tool_results": [],
+            "trajectory": []
+          },
+          {
+            "agent_id": "minicpm",
+            "model_name": "minicpm3:4b",
+            "run_index": 3,
+            "raw_reply": "Step 1: The question asks for the Prime Minister of the first place mentioned by name in the Book of Esther (in the New International Version) in April of 1977.\nStep 2: From the search results, we see that there are three candidates: [C1] House, [C2] Answers, and [C3] Esther NIB. However, none of these options directly answer the question about the Prime Minister.\nStep 3: The claim \"Malcolm Fraser was the Prime Minister of Australia from 1975 to 1983\" suggests that Malcolm Fraser could be a candidate for the answer. However, this claim does not match the constraint of being the Prime Minister of the first place mentioned by name in the Book of Esther (in the New International Version).\nStep 4: The claim \"Answers for prime minister of first named location in Esther NIB in 1977 crossword clue, 7 letters\" seems to be related to the question, but it does not provide a clear answer.\nStep 5: After analyzing the available information, we cannot determine the Prime Minister of the first place mentioned by name in the Book of Esther (in the New International Version) in April of 1977.\n\nFinal Answer: NEED_MORE_EVIDEnce",
+            "reasoning": "",
+            "final_answer": "",
+            "parse_completed": false,
+            "tool_context": "Search_Result:\nOriginal Question:\nIn April of 1977, who was the Prime Minister of the first place mentioned by name in the Book of Esther (in the New International Version)?\n\nAnswer Type: person\n\nVerified Candidate Answer:\n[C1] answer=House; type=person; support=2; refute=0; neutral=2; confidence=0.95; risk=-\n[C2] answer=Answers; type=person; support=1; refute=0; neutral=2; confidence=0.45; risk=-\n[C3] answer=Esther NIB; type=person; support=1; refute=0; neutral=2; confidence=0.45; risk=-\n\nFact:\n[F3] supports C1; confidence=1.0\nClaim: 1977 · As the Prime Minister of Canada and an elected Member of the House of Commons of Canada, the Right Honourable Pierre Trudeau would be awarded the medal as ...\nConstraint Match: 1977, minister, prime\n[F4] supports C1; confidence=0.935\nClaim: Malcolm Fraser was the Prime Minister of Australia from 1975 to 1983.\nConstraint Match: minister, prime\n[F5] supports C2; confidence=1.0\nClaim: Answers for prime minister of first named location in Esther NIB in 1977 crossword clue, 7 letters.\nConstraint Match: 1977, esther, first, minister, name, prime\n[F8] supports C3; confidence=1.0\nClaim: Answers for prime minister of first named location in Esther NIB in 1977 crossword clue, 7 letters.\nConstraint Match: 1977, esther, first, minister, name, prime\n\nMissing Info:\nNone\n\nRisk Flags:\nNone",
+            "prompt_tokens": 693,
+            "completion_tokens": 287,
+            "total_tokens": 980,
+            "tool_calls": [],
+            "tool_results": [],
+            "trajectory": []
+          }
+        ],
+        "compressed_answer": "",
+        "compressed_reasoning": "",
+        "confidence_score": 0.0,
+        "active": false
+      },
+      {
+        "agent_id": "qwen",
+        "model_name": "qwen3:4b",
+        "runs": [
+          {
+            "agent_id": "qwen",
+            "model_name": "qwen3:4b",
+            "run_index": 1,
+            "raw_reply": "REASONING = \nstep 1. The question asks for the Prime Minister of the first place mentioned by name in the Book of Esther (New International Version) in April 1977. The Book of Esther is an ancient biblical text, so the \"first place\" would be a historical location (e.g., Shushan or Persia), which has no modern Prime Minister in 1977.\nstep 2. The Search Results indicate this is likely a crossword clue referencing the Book of Esther NIV. The clue \"prime minister of first named location in Esther NIB in 1977\" has a 7-letter answer, with Verified Candidate C1 (\"House\") having the highest confidence (0.95).\nstep 3. Despite the answer type being \"person,\" the evidence supports \"House\" as the intended answer for this crossword context. The clue likely refers to the \"House of Commons\" (a political entity), and the confidence level indicates it is the best match among available data.\nstep 4. No evidence directly links a modern Prime Minister to the Book of Esther's first place in 1977, so the answer must be derived from the crossword clue context.\n\nFINAL_ANSWER = House",
+            "reasoning": "step 1. The question asks for the Prime Minister of the first place mentioned by name in the Book of Esther (New International Version) in April 1977. The Book of Esther is an ancient biblical text, so the \"first place\" would be a historical location (e.g., Shushan or Persia), which has no modern Prime Minister in 1977.\nstep 2. The Search Results indicate this is likely a crossword clue referencing the Book of Esther NIV. The clue \"prime minister of first named location in Esther NIB in 1977\" has a 7-letter answer, with Verified Candidate C1 (\"House\") having the highest confidence (0.95).\nstep 3. Despite the answer type being \"person,\" the evidence supports \"House\" as the intended answer for this crossword context. The clue likely refers to the \"House of Commons\" (a political entity), and the confidence level indicates it is the best match among available data.\nstep 4. No evidence directly links a modern Prime Minister to the Book of Esther's first place in 1977, so the answer must be derived from the crossword clue context.",
+            "final_answer": "House",
+            "parse_completed": true,
+            "tool_context": "Search_Result:\nOriginal Question:\nIn April of 1977, who was the Prime Minister of the first place mentioned by name in the Book of Esther (in the New International Version)?\n\nAnswer Type: person\n\nVerified Candidate Answer:\n[C1] answer=House; type=person; support=2; refute=0; neutral=2; confidence=0.95; risk=-\n[C2] answer=Answers; type=person; support=1; refute=0; neutral=2; confidence=0.45; risk=-\n[C3] answer=Esther NIB; type=person; support=1; refute=0; neutral=2; confidence=0.45; risk=-\n\nFact:\n[F3] supports C1; confidence=1.0\nClaim: 1977 · As the Prime Minister of Canada and an elected Member of the House of Commons of Canada, the Right Honourable Pierre Trudeau would be awarded the medal as ...\nConstraint Match: 1977, minister, prime\n[F4] supports C1; confidence=0.935\nClaim: Malcolm Fraser was the Prime Minister of Australia from 1975 to 1983.\nConstraint Match: minister, prime\n[F5] supports C2; confidence=1.0\nClaim: Answers for prime minister of first named location in Esther NIB in 1977 crossword clue, 7 letters.\nConstraint Match: 1977, esther, first, minister, name, prime\n[F8] supports C3; confidence=1.0\nClaim: Answers for prime minister of first named location in Esther NIB in 1977 crossword clue, 7 letters.\nConstraint Match: 1977, esther, first, minister, name, prime\n\nMissing Info:\nNone\n\nRisk Flags:\nNone",
+            "prompt_tokens": 603,
+            "completion_tokens": 3611,
+            "total_tokens": 4214,
+            "tool_calls": [],
+            "tool_results": [],
+            "trajectory": []
+          },
+          {
+            "agent_id": "qwen",
+            "model_name": "qwen3:4b",
+            "run_index": 2,
+            "raw_reply": "REASONING = \nstep 1. The question asks for the Prime Minister of the first place mentioned by name in the Book of Esther (NIV) in April 1977. The Book of Esther is a biblical text, and the first place mentioned in the NIV (e.g., \"Shushan\") is an ancient city, not a modern political entity with a Prime Minister in 1977.\nstep 2. The Verified Candidate Answers indicate that \"House\" (C1) has the highest confidence (0.95) and support (2), with strong backing from the claim about Pierre Trudeau being the Prime Minister of Canada and a Member of the House of Commons in 1977.\nstep 3. The Search_Result shows that the question likely references a crossword clue where the answer is a 7-letter term, and \"House\" aligns with the Canadian House of Commons context.\nstep 4. While the phrasing is a play on words (the first place in the Book of Esther is not a modern political unit), the highest-confidence candidate (\"House\") corresponds to the House of Commons, where Pierre Trudeau served as Prime Minister of Canada in April 1977.\n\nFINAL ANSWER = House",
+            "reasoning": "step 1. The question asks for the Prime Minister of the first place mentioned by name in the Book of Esther (NIV) in April 1977. The Book of Esther is a biblical text, and the first place mentioned in the NIV (e.g., \"Shushan\") is an ancient city, not a modern political entity with a Prime Minister in 1977.\nstep 2. The Verified Candidate Answers indicate that \"House\" (C1) has the highest confidence (0.95) and support (2), with strong backing from the claim about Pierre Trudeau being the Prime Minister of Canada and a Member of the House of Commons in 1977.\nstep 3. The Search_Result shows that the question likely references a crossword clue where the answer is a 7-letter term, and \"House\" aligns with the Canadian House of Commons context.\nstep 4. While the phrasing is a play on words (the first place in the Book of Esther is not a modern political unit), the highest-confidence candidate (\"House\") corresponds to the House of Commons, where Pierre Trudeau served as Prime Minister of Canada in April 1977.",
+            "final_answer": "House",
+            "parse_completed": true,
+            "tool_context": "Search_Result:\nOriginal Question:\nIn April of 1977, who was the Prime Minister of the first place mentioned by name in the Book of Esther (in the New International Version)?\n\nAnswer Type: person\n\nVerified Candidate Answer:\n[C1] answer=House; type=person; support=2; refute=0; neutral=2; confidence=0.95; risk=-\n[C2] answer=Answers; type=person; support=1; refute=0; neutral=2; confidence=0.45; risk=-\n[C3] answer=Esther NIB; type=person; support=1; refute=0; neutral=2; confidence=0.45; risk=-\n\nFact:\n[F3] supports C1; confidence=1.0\nClaim: 1977 · As the Prime Minister of Canada and an elected Member of the House of Commons of Canada, the Right Honourable Pierre Trudeau would be awarded the medal as ...\nConstraint Match: 1977, minister, prime\n[F4] supports C1; confidence=0.935\nClaim: Malcolm Fraser was the Prime Minister of Australia from 1975 to 1983.\nConstraint Match: minister, prime\n[F5] supports C2; confidence=1.0\nClaim: Answers for prime minister of first named location in Esther NIB in 1977 crossword clue, 7 letters.\nConstraint Match: 1977, esther, first, minister, name, prime\n[F8] supports C3; confidence=1.0\nClaim: Answers for prime minister of first named location in Esther NIB in 1977 crossword clue, 7 letters.\nConstraint Match: 1977, esther, first, minister, name, prime\n\nMissing Info:\nNone\n\nRisk Flags:\nNone",
+            "prompt_tokens": 603,
+            "completion_tokens": 3565,
+            "total_tokens": 4168,
+            "tool_calls": [],
+            "tool_results": [],
+            "trajectory": []
+          },
+          {
+            "agent_id": "qwen",
+            "model_name": "qwen3:4b",
+            "run_index": 3,
+            "raw_reply": "The question asks for the Prime Minister of the first place mentioned by name in the Book of Esther (NIV) in April 1977. The Book of Esther (NIV) begins with \"In the days of Ahasuerus, who was king of Persia, from whose realm the province of Shushan was under the rule of a governor...\" (Esther 1:1), indicating that the first place mentioned is **Shushan** (an ancient city in Persia). \n\nHowever, Shushan is a historical location from antiquity and does not have any modern government or political structure. Therefore, there is **no Prime Minister** for Shushan in April 1977, as the concept of a Prime Minister is irrelevant to this ancient city in the context of the modern world. \n\nThe provided evidence (Verified Candidates) includes:\n- **C1**: \"House\" (confidence 0.95, type=person) — but \"House\" is not a person and does not correspond to a Prime Minister of any place.\n- **C2**: \"Answers\" (type=person) — not a valid person name.\n- **C3**: \"Esther NIB\" (type=person) — not a valid person name.\n\nNone of the candidates provide a valid person who could be the Prime Minister of Shushan in 1977, as the place itself does not exist in the modern political context. The highest-confidence candidate (C1) is invalid due to mismatched type and meaning. \n\nSince the question is based on a historical place with no modern political relevance, and the evidence does not support a valid answer, the correct response is **None**.\n\n**Final Answer**: None",
+            "reasoning": "",
+            "final_answer": "",
+            "parse_completed": false,
+            "tool_context": "Search_Result:\nOriginal Question:\nIn April of 1977, who was the Prime Minister of the first place mentioned by name in the Book of Esther (in the New International Version)?\n\nAnswer Type: person\n\nVerified Candidate Answer:\n[C1] answer=House; type=person; support=2; refute=0; neutral=2; confidence=0.95; risk=-\n[C2] answer=Answers; type=person; support=1; refute=0; neutral=2; confidence=0.45; risk=-\n[C3] answer=Esther NIB; type=person; support=1; refute=0; neutral=2; confidence=0.45; risk=-\n\nFact:\n[F3] supports C1; confidence=1.0\nClaim: 1977 · As the Prime Minister of Canada and an elected Member of the House of Commons of Canada, the Right Honourable Pierre Trudeau would be awarded the medal as ...\nConstraint Match: 1977, minister, prime\n[F4] supports C1; confidence=0.935\nClaim: Malcolm Fraser was the Prime Minister of Australia from 1975 to 1983.\nConstraint Match: minister, prime\n[F5] supports C2; confidence=1.0\nClaim: Answers for prime minister of first named location in Esther NIB in 1977 crossword clue, 7 letters.\nConstraint Match: 1977, esther, first, minister, name, prime\n[F8] supports C3; confidence=1.0\nClaim: Answers for prime minister of first named location in Esther NIB in 1977 crossword clue, 7 letters.\nConstraint Match: 1977, esther, first, minister, name, prime\n\nMissing Info:\nNone\n\nRisk Flags:\nNone",
+            "prompt_tokens": 603,
+            "completion_tokens": 3903,
+            "total_tokens": 4506,
+            "tool_calls": [],
+            "tool_results": [],
+            "trajectory": []
+          }
+        ],
+        "compressed_answer": "House",
+        "compressed_reasoning": "step 1. The question asks for the Prime Minister of the first place mentioned by name in the Book of Esther (New International Version) in April 1977. The Book of Esther is an ancient biblical text, so the \"first place\" would be a historical location (e.g., Shushan or Persia), which has no modern Prime Minister in 1977.\nstep 2. The Search Results indicate this is likely a crossword clue referencing the Book of Esther NIV. The clue \"prime minister of first named location in Esther NIB in 1977\" has a 7-letter answer, with Verified Candidate C1 (\"House\") having the highest confidence (0.95).\nstep 3. Despite the answer type being \"person,\" the evidence supports \"House\" as the intended answer for this crossword context. The clue likely refers to the \"House of Commons\" (a political entity), and the confidence level indicates it is the best match among available data.\nstep 4. No evidence directly links a modern Prime Minister to the Book of Esther's first place in 1977, so the answer must be derived from the crossword clue context.",
+        "confidence_score": 0.67,
+        "active": true
+      },
+      {
+        "agent_id": "gemma",
+        "model_name": "gemma3:4b",
+        "runs": [
+          {
+            "agent_id": "gemma",
+            "model_name": "gemma3:4b",
+            "run_index": 1,
+            "raw_reply": "REASONING =\nstep 1. The user is asking for the Prime Minister of the first location mentioned in the Book of Esther (NIV) in April 1977.\nstep 2. The search results provide context related to a crossword clue matching these criteria (1977, Esther, PM) ([F5], [F8]).\nstep 3. The candidate answer [C1] (\"House\") has the highest confidence (0.95) and is supported by facts [F3] and [F4], which establish the context of Prime Ministers in 1977 (Pierre Trudeau and Malcolm Fraser). Although the question asks for a person (Prime Minister), the best supported candidate answer provided by the system is [C1].\nstep 4. Based on the provided evidence and candidate selection criteria, [C1] is the preferred answer.\nFINAL_ANSWER = House",
+            "reasoning": "step 1. The user is asking for the Prime Minister of the first location mentioned in the Book of Esther (NIV) in April 1977.\nstep 2. The search results provide context related to a crossword clue matching these criteria (1977, Esther, PM) ([F5], [F8]).\nstep 3. The candidate answer [C1] (\"House\") has the highest confidence (0.95) and is supported by facts [F3] and [F4], which establish the context of Prime Ministers in 1977 (Pierre Trudeau and Malcolm Fraser). Although the question asks for a person (Prime Minister), the best supported candidate answer provided by the system is [C1].\nstep 4. Based on the provided evidence and candidate selection criteria, [C1] is the preferred answer.",
+            "final_answer": "House",
+            "parse_completed": true,
+            "tool_context": "Search_Result:\nOriginal Question:\nIn April of 1977, who was the Prime Minister of the first place mentioned by name in the Book of Esther (in the New International Version)?\n\nAnswer Type: person\n\nVerified Candidate Answer:\n[C1] answer=House; type=person; support=2; refute=0; neutral=2; confidence=0.95; risk=-\n[C2] answer=Answers; type=person; support=1; refute=0; neutral=2; confidence=0.45; risk=-\n[C3] answer=Esther NIB; type=person; support=1; refute=0; neutral=2; confidence=0.45; risk=-\n\nFact:\n[F3] supports C1; confidence=1.0\nClaim: 1977 · As the Prime Minister of Canada and an elected Member of the House of Commons of Canada, the Right Honourable Pierre Trudeau would be awarded the medal as ...\nConstraint Match: 1977, minister, prime\n[F4] supports C1; confidence=0.935\nClaim: Malcolm Fraser was the Prime Minister of Australia from 1975 to 1983.\nConstraint Match: minister, prime\n[F5] supports C2; confidence=1.0\nClaim: Answers for prime minister of first named location in Esther NIB in 1977 crossword clue, 7 letters.\nConstraint Match: 1977, esther, first, minister, name, prime\n[F8] supports C3; confidence=1.0\nClaim: Answers for prime minister of first named location in Esther NIB in 1977 crossword clue, 7 letters.\nConstraint Match: 1977, esther, first, minister, name, prime\n\nMissing Info:\nNone\n\nRisk Flags:\nNone",
+            "prompt_tokens": 639,
+            "completion_tokens": 1271,
+            "total_tokens": 1910,
+            "tool_calls": [],
+            "tool_results": [],
+            "trajectory": []
+          },
+          {
+            "agent_id": "gemma",
+            "model_name": "gemma3:4b",
+            "run_index": 2,
+            "raw_reply": "REASONING =\nstep 1. The user is asking for the Prime Minister of the first location mentioned in the Book of Esther (NIV) in April 1977.\nstep 2. The provided search results and facts indicate that the search query is structured like a crossword clue, with multiple candidates (C1, C2, C3) being evaluated against constraints (1977, minister, prime, Esther NIB).\nstep 3. Analyzing the candidates, Candidate [C1] (\"House\") has the highest confidence (0.95) and the strongest support (2), based on constraint matching with the provided facts ([F3] and [F4]).\nstep 4. Although the question asks for a person, the evidence strongly directs towards C1 as the intended answer for this specific set of constraints, and according to the instructions, the best supported candidate must be preferred.\nstep 5. Therefore, the final answer is the content of the highest confidence candidate, C1.\nFINAL_ANSWER = House",
+            "reasoning": "step 1. The user is asking for the Prime Minister of the first location mentioned in the Book of Esther (NIV) in April 1977.\nstep 2. The provided search results and facts indicate that the search query is structured like a crossword clue, with multiple candidates (C1, C2, C3) being evaluated against constraints (1977, minister, prime, Esther NIB).\nstep 3. Analyzing the candidates, Candidate [C1] (\"House\") has the highest confidence (0.95) and the strongest support (2), based on constraint matching with the provided facts ([F3] and [F4]).\nstep 4. Although the question asks for a person, the evidence strongly directs towards C1 as the intended answer for this specific set of constraints, and according to the instructions, the best supported candidate must be preferred.\nstep 5. Therefore, the final answer is the content of the highest confidence candidate, C1.",
+            "final_answer": "House",
+            "parse_completed": true,
+            "tool_context": "Search_Result:\nOriginal Question:\nIn April of 1977, who was the Prime Minister of the first place mentioned by name in the Book of Esther (in the New International Version)?\n\nAnswer Type: person\n\nVerified Candidate Answer:\n[C1] answer=House; type=person; support=2; refute=0; neutral=2; confidence=0.95; risk=-\n[C2] answer=Answers; type=person; support=1; refute=0; neutral=2; confidence=0.45; risk=-\n[C3] answer=Esther NIB; type=person; support=1; refute=0; neutral=2; confidence=0.45; risk=-\n\nFact:\n[F3] supports C1; confidence=1.0\nClaim: 1977 · As the Prime Minister of Canada and an elected Member of the House of Commons of Canada, the Right Honourable Pierre Trudeau would be awarded the medal as ...\nConstraint Match: 1977, minister, prime\n[F4] supports C1; confidence=0.935\nClaim: Malcolm Fraser was the Prime Minister of Australia from 1975 to 1983.\nConstraint Match: minister, prime\n[F5] supports C2; confidence=1.0\nClaim: Answers for prime minister of first named location in Esther NIB in 1977 crossword clue, 7 letters.\nConstraint Match: 1977, esther, first, minister, name, prime\n[F8] supports C3; confidence=1.0\nClaim: Answers for prime minister of first named location in Esther NIB in 1977 crossword clue, 7 letters.\nConstraint Match: 1977, esther, first, minister, name, prime\n\nMissing Info:\nNone\n\nRisk Flags:\nNone",
+            "prompt_tokens": 639,
+            "completion_tokens": 1306,
+            "total_tokens": 1945,
+            "tool_calls": [],
+            "tool_results": [],
+            "trajectory": []
+          },
+          {
+            "agent_id": "gemma",
+            "model_name": "gemma3:4b",
+            "run_index": 3,
+            "raw_reply": "REASONING =\nstep 1. The question asks for the Prime Minister of the first place mentioned by name in the Book of Esther (NIV) in April of 1977.\nstep 2. The provided search results and facts do not contain the text of the Book of Esther (NIV) or identify the first place mentioned by name within that book.\nstep 3. The Verified Candidate Answers (C1, C2, C3) are derived from a crossword clue format and do not provide a specific person's name who was a Prime Minister in 1977, nor do they link the answer to the location in Esther.\nstep 4. Because the critical piece of information—the first place mentioned in the Book of Esther—is missing, and the candidates do not provide a definitive, factually supported answer to the question (a person's name), the evidence is insufficient.\nFINAL_ANSWER = NEED_MORE_EVIDENCE",
+            "reasoning": "",
+            "final_answer": "",
+            "parse_completed": false,
+            "tool_context": "Search_Result:\nOriginal Question:\nIn April of 1977, who was the Prime Minister of the first place mentioned by name in the Book of Esther (in the New International Version)?\n\nAnswer Type: person\n\nVerified Candidate Answer:\n[C1] answer=House; type=person; support=2; refute=0; neutral=2; confidence=0.95; risk=-\n[C2] answer=Answers; type=person; support=1; refute=0; neutral=2; confidence=0.45; risk=-\n[C3] answer=Esther NIB; type=person; support=1; refute=0; neutral=2; confidence=0.45; risk=-\n\nFact:\n[F3] supports C1; confidence=1.0\nClaim: 1977 · As the Prime Minister of Canada and an elected Member of the House of Commons of Canada, the Right Honourable Pierre Trudeau would be awarded the medal as ...\nConstraint Match: 1977, minister, prime\n[F4] supports C1; confidence=0.935\nClaim: Malcolm Fraser was the Prime Minister of Australia from 1975 to 1983.\nConstraint Match: minister, prime\n[F5] supports C2; confidence=1.0\nClaim: Answers for prime minister of first named location in Esther NIB in 1977 crossword clue, 7 letters.\nConstraint Match: 1977, esther, first, minister, name, prime\n[F8] supports C3; confidence=1.0\nClaim: Answers for prime minister of first named location in Esther NIB in 1977 crossword clue, 7 letters.\nConstraint Match: 1977, esther, first, minister, name, prime\n\nMissing Info:\nNone\n\nRisk Flags:\nNone",
+            "prompt_tokens": 639,
+            "completion_tokens": 935,
+            "total_tokens": 1574,
+            "tool_calls": [],
+            "tool_results": [],
+            "trajectory": []
+          }
+        ],
+        "compressed_answer": "House",
+        "compressed_reasoning": "step 1. The user is asking for the Prime Minister of the first location mentioned in the Book of Esther (NIV) in April 1977.\nstep 2. The search results provide context related to a crossword clue matching these criteria (1977, Esther, PM) ([F5], [F8]).\nstep 3. The candidate answer [C1] (\"House\") has the highest confidence (0.95) and is supported by facts [F3] and [F4], which establish the context of Prime Ministers in 1977 (Pierre Trudeau and Malcolm Fraser). Although the question asks for a person (Prime Minister), the best supported candidate answer provided by the system is [C1].\nstep 4. Based on the provided evidence and candidate selection criteria, [C1] is the preferred answer.",
+        "confidence_score": 0.67,
+        "active": true
+      }
+    ],
+    "judge_results": [
+      {
+        "judge_agent_id": "gemma",
+        "target_agent_id": "qwen",
+        "judge_score": 0.0,
+        "step_scores": [
+          {
+            "step": 1,
+            "score": 0.0
+          },
+          {
+            "step": 2,
+            "score": 0.0
+          },
+          {
+            "step": 3,
+            "score": 0.0
+          },
+          {
+            "step": 4,
+            "score": 0.0
+          }
+        ],
+        "raw_reply": "",
+        "prompt_tokens": 1207,
+        "completion_tokens": 512,
+        "total_tokens": 1719
+      },
+      {
+        "judge_agent_id": "qwen",
+        "target_agent_id": "gemma",
+        "judge_score": 0.0,
+        "step_scores": [
+          {
+            "step": 1,
+            "score": 0.0
+          },
+          {
+            "step": 2,
+            "score": 0.0
+          },
+          {
+            "step": 3,
+            "score": 0.0
+          },
+          {
+            "step": 4,
+            "score": 0.0
+          }
+        ],
+        "raw_reply": "",
+        "prompt_tokens": 1060,
+        "completion_tokens": 512,
+        "total_tokens": 1572
+      }
+    ],
+    "agent_scores": [
+      {
+        "agent_id": "nemotron",
+        "model_name": "nemotron-mini:4b",
+        "temperature": 0.5,
+        "confidence_score": 0.0,
+        "judge_scores": [],
+        "avg_judge_score": 0.0,
+        "penalty_score": -1.0,
+        "penalty_reasons": [
+          "inactive_or_no_answer"
+        ],
+        "total_score": -Infinity
+      },
+      {
+        "agent_id": "minicpm",
+        "model_name": "minicpm3:4b",
+        "temperature": 0.5,
+        "confidence_score": 0.0,
+        "judge_scores": [],
+        "avg_judge_score": 0.0,
+        "penalty_score": -1.0,
+        "penalty_reasons": [
+          "inactive_or_no_answer"
+        ],
+        "total_score": -Infinity
+      },
+      {
+        "agent_id": "qwen",
+        "model_name": "qwen3:4b",
+        "temperature": 0.5,
+        "confidence_score": 0.67,
+        "judge_scores": [
+          0.0
+        ],
+        "avg_judge_score": 0.0,
+        "penalty_score": 0.0,
+        "penalty_reasons": [],
+        "total_score": 0.67
+      },
+      {
+        "agent_id": "gemma",
+        "model_name": "gemma3:4b",
+        "temperature": 0.5,
+        "confidence_score": 0.67,
+        "judge_scores": [
+          0.0
+        ],
+        "avg_judge_score": 0.0,
+        "penalty_score": 0.0,
+        "penalty_reasons": [],
+        "total_score": 0.67
+      }
+    ],
+    "metadata": {
+      "stage1_runs_per_agent": 3,
+      "response_time_seconds": 259.9077651000116,
+      "response_time_ms": 259907.765,
+      "token_usage": {
+        "stage1": {
+          "prompt_tokens": 7695,
+          "completion_tokens": 19474,
+          "total_tokens": 27169
+        },
+        "stage2": {
+          "prompt_tokens": 2267,
+          "completion_tokens": 1024,
+          "total_tokens": 3291
+        },
+        "total": {
+          "prompt_tokens": 9962,
+          "completion_tokens": 20498,
+          "total_tokens": 30460
+        }
+      },
+      "max_stage1_workers": 12,
+      "max_stage2_workers": 2,
+      "stage2_max_tokens": 512,
+      "enable_stage1_tool_use": false,
+      "enable_compact_search_evidence": true,
+      "max_stage1_tool_turns": 2,
+      "enable_stage1_early_stop": false,
+      "previous_best_agent_id": "nemotron",
+      "stage1_early_stop_max_retries": 1,
+      "stage1_attempts": 1,
+      "stage1_early_stop": false,
+      "stage1_early_stop_reason": "",
+      "stage2_skipped": false,
+      "cross_agent_consensus_used": false,
+      "cross_agent_consensus_supporting_agents": [],
+      "cross_agent_consensus_answer": "",
+      "active_agent_count": 2,
+      "search_used": true,
+      "attachment_used": false,
+      "solver_used": false,
+      "routing": {
+        "use_calculator": false,
+        "use_search": true,
+        "use_deterministic_solver": false,
+        "use_python_solver": false,
+        "use_attachment": false,
+        "calculator_expression": null,
+        "task_type": "factual_search",
+        "trigger_terms": [
+          "book",
+          "who",
+          "year"
+        ],
+        "tool_policy": {
+          "prefer": [
+            "search"
+          ],
+          "optional": [],
+          "avoid": []
+        },
+        "routing_reasons": [
+          "question contains factual lookup signals: book, who, year",
+          "stage1 round0 system contract enables early evidence gathering"
+        ],
+        "routing_source": "system_routing_contract"
+      },
+      "tool_usage": [
+        {
+          "ok": true,
+          "tool_name": "search",
+          "output_text": "Original Question:\nIn April of 1977, who was the Prime Minister of the first place mentioned by name in the Book of Esther (in the New International Version)?\n\nAnswer Type: person\n\nVerified Candidate Answer:\n[C1] answer=House; type=person; support=2; refute=0; neutral=2; confidence=0.95; risk=-\n[C2] answer=Answers; type=person; support=1; refute=0; neutral=2; confidence=0.45; risk=-\n[C3] answer=Esther NIB; type=person; support=1; refute=0; neutral=2; confidence=0.45; risk=-\n\nFact:\n[F3] supports C1; confidence=1.0\nClaim: 1977 · As the Prime Minister of Canada and an elected Member of the House of Commons of Canada, the Right Honourable Pierre Trudeau would be awarded the medal as ...\nConstraint Match: 1977, minister, prime\n[F4] supports C1; confidence=0.935\nClaim: Malcolm Fraser was the Prime Minister of Australia from 1975 to 1983.\nConstraint Match: minister, prime\n[F5] supports C2; confidence=1.0\nClaim: Answers for prime minister of first named location in Esther NIB in 1977 crossword clue, 7 letters.\nConstraint Match: 1977, esther, first, minister, name, prime\n[F8] supports C3; confidence=1.0\nClaim: Answers for prime minister of first named location in Esther NIB in 1977 crossword clue, 7 letters.\nConstraint Match: 1977, esther, first, minister, name, prime\n\nMissing Info:\nNone\n\nRisk Flags:\nNone",
+          "raw_result": {
+            "question": "In April of 1977, who was the Prime Minister of the first place mentioned by name in the Book of Esther (in the New International Version)?",
+            "queries": [
+              {
+                "query_id": "Q1",
+                "query": "In April of 1977, who was the Prime Minister of the first place mentioned by name in the Book of Esther (in the New International Version)",
+                "purpose": "core_question",
+                "priority": 99,
+                "source_hints": [],
+                "expected_answer_type": "person",
+                "requires_full_page": true
+              },
+              {
+                "query_id": "Q2",
+                "query": "\"April\" author person 1977",
+                "purpose": "quoted_or_entity_focus",
+                "priority": 98,
+                "source_hints": [],
+                "expected_answer_type": "entity",
+                "requires_full_page": true
+              },
+              {
+                "query_id": "Q3",
+                "query": "\"Prime Minister\" author person 1977",
+                "purpose": "source_or_keyword_focus",
+                "priority": 97,
+                "source_hints": [],
+                "expected_answer_type": "entity",
+                "requires_full_page": true
+              }
+            ],
+            "sources": [
+              {
+                "source_id": "S1",
+                "query_id": "Q1",
+                "title": "prime minister of first named location in Esther NIB in 1977 Crossword ...",
+                "url": "https://www.wordplays.com/crossword-solver/prime-minister-of-first-named-location-in-Esther-NIB-in-1977",
+                "domain": "www.wordplays.com",
+                "snippet": "Answers for prime minister of first named location in Esther NIB in 1977 crossword clue, 7 letters. Search for crossword clues found in the Daily Celebrity, NY Times, Daily Mirror, Telegraph and major publications. Find clues for prime minister of first named location in Esther NIB in 1977 or most any crossword answer or clues for crossword answers.",
+                "raw_content": "Answers for prime minister of first named location in Esther NIB in 1977 crossword clue, 7 letters. Search for crossword clues found in the Daily Celebrity, NY Times, Daily Mirror, Telegraph and major publications. Find clues for prime minister of first named location in Esther NIB in 1977 or most any crossword answer or clues for crossword answers.",
+                "rank": 1,
+                "rerank_score": 25.85,
+                "fetched": true,
+                "blocked": false,
+                "block_reason": ""
+              },
+              {
+                "source_id": "S5",
+                "query_id": "Q1",
+                "title": "Bible Gateway passage: Esther 1 - New International Version",
+                "url": "https://www.biblegateway.com/passage/?search=Esther%201&version=NIV",
+                "domain": "www.biblegateway.com",
+                "snippet": "Queen Vashti Deposed - This is what happened during the time of Xerxes, the Xerxes who ruled over 127 provinces stretching from India to Cush: At that time King Xerxes reigned from his royal throne in the citadel of Susa, and in the third year of his reign he gave a banquet for all his nobles and officials. The military leaders of Persia and Media, the princes, and the nobles of the provinces ...",
+                "raw_content": "Queen Vashti Deposed - This is what happened during the time of Xerxes, the Xerxes who ruled over 127 provinces stretching from India to Cush: At that time King Xerxes reigned from his royal throne in the citadel of Susa, and in the third year of his reign he gave a banquet for all his nobles and officials. The military leaders of Persia and Media, the princes, and the nobles of the provinces ...",
+                "rank": 5,
+                "rerank_score": 8.75,
+                "fetched": true,
+                "blocked": false,
+                "block_reason": ""
+              },
+              {
+                "source_id": "S6",
+                "query_id": "Q2",
+                "title": "April 1977 - Wikipedia",
+                "url": "https://en.wikipedia.org/wiki/April_1977",
+                "domain": "en.wikipedia.org",
+                "snippet": "April 7, 1977 (Thursday) · Karl Ritter, 88, Nazi German producer and director of propaganda films, died in Argentina, where he had emigrated after World War II.",
+                "raw_content": "April 7, 1977 (Thursday) · Karl Ritter, 88, Nazi German producer and director of propaganda films, died in Argentina, where he had emigrated after World War II.",
+                "rank": 1,
+                "rerank_score": 11.6,
+                "fetched": true,
+                "blocked": false,
+                "block_reason": ""
+              },
+              {
+                "source_id": "S7",
+                "query_id": "Q2",
+                "title": "Author Birthdays in April - List Obsession",
+                "url": "https://www.listobsession.com/author-birthdays/april/",
+                "domain": "www.listobsession.com",
+                "snippet": "Nikolai Gogol (1809), Edmond Rostand (1868), Anne McCaffrey (1926), Milan Kundera (1929), Samuel R. Delany (1942) Hans Christian Andersen (1805), Émile Zola (1840 ...",
+                "raw_content": "Nikolai Gogol (1809), Edmond Rostand (1868), Anne McCaffrey (1926), Milan Kundera (1929), Samuel R. Delany (1942) Hans Christian Andersen (1805), Émile Zola (1840 ...",
+                "rank": 2,
+                "rerank_score": 8.85,
+                "fetched": true,
+                "blocked": false,
+                "block_reason": ""
+              },
+              {
+                "source_id": "S8",
+                "query_id": "Q2",
+                "title": "Author Birthdays for April - Synaptic Misfirings",
+                "url": "https://www.ej-knapp.com/diversions/author-birthdays/author-birthdays-for-april/",
+                "domain": "www.ej-knapp.com",
+                "snippet": "Author Birthdays for April Lachy Hulme 55 Screenwriter Thursday, April 1st 1971 Gil Scott-Heron 77 Poet Friday, April 1st 1949 Samuel R. Delany 84 Novelist Wednesday, April 1st 1942 Vladimir Posner 92 Journalist Sunday, April 1st 1934 Rolf Hochhuth 95 Novelist, Playwright Wednesday, April 1st 1931 Milan Kundera 97 Monday, April 1st 1929 Anne ...",
+                "raw_content": "Author Birthdays for April Lachy Hulme 55 Screenwriter Thursday, April 1st 1971 Gil Scott-Heron 77 Poet Friday, April 1st 1949 Samuel R. Delany 84 Novelist Wednesday, April 1st 1942 Vladimir Posner 92 Journalist Sunday, April 1st 1934 Rolf Hochhuth 95 Novelist, Playwright Wednesday, April 1st 1931 Milan Kundera 97 Monday, April 1st 1929 Anne ...",
+                "rank": 3,
+                "rerank_score": 8.75,
+                "fetched": true,
+                "blocked": false,
+                "block_reason": ""
+              },
+              {
+                "source_id": "S11",
+                "query_id": "Q3",
+                "title": "Portrait of a Prime Minister: Joe Clark | Canadian Museum of History",
+                "url": "https://www.historymuseum.ca/blog/prime-minister-joe-clark",
+                "domain": "www.historymuseum.ca",
+                "snippet": "Jul 5, 2024 · Portrait of a Prime Minister: Joe Clark · Authors · Published · Parliamentary beginnings (1972–1976) · Xavier Gélinas · Related articles.",
+                "raw_content": "Jul 5, 2024 · Portrait of a Prime Minister: Joe Clark · Authors · Published · Parliamentary beginnings (1972–1976) · Xavier Gélinas · Related articles.",
+                "rank": 1,
+                "rerank_score": 10.95,
+                "fetched": true,
+                "blocked": false,
+                "block_reason": ""
+              },
+              {
+                "source_id": "S12",
+                "query_id": "Q3",
+                "title": "The Institution of Prime Minister - History of government",
+                "url": "https://history.blog.gov.uk/2012/01/01/the-institution-of-prime-minister/",
+                "domain": "history.blog.gov.uk",
+                "snippet": "Jan 1, 2012 · The historian A. J. P. Taylor wrote that Walpole was 'as much the first modern Prime Minister we should recognize as Adam was the first man'.",
+                "raw_content": "Jan 1, 2012 · The historian A. J. P. Taylor wrote that Walpole was 'as much the first modern Prime Minister we should recognize as Adam was the first man'.",
+                "rank": 2,
+                "rerank_score": 10.2,
+                "fetched": true,
+                "blocked": false,
+                "block_reason": ""
+              },
+              {
+                "source_id": "S13",
+                "query_id": "Q3",
+                "title": "Prime Ministers of Canada - Library of Parliament",
+                "url": "https://lop.parl.ca/sites/ParlInfo/default/en_CA/People/primeMinisters",
+                "domain": "lop.parl.ca",
+                "snippet": "This page provides general details on Canada's prime ministers since 1867. For more information on an individual prime minister, including their electoral ...",
+                "raw_content": "This page provides general details on Canada's prime ministers since 1867. For more information on an individual prime minister, including their electoral ...",
+                "rank": 3,
+                "rerank_score": 8.9,
+                "fetched": true,
+                "blocked": false,
+                "block_reason": ""
+              },
+              {
+                "source_id": "S14",
+                "query_id": "Q3",
+                "title": "Pierre Trudeau - Wikipedia",
+                "url": "https://en.wikipedia.org/wiki/Pierre_Trudeau",
+                "domain": "en.wikipedia.org",
+                "snippet": "1977 · As the Prime Minister of Canada and an elected Member of the House of Commons of Canada, the Right Honourable Pierre Trudeau would be awarded the medal as ...",
+                "raw_content": "1977 · As the Prime Minister of Canada and an elected Member of the House of Commons of Canada, the Right Honourable Pierre Trudeau would be awarded the medal as ...",
+                "rank": 4,
+                "rerank_score": 7.25,
+                "fetched": true,
+                "blocked": false,
+                "block_reason": ""
+              },
+              {
+                "source_id": "S15",
+                "query_id": "Q3",
+                "title": "Malcolm Fraser: key people | naa.gov.au",
+                "url": "https://www.naa.gov.au/explore-collection/australias-prime-ministers/malcolm-fraser/key-people",
+                "domain": "www.naa.gov.au",
+                "snippet": "Malcolm Fraser was the Prime Minister of Australia from 1975 to 1983. Adermann, Albert Evan National-Country Party Member of the House of Representatives 1972– ...",
+                "raw_content": "Malcolm Fraser was the Prime Minister of Australia from 1975 to 1983. Adermann, Albert Evan National-Country Party Member of the House of Representatives 1972– ...",
+                "rank": 5,
+                "rerank_score": 3.8,
+                "fetched": true,
+                "blocked": false,
+                "block_reason": ""
+              }
+            ],
+            "evidence_items": [
+              {
+                "evidence_id": "E1",
+                "source_id": "S1",
+                "query_id": "Q1",
+                "text": "Answers for prime minister of first named location in Esther NIB in 1977 crossword clue, 7 letters. Search for crossword clues found in the Daily Celebrity, NY Times, Daily Mirror, Telegraph and major publications. Find clues for prime minister of first named location in Esther NIB in 1977 or most any crossword answer or clues for crossword answers.",
+                "title": "prime minister of first named location in Esther NIB in 1977 Crossword ...",
+                "url": "https://www.wordplays.com/crossword-solver/prime-minister-of-first-named-location-in-Esther-NIB-in-1977",
+                "relevance_score": 17.75,
+                "matched_terms": [
+                  "1977",
+                  "esther",
+                  "first",
+                  "minister",
+                  "name",
+                  "prime"
+                ],
+                "extracted_answer": ""
+              },
+              {
+                "evidence_id": "E2",
+                "source_id": "S12",
+                "query_id": "Q3",
+                "text": "Jan 1, 2012 · The historian A. J. P. Taylor wrote that Walpole was 'as much the first modern Prime Minister we should recognize as Adam was the first man'.",
+                "title": "The Institution of Prime Minister - History of government",
+                "url": "https://history.blog.gov.uk/2012/01/01/the-institution-of-prime-minister/",
+                "relevance_score": 11.75,
+                "matched_terms": [
+                  "first",
+                  "minister",
+                  "prime"
+                ],
+                "extracted_answer": ""
+              },
+              {
+                "evidence_id": "E3",
+                "source_id": "S14",
+                "query_id": "Q3",
+                "text": "1977 · As the Prime Minister of Canada and an elected Member of the House of Commons of Canada, the Right Honourable Pierre Trudeau would be awarded the medal as ...",
+                "title": "Pierre Trudeau - Wikipedia",
+                "url": "https://en.wikipedia.org/wiki/Pierre_Trudeau",
+                "relevance_score": 10.25,
+                "matched_terms": [
+                  "1977",
+                  "minister",
+                  "prime"
+                ],
+                "extracted_answer": ""
+              },
+              {
+                "evidence_id": "E4",
+                "source_id": "S6",
+                "query_id": "Q2",
+                "text": "April 7, 1977 (Thursday) · Karl Ritter, 88, Nazi German producer and director of propaganda films, died in Argentina, where he had emigrated after World War II.",
+                "title": "April 1977 - Wikipedia",
+                "url": "https://en.wikipedia.org/wiki/April_1977",
+                "relevance_score": 9.75,
+                "matched_terms": [
+                  "1977",
+                  "april"
+                ],
+                "extracted_answer": ""
+              },
+              {
+                "evidence_id": "E5",
+                "source_id": "S11",
+                "query_id": "Q3",
+                "text": "Jul 5, 2024 · Portrait of a Prime Minister: Joe Clark · Authors · Published · Parliamentary beginnings (1972–1976) · Xavier Gélinas · Related articles.",
+                "title": "Portrait of a Prime Minister: Joe Clark | Canadian Museum of History",
+                "url": "https://www.historymuseum.ca/blog/prime-minister-joe-clark",
+                "relevance_score": 9.75,
+                "matched_terms": [
+                  "minister",
+                  "prime"
+                ],
+                "extracted_answer": ""
+              },
+              {
+                "evidence_id": "E6",
+                "source_id": "S13",
+                "query_id": "Q3",
+                "text": "This page provides general details on Canada's prime ministers since 1867. For more information on an individual prime minister, including their electoral ...",
+                "title": "Prime Ministers of Canada - Library of Parliament",
+                "url": "https://lop.parl.ca/sites/ParlInfo/default/en_CA/People/primeMinisters",
+                "relevance_score": 9.25,
+                "matched_terms": [
+                  "minister",
+                  "prime"
+                ],
+                "extracted_answer": ""
+              },
+              {
+                "evidence_id": "E7",
+                "source_id": "S15",
+                "query_id": "Q3",
+                "text": "Malcolm Fraser was the Prime Minister of Australia from 1975 to 1983. Adermann, Albert Evan National-Country Party Member of the House of Representatives 1972– ...",
+                "title": "Malcolm Fraser: key people | naa.gov.au",
+                "url": "https://www.naa.gov.au/explore-collection/australias-prime-ministers/malcolm-fraser/key-people",
+                "relevance_score": 8.13,
+                "matched_terms": [
+                  "minister",
+                  "prime"
+                ],
+                "extracted_answer": ""
+              },
+              {
+                "evidence_id": "E8",
+                "source_id": "S8",
+                "query_id": "Q2",
+                "text": "Author Birthdays for April Lachy Hulme 55 Screenwriter Thursday, April 1st 1971 Gil Scott-Heron 77 Poet Friday, April 1st 1949 Samuel R. Delany 84 Novelist Wednesday, April 1st 1942 Vladimir Posner 92 Journalist Sunday, April 1st 1934 Rolf Hochhuth 95 Novelist, Playwright Wednesday, April 1st 1931 Milan Kundera 97 Monday, April 1st 1929 Anne ...",
+                "title": "Author Birthdays for April - Synaptic Misfirings",
+                "url": "https://www.ej-knapp.com/diversions/author-birthdays/author-birthdays-for-april/",
+                "relevance_score": 4.75,
+                "matched_terms": [
+                  "april"
+                ],
+                "extracted_answer": ""
+              }
+            ],
+            "candidates": [
+              {
+                "answer": "House",
+                "answer_type": "person",
+                "support_count": 2,
+                "verification_score": 23.380000000000003,
+                "evidence_ids": [
+                  "E3",
+                  "E7"
+                ],
+                "source_ids": [
+                  "S14",
+                  "S15"
+                ],
+                "verified": true
+              },
+              {
+                "answer": "Answers",
+                "answer_type": "person",
+                "support_count": 1,
+                "verification_score": 21.75,
+                "evidence_ids": [
+                  "E1"
+                ],
+                "source_ids": [
+                  "S1"
+                ],
+                "verified": true
+              },
+              {
+                "answer": "Esther NIB",
+                "answer_type": "person",
+                "support_count": 1,
+                "verification_score": 21.75,
+                "evidence_ids": [
+                  "E1"
+                ],
+                "source_ids": [
+                  "S1"
+                ],
+                "verified": true
+              },
+              {
+                "answer": "Daily Celebrity",
+                "answer_type": "person",
+                "support_count": 1,
+                "verification_score": 21.75,
+                "evidence_ids": [
+                  "E1"
+                ],
+                "source_ids": [
+                  "S1"
+                ],
+                "verified": true
+              },
+              {
+                "answer": "NY Times",
+                "answer_type": "person",
+                "support_count": 1,
+                "verification_score": 21.75,
+                "evidence_ids": [
+                  "E1"
+                ],
+                "source_ids": [
+                  "S1"
+                ],
+                "verified": true
+              }
+            ],
+            "summary": "Original Question:\nIn April of 1977, who was the Prime Minister of the first place mentioned by name in the Book of Esther (in the New International Version)?\n\nAnswer Type: person\n\nVerified Candidate Answer:\n[C1] answer=House; type=person; support=2; refute=0; neutral=2; confidence=0.95; risk=-\n[C2] answer=Answers; type=person; support=1; refute=0; neutral=2; confidence=0.45; risk=-\n[C3] answer=Esther NIB; type=person; support=1; refute=0; neutral=2; confidence=0.45; risk=-\n\nFact:\n[F3] supports C1; confidence=1.0\nClaim: 1977 · As the Prime Minister of Canada and an elected Member of the House of Commons of Canada, the Right Honourable Pierre Trudeau would be awarded the medal as ...\nConstraint Match: 1977, minister, prime\n[F4] supports C1; confidence=0.935\nClaim: Malcolm Fraser was the Prime Minister of Australia from 1975 to 1983.\nConstraint Match: minister, prime\n[F5] supports C2; confidence=1.0\nClaim: Answers for prime minister of first named location in Esther NIB in 1977 crossword clue, 7 letters.\nConstraint Match: 1977, esther, first, minister, name, prime\n[F8] supports C3; confidence=1.0\nClaim: Answers for prime minister of first named location in Esther NIB in 1977 crossword clue, 7 letters.\nConstraint Match: 1977, esther, first, minister, name, prime\n\nMissing Info:\nNone\n\nRisk Flags:\nNone",
+            "verified_candidates": [
+              {
+                "candidate_id": "C1",
+                "answer": "House",
+                "answer_type": "person",
+                "support_count": 2,
+                "refute_count": 0,
+                "neutral_count": 2,
+                "confidence": 0.95,
+                "evidence_ids": [
+                  "E3",
+                  "E7"
+                ],
+                "support_fact_ids": [
+                  "F3",
+                  "F4"
+                ],
+                "refute_fact_ids": [],
+                "risk_flags": []
+              },
+              {
+                "candidate_id": "C2",
+                "answer": "Answers",
+                "answer_type": "person",
+                "support_count": 1,
+                "refute_count": 0,
+                "neutral_count": 2,
+                "confidence": 0.45,
+                "evidence_ids": [
+                  "E1"
+                ],
+                "support_fact_ids": [
+                  "F5"
+                ],
+                "refute_fact_ids": [],
+                "risk_flags": []
+              },
+              {
+                "candidate_id": "C3",
+                "answer": "Esther NIB",
+                "answer_type": "person",
+                "support_count": 1,
+                "refute_count": 0,
+                "neutral_count": 2,
+                "confidence": 0.45,
+                "evidence_ids": [
+                  "E1"
+                ],
+                "support_fact_ids": [
+                  "F8"
+                ],
+                "refute_fact_ids": [],
+                "risk_flags": []
+              },
+              {
+                "candidate_id": "C4",
+                "answer": "Daily Celebrity",
+                "answer_type": "person",
+                "support_count": 1,
+                "refute_count": 0,
+                "neutral_count": 2,
+                "confidence": 0.45,
+                "evidence_ids": [
+                  "E1"
+                ],
+                "support_fact_ids": [
+                  "F11"
+                ],
+                "refute_fact_ids": [],
+                "risk_flags": []
+              },
+              {
+                "candidate_id": "C5",
+                "answer": "NY Times",
+                "answer_type": "person",
+                "support_count": 1,
+                "refute_count": 0,
+                "neutral_count": 2,
+                "confidence": 0.45,
+                "evidence_ids": [
+                  "E1"
+                ],
+                "support_fact_ids": [
+                  "F14"
+                ],
+                "refute_fact_ids": [],
+                "risk_flags": []
+              }
+            ],
+            "fact_cards": [
+              {
+                "fact_id": "F1",
+                "claim": "Answers for prime minister of first named location in Esther NIB in 1977 crossword clue, 7 letters.",
+                "relation": "neutral",
+                "candidate_id": "C1",
+                "source_id": "S1",
+                "evidence_id": "E1",
+                "confidence": 0.5,
+                "constraint_matches": [
+                  "1977",
+                  "esther",
+                  "first",
+                  "minister",
+                  "name",
+                  "prime"
+                ]
+              },
+              {
+                "fact_id": "F2",
+                "claim": "Jan 1, 2012 · The historian A. J. P. Taylor wrote that Walpole was 'as much the first modern Prime Minister we should recognize as Adam was the first man'.",
+                "relation": "neutral",
+                "candidate_id": "C1",
+                "source_id": "S12",
+                "evidence_id": "E2",
+                "confidence": 0.438,
+                "constraint_matches": [
+                  "first",
+                  "minister",
+                  "prime"
+                ]
+              },
+              {
+                "fact_id": "F3",
+                "claim": "1977 · As the Prime Minister of Canada and an elected Member of the House of Commons of Canada, the Right Honourable Pierre Trudeau would be awarded the medal as ...",
+                "relation": "support",
+                "candidate_id": "C1",
+                "source_id": "S14",
+                "evidence_id": "E3",
+                "confidence": 1.0,
+                "constraint_matches": [
+                  "1977",
+                  "minister",
+                  "prime"
+                ]
+              },
+              {
+                "fact_id": "F4",
+                "claim": "Malcolm Fraser was the Prime Minister of Australia from 1975 to 1983.",
+                "relation": "support",
+                "candidate_id": "C1",
+                "source_id": "S15",
+                "evidence_id": "E7",
+                "confidence": 0.935,
+                "constraint_matches": [
+                  "minister",
+                  "prime"
+                ]
+              },
+              {
+                "fact_id": "F5",
+                "claim": "Answers for prime minister of first named location in Esther NIB in 1977 crossword clue, 7 letters.",
+                "relation": "support",
+                "candidate_id": "C2",
+                "source_id": "S1",
+                "evidence_id": "E1",
+                "confidence": 1.0,
+                "constraint_matches": [
+                  "1977",
+                  "esther",
+                  "first",
+                  "minister",
+                  "name",
+                  "prime"
+                ]
+              },
+              {
+                "fact_id": "F6",
+                "claim": "Jan 1, 2012 · The historian A. J. P. Taylor wrote that Walpole was 'as much the first modern Prime Minister we should recognize as Adam was the first man'.",
+                "relation": "neutral",
+                "candidate_id": "C2",
+                "source_id": "S12",
+                "evidence_id": "E2",
+                "confidence": 0.438,
+                "constraint_matches": [
+                  "first",
+                  "minister",
+                  "prime"
+                ]
+              },
+              {
+                "fact_id": "F7",
+                "claim": "1977 · As the Prime Minister of Canada and an elected Member of the House of Commons of Canada, the Right Honourable Pierre Trudeau would be awarded the medal as ...",
+                "relation": "neutral",
+                "candidate_id": "C2",
+                "source_id": "S14",
+                "evidence_id": "E3",
+                "confidence": 0.438,
+                "constraint_matches": [
+                  "1977",
+                  "minister",
+                  "prime"
+                ]
+              },
+              {
+                "fact_id": "F8",
+                "claim": "Answers for prime minister of first named location in Esther NIB in 1977 crossword clue, 7 letters.",
+                "relation": "support",
+                "candidate_id": "C3",
+                "source_id": "S1",
+                "evidence_id": "E1",
+                "confidence": 1.0,
+                "constraint_matches": [
+                  "1977",
+                  "esther",
+                  "first",
+                  "minister",
+                  "name",
+                  "prime"
+                ]
+              },
+              {
+                "fact_id": "F9",
+                "claim": "Jan 1, 2012 · The historian A. J. P. Taylor wrote that Walpole was 'as much the first modern Prime Minister we should recognize as Adam was the first man'.",
+                "relation": "neutral",
+                "candidate_id": "C3",
+                "source_id": "S12",
+                "evidence_id": "E2",
+                "confidence": 0.438,
+                "constraint_matches": [
+                  "first",
+                  "minister",
+                  "prime"
+                ]
+              },
+              {
+                "fact_id": "F10",
+                "claim": "1977 · As the Prime Minister of Canada and an elected Member of the House of Commons of Canada, the Right Honourable Pierre Trudeau would be awarded the medal as ...",
+                "relation": "neutral",
+                "candidate_id": "C3",
+                "source_id": "S14",
+                "evidence_id": "E3",
+                "confidence": 0.438,
+                "constraint_matches": [
+                  "1977",
+                  "minister",
+                  "prime"
+                ]
+              },
+              {
+                "fact_id": "F11",
+                "claim": "Answers for prime minister of first named location in Esther NIB in 1977 crossword clue, 7 letters.",
+                "relation": "support",
+                "candidate_id": "C4",
+                "source_id": "S1",
+                "evidence_id": "E1",
+                "confidence": 1.0,
+                "constraint_matches": [
+                  "1977",
+                  "esther",
+                  "first",
+                  "minister",
+                  "name",
+                  "prime"
+                ]
+              },
+              {
+                "fact_id": "F12",
+                "claim": "Jan 1, 2012 · The historian A. J. P. Taylor wrote that Walpole was 'as much the first modern Prime Minister we should recognize as Adam was the first man'.",
+                "relation": "neutral",
+                "candidate_id": "C4",
+                "source_id": "S12",
+                "evidence_id": "E2",
+                "confidence": 0.438,
+                "constraint_matches": [
+                  "first",
+                  "minister",
+                  "prime"
+                ]
+              },
+              {
+                "fact_id": "F13",
+                "claim": "1977 · As the Prime Minister of Canada and an elected Member of the House of Commons of Canada, the Right Honourable Pierre Trudeau would be awarded the medal as ...",
+                "relation": "neutral",
+                "candidate_id": "C4",
+                "source_id": "S14",
+                "evidence_id": "E3",
+                "confidence": 0.438,
+                "constraint_matches": [
+                  "1977",
+                  "minister",
+                  "prime"
+                ]
+              },
+              {
+                "fact_id": "F14",
+                "claim": "Answers for prime minister of first named location in Esther NIB in 1977 crossword clue, 7 letters.",
+                "relation": "support",
+                "candidate_id": "C5",
+                "source_id": "S1",
+                "evidence_id": "E1",
+                "confidence": 1.0,
+                "constraint_matches": [
+                  "1977",
+                  "esther",
+                  "first",
+                  "minister",
+                  "name",
+                  "prime"
+                ]
+              },
+              {
+                "fact_id": "F15",
+                "claim": "Jan 1, 2012 · The historian A. J. P. Taylor wrote that Walpole was 'as much the first modern Prime Minister we should recognize as Adam was the first man'.",
+                "relation": "neutral",
+                "candidate_id": "C5",
+                "source_id": "S12",
+                "evidence_id": "E2",
+                "confidence": 0.438,
+                "constraint_matches": [
+                  "first",
+                  "minister",
+                  "prime"
+                ]
+              },
+              {
+                "fact_id": "F16",
+                "claim": "1977 · As the Prime Minister of Canada and an elected Member of the House of Commons of Canada, the Right Honourable Pierre Trudeau would be awarded the medal as ...",
+                "relation": "neutral",
+                "candidate_id": "C5",
+                "source_id": "S14",
+                "evidence_id": "E3",
+                "confidence": 0.438,
+                "constraint_matches": [
+                  "1977",
+                  "minister",
+                  "prime"
+                ]
+              }
+            ],
+            "agent_packet": {
+              "question": "In April of 1977, who was the Prime Minister of the first place mentioned by name in the Book of Esther (in the New International Version)?",
+              "answer_type": "person",
+              "candidates": [
+                {
+                  "candidate_id": "C1",
+                  "answer": "House",
+                  "answer_type": "person",
+                  "support_count": 2,
+                  "refute_count": 0,
+                  "neutral_count": 2,
+                  "confidence": 0.95,
+                  "evidence_ids": [
+                    "E3",
+                    "E7"
+                  ],
+                  "support_fact_ids": [
+                    "F3",
+                    "F4"
+                  ],
+                  "refute_fact_ids": [],
+                  "risk_flags": []
+                },
+                {
+                  "candidate_id": "C2",
+                  "answer": "Answers",
+                  "answer_type": "person",
+                  "support_count": 1,
+                  "refute_count": 0,
+                  "neutral_count": 2,
+                  "confidence": 0.45,
+                  "evidence_ids": [
+                    "E1"
+                  ],
+                  "support_fact_ids": [
+                    "F5"
+                  ],
+                  "refute_fact_ids": [],
+                  "risk_flags": []
+                },
+                {
+                  "candidate_id": "C3",
+                  "answer": "Esther NIB",
+                  "answer_type": "person",
+                  "support_count": 1,
+                  "refute_count": 0,
+                  "neutral_count": 2,
+                  "confidence": 0.45,
+                  "evidence_ids": [
+                    "E1"
+                  ],
+                  "support_fact_ids": [
+                    "F8"
+                  ],
+                  "refute_fact_ids": [],
+                  "risk_flags": []
+                }
+              ],
+              "facts": [
+                {
+                  "fact_id": "F3",
+                  "claim": "1977 · As the Prime Minister of Canada and an elected Member of the House of Commons of Canada, the Right Honourable Pierre Trudeau would be awarded the medal as ...",
+                  "relation": "support",
+                  "candidate_id": "C1",
+                  "source_id": "S14",
+                  "evidence_id": "E3",
+                  "confidence": 1.0,
+                  "constraint_matches": [
+                    "1977",
+                    "minister",
+                    "prime"
+                  ]
+                },
+                {
+                  "fact_id": "F4",
+                  "claim": "Malcolm Fraser was the Prime Minister of Australia from 1975 to 1983.",
+                  "relation": "support",
+                  "candidate_id": "C1",
+                  "source_id": "S15",
+                  "evidence_id": "E7",
+                  "confidence": 0.935,
+                  "constraint_matches": [
+                    "minister",
+                    "prime"
+                  ]
+                },
+                {
+                  "fact_id": "F5",
+                  "claim": "Answers for prime minister of first named location in Esther NIB in 1977 crossword clue, 7 letters.",
+                  "relation": "support",
+                  "candidate_id": "C2",
+                  "source_id": "S1",
+                  "evidence_id": "E1",
+                  "confidence": 1.0,
+                  "constraint_matches": [
+                    "1977",
+                    "esther",
+                    "first",
+                    "minister",
+                    "name",
+                    "prime"
+                  ]
+                },
+                {
+                  "fact_id": "F8",
+                  "claim": "Answers for prime minister of first named location in Esther NIB in 1977 crossword clue, 7 letters.",
+                  "relation": "support",
+                  "candidate_id": "C3",
+                  "source_id": "S1",
+                  "evidence_id": "E1",
+                  "confidence": 1.0,
+                  "constraint_matches": [
+                    "1977",
+                    "esther",
+                    "first",
+                    "minister",
+                    "name",
+                    "prime"
+                  ]
+                }
+              ],
+              "missing_info": [],
+              "risk_flags": []
+            },
+            "tool_usage": [
+              {
+                "ok": true,
+                "tool_name": "search",
+                "output_text": "{'results': [{'title': 'prime minister of first named location in Esther NIB in 1977 Crossword ...', 'url': 'https://www.wordplays.com/crossword-solver/prime-minister-of-first-named-location-in-Esther-NIB-in-1977', 'content': 'Answers for prime minister of first named location in Esther NIB in 1977 crossword clue, 7 letters. Search for crossword clues found in the Daily Celebrity, NY Times, Daily Mirror, Telegraph and major publications. Find clues for prime minister of first named location in Esther NIB in 1977 or most any crossword answer or clues for crossword answers.', 'raw_content': 'Answers for prime minister of first named location in Esther NIB in 1977 crossword clue, 7 letters. Search for crossword clues found in the Daily Celebrity, NY Times, Daily Mirror, Telegraph and major publications. Find clues for prime minister of first named location in Esther NIB in 1977 or most any crossword answer or clues for crossword answers.', 'rerank_score': 25.85}, {'title': 'Datasets at Hugging Face', 'url': 'https://huggingface.co/datasets/Intelligent-Internet/GAIA-Subset-Benchmark', 'content': 'In April of 1977, who was the Prime Minister of the first place mentioned by name in the Book of Esther (in the New International Version)?. false. true. true.', 'raw_content': 'In April of 1977, who was the Prime Minister of the first place mentioned by name in the Book of Esther (in the New International Version)?. false. true. true.', 'rerank_score': 16.6}, {'title': 'Book of Esther - Wikipedia', 'url': 'https://en.wikipedia.org/wiki/Book_of_Esther', 'content': 'The book relates the story of a Jewish woman in Persia, born as Hadassah but known as Esther, who becomes queen of Persia and thwarts a genocide of her people.Missing: 1977, Prime Minister', 'raw_content': 'The book relates the story of a Jewish woman in Persia, born as Hadassah but known as Esther, who becomes queen of Persia and thwarts a genocide of her people.Missing: 1977, Prime Minister', 'rerank_score': 16.1}, {'title': 'With First Lady Janet, we visited the family of former Prime Minister Prof ...', 'url': 'https://www.facebook.com/KagutaMuseveni/posts/with-first-lady-janet-we-visited-the-family-of-former-prime-minister-prof-apolo-/1580109532124465/', 'content': 'May 29, 2019 · With First Lady Janet, we visited the family of former Prime Minister Prof Apolo Nsibambi this morning in Kampala to condole with them following ...', 'raw_content': 'May 29, 2019 · With First Lady Janet, we visited the family of former Prime Minister Prof Apolo Nsibambi this morning in Kampala to condole with them following ...', 'rerank_score': 12.4}, {'title': 'Bible Gateway passage: Esther 1 - New International Version', 'url': 'https://www.biblegateway.com/passage/?search=Esther%201&version=NIV', 'content': 'Queen Vashti Deposed - This is what happened during the time of Xerxes, the Xerxes who ruled over 127 provinces stretching from India to Cush: At that time King Xerxes reigned from his royal throne in the citadel of Susa, and in the third year of his reign he gave a banquet for all his nobles and officials. The military leaders of Persia and Media, the princes, and the nobles of the provinces ...', 'raw_content': 'Queen Vashti Deposed - This is what happened during the time of Xerxes, the Xerxes who ruled over 127 provinces stretching from India to Cush: At that time King Xerxes reigned from his royal throne in the citadel of Susa, and in the third year of his reign he gave a banquet for all his nobles and officials. The military leaders of Persia and Media, the princes, and the nobles of the provinces ...', 'rerank_score': 8.75}], 'backend': 'searxng', 'answer': None, 'notices': []}",
+                "raw_result": {
+                  "results": [
+                    {
+                      "title": "prime minister of first named location in Esther NIB in 1977 Crossword ...",
+                      "url": "https://www.wordplays.com/crossword-solver/prime-minister-of-first-named-location-in-Esther-NIB-in-1977",
+                      "content": "Answers for prime minister of first named location in Esther NIB in 1977 crossword clue, 7 letters. Search for crossword clues found in the Daily Celebrity, NY Times, Daily Mirror, Telegraph and major publications. Find clues for prime minister of first named location in Esther NIB in 1977 or most any crossword answer or clues for crossword answers.",
+                      "raw_content": "Answers for prime minister of first named location in Esther NIB in 1977 crossword clue, 7 letters. Search for crossword clues found in the Daily Celebrity, NY Times, Daily Mirror, Telegraph and major publications. Find clues for prime minister of first named location in Esther NIB in 1977 or most any crossword answer or clues for crossword answers.",
+                      "rerank_score": 25.85
+                    },
+                    {
+                      "title": "Datasets at Hugging Face",
+                      "url": "https://huggingface.co/datasets/Intelligent-Internet/GAIA-Subset-Benchmark",
+                      "content": "In April of 1977, who was the Prime Minister of the first place mentioned by name in the Book of Esther (in the New International Version)?. false. true. true.",
+                      "raw_content": "In April of 1977, who was the Prime Minister of the first place mentioned by name in the Book of Esther (in the New International Version)?. false. true. true.",
+                      "rerank_score": 16.6
+                    },
+                    {
+                      "title": "Book of Esther - Wikipedia",
+                      "url": "https://en.wikipedia.org/wiki/Book_of_Esther",
+                      "content": "The book relates the story of a Jewish woman in Persia, born as Hadassah but known as Esther, who becomes queen of Persia and thwarts a genocide of her people.Missing: 1977, Prime Minister",
+                      "raw_content": "The book relates the story of a Jewish woman in Persia, born as Hadassah but known as Esther, who becomes queen of Persia and thwarts a genocide of her people.Missing: 1977, Prime Minister",
+                      "rerank_score": 16.1
+                    },
+                    {
+                      "title": "With First Lady Janet, we visited the family of former Prime Minister Prof ...",
+                      "url": "https://www.facebook.com/KagutaMuseveni/posts/with-first-lady-janet-we-visited-the-family-of-former-prime-minister-prof-apolo-/1580109532124465/",
+                      "content": "May 29, 2019 · With First Lady Janet, we visited the family of former Prime Minister Prof Apolo Nsibambi this morning in Kampala to condole with them following ...",
+                      "raw_content": "May 29, 2019 · With First Lady Janet, we visited the family of former Prime Minister Prof Apolo Nsibambi this morning in Kampala to condole with them following ...",
+                      "rerank_score": 12.4
+                    },
+                    {
+                      "title": "Bible Gateway passage: Esther 1 - New International Version",
+                      "url": "https://www.biblegateway.com/passage/?search=Esther%201&version=NIV",
+                      "content": "Queen Vashti Deposed - This is what happened during the time of Xerxes, the Xerxes who ruled over 127 provinces stretching from India to Cush: At that time King Xerxes reigned from his royal throne in the citadel of Susa, and in the third year of his reign he gave a banquet for all his nobles and officials. The military leaders of Persia and Media, the princes, and the nobles of the provinces ...",
+                      "raw_content": "Queen Vashti Deposed - This is what happened during the time of Xerxes, the Xerxes who ruled over 127 provinces stretching from India to Cush: At that time King Xerxes reigned from his royal throne in the citadel of Susa, and in the third year of his reign he gave a banquet for all his nobles and officials. The military leaders of Persia and Media, the princes, and the nobles of the provinces ...",
+                      "rerank_score": 8.75
+                    }
+                  ],
+                  "backend": "searxng",
+                  "answer": null,
+                  "notices": []
+                },
+                "error": null
+              },
+              {
+                "ok": true,
+                "tool_name": "search",
+                "output_text": "{'results': [{'title': 'April 1977 - Wikipedia', 'url': 'https://en.wikipedia.org/wiki/April_1977', 'content': 'April 7, 1977 (Thursday) · Karl Ritter, 88, Nazi German producer and director of propaganda films, died in Argentina, where he had emigrated after World War II.', 'raw_content': 'April 7, 1977 (Thursday) · Karl Ritter, 88, Nazi German producer and director of propaganda films, died in Argentina, where he had emigrated after World War II.', 'rerank_score': 11.6}, {'title': 'Author Birthdays in April - List Obsession', 'url': 'https://www.listobsession.com/author-birthdays/april/', 'content': 'Nikolai Gogol (1809), Edmond Rostand (1868), Anne McCaffrey (1926), Milan Kundera (1929), Samuel R. Delany (1942) Hans Christian Andersen (1805), Émile Zola (1840 ...', 'raw_content': 'Nikolai Gogol (1809), Edmond Rostand (1868), Anne McCaffrey (1926), Milan Kundera (1929), Samuel R. Delany (1942) Hans Christian Andersen (1805), Émile Zola (1840 ...', 'rerank_score': 8.85}, {'title': 'Author Birthdays for April - Synaptic Misfirings', 'url': 'https://www.ej-knapp.com/diversions/author-birthdays/author-birthdays-for-april/', 'content': 'Author Birthdays for April Lachy Hulme 55 Screenwriter Thursday, April 1st 1971 Gil Scott-Heron 77 Poet Friday, April 1st 1949 Samuel R. Delany 84 Novelist Wednesday, April 1st 1942 Vladimir Posner 92 Journalist Sunday, April 1st 1934 Rolf Hochhuth 95 Novelist, Playwright Wednesday, April 1st 1931 Milan Kundera 97 Monday, April 1st 1929 Anne ...', 'raw_content': 'Author Birthdays for April Lachy Hulme 55 Screenwriter Thursday, April 1st 1971 Gil Scott-Heron 77 Poet Friday, April 1st 1949 Samuel R. Delany 84 Novelist Wednesday, April 1st 1942 Vladimir Posner 92 Journalist Sunday, April 1st 1934 Rolf Hochhuth 95 Novelist, Playwright Wednesday, April 1st 1931 Milan Kundera 97 Monday, April 1st 1929 Anne ...', 'rerank_score': 8.75}, {'title': '\"The Quarry Girls\" author Jess Lourey has a new book coming out April 7 ...', 'url': 'https://www.facebook.com/stcloudtimes/posts/the-quarry-girls-author-jess-lourey-has-a-new-book-coming-out-april-7-and-shell-/1454403646696510/', 'content': 'Mar 28, 2026 · \"The Quarry Girls\" author Jess Lourey has a new book coming out April 7, and she\\'ll be in St. Cloud this weekend for talks and signings.', 'raw_content': 'Mar 28, 2026 · \"The Quarry Girls\" author Jess Lourey has a new book coming out April 7, and she\\'ll be in St. Cloud this weekend for talks and signings.', 'rerank_score': 7.7}, {'title': 'Jesmyn Ward was born in California in 1977, but grew up in ... - Instagram', 'url': 'https://www.instagram.com/p/DWmSvr7lkdY/', 'content': \"Apr 1, 2026 · IT'S JESMYN WARD'S BIRTHDAY TODAY, APRIL 1ST Jesmyn Ward was born in California in 1977, but grew up in Mississippi Her most well known ...\", 'raw_content': \"Apr 1, 2026 · IT'S JESMYN WARD'S BIRTHDAY TODAY, APRIL 1ST Jesmyn Ward was born in California in 1977, but grew up in Mississippi Her most well known ...\", 'rerank_score': 5.0}], 'backend': 'searxng', 'answer': None, 'notices': []}",
+                "raw_result": {
+                  "results": [
+                    {
+                      "title": "April 1977 - Wikipedia",
+                      "url": "https://en.wikipedia.org/wiki/April_1977",
+                      "content": "April 7, 1977 (Thursday) · Karl Ritter, 88, Nazi German producer and director of propaganda films, died in Argentina, where he had emigrated after World War II.",
+                      "raw_content": "April 7, 1977 (Thursday) · Karl Ritter, 88, Nazi German producer and director of propaganda films, died in Argentina, where he had emigrated after World War II.",
+                      "rerank_score": 11.6
+                    },
+                    {
+                      "title": "Author Birthdays in April - List Obsession",
+                      "url": "https://www.listobsession.com/author-birthdays/april/",
+                      "content": "Nikolai Gogol (1809), Edmond Rostand (1868), Anne McCaffrey (1926), Milan Kundera (1929), Samuel R. Delany (1942) Hans Christian Andersen (1805), Émile Zola (1840 ...",
+                      "raw_content": "Nikolai Gogol (1809), Edmond Rostand (1868), Anne McCaffrey (1926), Milan Kundera (1929), Samuel R. Delany (1942) Hans Christian Andersen (1805), Émile Zola (1840 ...",
+                      "rerank_score": 8.85
+                    },
+                    {
+                      "title": "Author Birthdays for April - Synaptic Misfirings",
+                      "url": "https://www.ej-knapp.com/diversions/author-birthdays/author-birthdays-for-april/",
+                      "content": "Author Birthdays for April Lachy Hulme 55 Screenwriter Thursday, April 1st 1971 Gil Scott-Heron 77 Poet Friday, April 1st 1949 Samuel R. Delany 84 Novelist Wednesday, April 1st 1942 Vladimir Posner 92 Journalist Sunday, April 1st 1934 Rolf Hochhuth 95 Novelist, Playwright Wednesday, April 1st 1931 Milan Kundera 97 Monday, April 1st 1929 Anne ...",
+                      "raw_content": "Author Birthdays for April Lachy Hulme 55 Screenwriter Thursday, April 1st 1971 Gil Scott-Heron 77 Poet Friday, April 1st 1949 Samuel R. Delany 84 Novelist Wednesday, April 1st 1942 Vladimir Posner 92 Journalist Sunday, April 1st 1934 Rolf Hochhuth 95 Novelist, Playwright Wednesday, April 1st 1931 Milan Kundera 97 Monday, April 1st 1929 Anne ...",
+                      "rerank_score": 8.75
+                    },
+                    {
+                      "title": "\"The Quarry Girls\" author Jess Lourey has a new book coming out April 7 ...",
+                      "url": "https://www.facebook.com/stcloudtimes/posts/the-quarry-girls-author-jess-lourey-has-a-new-book-coming-out-april-7-and-shell-/1454403646696510/",
+                      "content": "Mar 28, 2026 · \"The Quarry Girls\" author Jess Lourey has a new book coming out April 7, and she'll be in St. Cloud this weekend for talks and signings.",
+                      "raw_content": "Mar 28, 2026 · \"The Quarry Girls\" author Jess Lourey has a new book coming out April 7, and she'll be in St. Cloud this weekend for talks and signings.",
+                      "rerank_score": 7.7
+                    },
+                    {
+                      "title": "Jesmyn Ward was born in California in 1977, but grew up in ... - Instagram",
+                      "url": "https://www.instagram.com/p/DWmSvr7lkdY/",
+                      "content": "Apr 1, 2026 · IT'S JESMYN WARD'S BIRTHDAY TODAY, APRIL 1ST Jesmyn Ward was born in California in 1977, but grew up in Mississippi Her most well known ...",
+                      "raw_content": "Apr 1, 2026 · IT'S JESMYN WARD'S BIRTHDAY TODAY, APRIL 1ST Jesmyn Ward was born in California in 1977, but grew up in Mississippi Her most well known ...",
+                      "rerank_score": 5.0
+                    }
+                  ],
+                  "backend": "searxng",
+                  "answer": null,
+                  "notices": []
+                },
+                "error": null
+              },
+              {
+                "ok": true,
+                "tool_name": "search",
+                "output_text": "{'results': [{'title': 'Portrait of a Prime Minister: Joe Clark | Canadian Museum of History', 'url': 'https://www.historymuseum.ca/blog/prime-minister-joe-clark', 'content': 'Jul 5, 2024 · Portrait of a Prime Minister: Joe Clark · Authors · Published · Parliamentary beginnings (1972–1976) · Xavier Gélinas · Related articles.', 'raw_content': 'Jul 5, 2024 · Portrait of a Prime Minister: Joe Clark · Authors · Published · Parliamentary beginnings (1972–1976) · Xavier Gélinas · Related articles.', 'rerank_score': 10.95}, {'title': 'The Institution of Prime Minister - History of government', 'url': 'https://history.blog.gov.uk/2012/01/01/the-institution-of-prime-minister/', 'content': \"Jan 1, 2012 · The historian A. J. P. Taylor wrote that Walpole was 'as much the first modern Prime Minister we should recognize as Adam was the first man'.\", 'raw_content': \"Jan 1, 2012 · The historian A. J. P. Taylor wrote that Walpole was 'as much the first modern Prime Minister we should recognize as Adam was the first man'.\", 'rerank_score': 10.2}, {'title': 'Prime Ministers of Canada - Library of Parliament', 'url': 'https://lop.parl.ca/sites/ParlInfo/default/en_CA/People/primeMinisters', 'content': \"This page provides general details on Canada's prime ministers since 1867. For more information on an individual prime minister, including their electoral ...\", 'raw_content': \"This page provides general details on Canada's prime ministers since 1867. For more information on an individual prime minister, including their electoral ...\", 'rerank_score': 8.9}, {'title': 'Pierre Trudeau - Wikipedia', 'url': 'https://en.wikipedia.org/wiki/Pierre_Trudeau', 'content': '1977 · As the Prime Minister of Canada and an elected Member of the House of Commons of Canada, the Right Honourable Pierre Trudeau would be awarded the medal as ...', 'raw_content': '1977 · As the Prime Minister of Canada and an elected Member of the House of Commons of Canada, the Right Honourable Pierre Trudeau would be awarded the medal as ...', 'rerank_score': 7.25}, {'title': 'Malcolm Fraser: key people | naa.gov.au', 'url': 'https://www.naa.gov.au/explore-collection/australias-prime-ministers/malcolm-fraser/key-people', 'content': 'Malcolm Fraser was the Prime Minister of Australia from 1975 to 1983. Adermann, Albert Evan National-Country Party Member of the House of Representatives 1972– ...', 'raw_content': 'Malcolm Fraser was the Prime Minister of Australia from 1975 to 1983. Adermann, Albert Evan National-Country Party Member of the House of Representatives 1972– ...', 'rerank_score': 3.8}], 'backend': 'searxng', 'answer': None, 'notices': []}",
+                "raw_result": {
+                  "results": [
+                    {
+                      "title": "Portrait of a Prime Minister: Joe Clark | Canadian Museum of History",
+                      "url": "https://www.historymuseum.ca/blog/prime-minister-joe-clark",
+                      "content": "Jul 5, 2024 · Portrait of a Prime Minister: Joe Clark · Authors · Published · Parliamentary beginnings (1972–1976) · Xavier Gélinas · Related articles.",
+                      "raw_content": "Jul 5, 2024 · Portrait of a Prime Minister: Joe Clark · Authors · Published · Parliamentary beginnings (1972–1976) · Xavier Gélinas · Related articles.",
+                      "rerank_score": 10.95
+                    },
+                    {
+                      "title": "The Institution of Prime Minister - History of government",
+                      "url": "https://history.blog.gov.uk/2012/01/01/the-institution-of-prime-minister/",
+                      "content": "Jan 1, 2012 · The historian A. J. P. Taylor wrote that Walpole was 'as much the first modern Prime Minister we should recognize as Adam was the first man'.",
+                      "raw_content": "Jan 1, 2012 · The historian A. J. P. Taylor wrote that Walpole was 'as much the first modern Prime Minister we should recognize as Adam was the first man'.",
+                      "rerank_score": 10.2
+                    },
+                    {
+                      "title": "Prime Ministers of Canada - Library of Parliament",
+                      "url": "https://lop.parl.ca/sites/ParlInfo/default/en_CA/People/primeMinisters",
+                      "content": "This page provides general details on Canada's prime ministers since 1867. For more information on an individual prime minister, including their electoral ...",
+                      "raw_content": "This page provides general details on Canada's prime ministers since 1867. For more information on an individual prime minister, including their electoral ...",
+                      "rerank_score": 8.9
+                    },
+                    {
+                      "title": "Pierre Trudeau - Wikipedia",
+                      "url": "https://en.wikipedia.org/wiki/Pierre_Trudeau",
+                      "content": "1977 · As the Prime Minister of Canada and an elected Member of the House of Commons of Canada, the Right Honourable Pierre Trudeau would be awarded the medal as ...",
+                      "raw_content": "1977 · As the Prime Minister of Canada and an elected Member of the House of Commons of Canada, the Right Honourable Pierre Trudeau would be awarded the medal as ...",
+                      "rerank_score": 7.25
+                    },
+                    {
+                      "title": "Malcolm Fraser: key people | naa.gov.au",
+                      "url": "https://www.naa.gov.au/explore-collection/australias-prime-ministers/malcolm-fraser/key-people",
+                      "content": "Malcolm Fraser was the Prime Minister of Australia from 1975 to 1983. Adermann, Albert Evan National-Country Party Member of the House of Representatives 1972– ...",
+                      "raw_content": "Malcolm Fraser was the Prime Minister of Australia from 1975 to 1983. Adermann, Albert Evan National-Country Party Member of the House of Representatives 1972– ...",
+                      "rerank_score": 3.8
+                    }
+                  ],
+                  "backend": "searxng",
+                  "answer": null,
+                  "notices": []
+                },
+                "error": null
+              }
+            ],
+            "blocked_sources": [
+              {
+                "source_id": "S2",
+                "query_id": "Q1",
+                "title": "Datasets at Hugging Face",
+                "url": "https://huggingface.co/datasets/Intelligent-Internet/GAIA-Subset-Benchmark",
+                "domain": "huggingface.co",
+                "snippet": "In April of 1977, who was the Prime Minister of the first place mentioned by name in the Book of Esther (in the New International Version)?. false. true. true.",
+                "raw_content": "In April of 1977, who was the Prime Minister of the first place mentioned by name in the Book of Esther (in the New International Version)?. false. true. true.",
+                "rank": 2,
+                "rerank_score": 16.6,
+                "fetched": true,
+                "blocked": true,
+                "block_reason": "benchmark_or_dataset_source"
+              },
+              {
+                "source_id": "S3",
+                "query_id": "Q1",
+                "title": "Book of Esther - Wikipedia",
+                "url": "https://en.wikipedia.org/wiki/Book_of_Esther",
+                "domain": "en.wikipedia.org",
+                "snippet": "The book relates the story of a Jewish woman in Persia, born as Hadassah but known as Esther, who becomes queen of Persia and thwarts a genocide of her people.Missing: 1977, Prime Minister",
+                "raw_content": "The book relates the story of a Jewish woman in Persia, born as Hadassah but known as Esther, who becomes queen of Persia and thwarts a genocide of her people.Missing: 1977, Prime Minister",
+                "rank": 3,
+                "rerank_score": 16.1,
+                "fetched": true,
+                "blocked": true,
+                "block_reason": "no_result_or_login_page"
+              },
+              {
+                "source_id": "S4",
+                "query_id": "Q1",
+                "title": "With First Lady Janet, we visited the family of former Prime Minister Prof ...",
+                "url": "https://www.facebook.com/KagutaMuseveni/posts/with-first-lady-janet-we-visited-the-family-of-former-prime-minister-prof-apolo-/1580109532124465/",
+                "domain": "www.facebook.com",
+                "snippet": "May 29, 2019 · With First Lady Janet, we visited the family of former Prime Minister Prof Apolo Nsibambi this morning in Kampala to condole with them following ...",
+                "raw_content": "May 29, 2019 · With First Lady Janet, we visited the family of former Prime Minister Prof Apolo Nsibambi this morning in Kampala to condole with them following ...",
+                "rank": 4,
+                "rerank_score": 12.4,
+                "fetched": true,
+                "blocked": true,
+                "block_reason": "low_trust_domain"
+              },
+              {
+                "source_id": "S9",
+                "query_id": "Q2",
+                "title": "\"The Quarry Girls\" author Jess Lourey has a new book coming out April 7 ...",
+                "url": "https://www.facebook.com/stcloudtimes/posts/the-quarry-girls-author-jess-lourey-has-a-new-book-coming-out-april-7-and-shell-/1454403646696510/",
+                "domain": "www.facebook.com",
+                "snippet": "Mar 28, 2026 · \"The Quarry Girls\" author Jess Lourey has a new book coming out April 7, and she'll be in St. Cloud this weekend for talks and signings.",
+                "raw_content": "Mar 28, 2026 · \"The Quarry Girls\" author Jess Lourey has a new book coming out April 7, and she'll be in St. Cloud this weekend for talks and signings.",
+                "rank": 4,
+                "rerank_score": 7.7,
+                "fetched": true,
+                "blocked": true,
+                "block_reason": "low_trust_domain"
+              },
+              {
+                "source_id": "S10",
+                "query_id": "Q2",
+                "title": "Jesmyn Ward was born in California in 1977, but grew up in ... - Instagram",
+                "url": "https://www.instagram.com/p/DWmSvr7lkdY/",
+                "domain": "www.instagram.com",
+                "snippet": "Apr 1, 2026 · IT'S JESMYN WARD'S BIRTHDAY TODAY, APRIL 1ST Jesmyn Ward was born in California in 1977, but grew up in Mississippi Her most well known ...",
+                "raw_content": "Apr 1, 2026 · IT'S JESMYN WARD'S BIRTHDAY TODAY, APRIL 1ST Jesmyn Ward was born in California in 1977, but grew up in Mississippi Her most well known ...",
+                "rank": 5,
+                "rerank_score": 5.0,
+                "fetched": true,
+                "blocked": true,
+                "block_reason": "low_trust_domain"
+              }
+            ]
+          },
+          "error": null
+        }
+      ],
+      "penalty_results": [
+        {
+          "agent_id": "nemotron",
+          "penalty": -1.0,
+          "reasons": [
+            "inactive_or_no_answer"
+          ]
+        },
+        {
+          "agent_id": "minicpm",
+          "penalty": -1.0,
+          "reasons": [
+            "inactive_or_no_answer"
+          ]
+        },
+        {
+          "agent_id": "qwen",
+          "penalty": 0.0,
+          "reasons": []
+        },
+        {
+          "agent_id": "gemma",
+          "penalty": 0.0,
+          "reasons": []
+        }
+      ]
+    }
+  }
+}

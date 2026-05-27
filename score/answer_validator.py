@@ -34,6 +34,8 @@ class AnswerValidator:
         r"\bnot enough (data|information|evidence)\b",
         r"\bunknown\b",
         r"\bno answer\b",
+        r"\bneed_more_evidence\b",
+        r"\bneed more evidence\b",
         r"\bnone\b",
         r"^n/?a$",
     )
@@ -103,6 +105,8 @@ class AnswerValidator:
         if self.is_too_verbose(candidate):
             return False
         if re.search(r"(?:REASONING|WEIGHTS)\s*=", candidate, re.IGNORECASE):
+            return False
+        if re.fullmatch(r"F?I?INAL_?ANSWE?R?", candidate, re.IGNORECASE):
             return False
         if re.fullmatch(r"[\W_]+", candidate):
             return False

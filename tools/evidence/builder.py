@@ -8,7 +8,16 @@ from utils.network_utils import should_use_calculator, should_use_search
 
 
 class EvidenceBuilder:
-    """Build the tool evidence currently used by the local agent network."""
+    """
+    建立本地 Agent Network 在推理前可使用的工具證據上下文。
+
+    Args:
+        - tool_manager: 負責執行 calculator、search、deterministic_solver 等工具的管理器。
+        - runtime: 可提供目前 attachment 狀態的執行期物件。
+
+    Returns:
+        - EvidenceBuilder: 可依題目 routing 組裝工具 evidence 的建構器。
+    """
 
     def __init__(
         self,
@@ -20,13 +29,17 @@ class EvidenceBuilder:
         initialize_search_helpers: bool = True,
     ) -> None:
         """
-        ??????????????
-        
+        初始化 EvidenceBuilder 需要的工具、routing 與 search evidence helper。
+
         Args:
-            - ????????????
-        
+            - tool_manager: 負責執行工具的 ToolManager，沒有提供時會略過工具呼叫。
+            - runtime: 提供 current_attachment 等執行期狀態的物件。
+            - search_query_planner: 可選的搜尋 query 規劃器。
+            - evidence_searcher: 可選的新版 evidence-oriented search 主入口。
+            - initialize_search_helpers: 是否在初始化時建立 search helper。
+
         Returns:
-            - None?
+            - None。
         """
         self.tool_manager = tool_manager
         self.runtime = runtime
@@ -49,13 +62,19 @@ class EvidenceBuilder:
         include_attachment: bool = True,
     ) -> dict[str, Any]:
         """
-        ?????????????????????
-        
+        根據題目與 routing 結果建立主要工具上下文。
+
         Args:
-            - ????????????
-        
+            - question: 原始任務問題。
+            - agent_id: 呼叫工具的 Agent id，用於 trace。
+            - stage: 呼叫工具所屬階段，例如 stage1。
+            - router_model_name: 保留參數，目前未使用。
+            - shared_search_bundle: 保留參數，目前未使用。
+            - include_routed_tools: 是否根據 routing 啟用 calculator、search、solver。
+            - include_attachment: 是否讀取目前 attachment。
+
         Returns:
-            - ?????????
+            - dict[str, Any]: 包含 tool_context、各類 evidence context、tool_usage 與 routing 的結果。
         """
         routing = (
             self._route_tools(question, stage=stage)
@@ -126,13 +145,13 @@ class EvidenceBuilder:
 
     def should_enable_stage1_routed_tools(self, question: str) -> bool:
         """
-        ???????????????
-        
+        判斷 Stage1 是否需要啟用 routed tools。
+
         Args:
-            - ????????????
-        
+            - question: 原始任務問題。
+
         Returns:
-            - ???????
+            - bool: 若 routing contract 判定需要工具，回傳 True。
         """
         decision = self.system_routing_contract.route(
             question=question,
@@ -144,13 +163,14 @@ class EvidenceBuilder:
 
     def _route_tools(self, question: str, *, stage: str) -> dict[str, Any]:
         """
-        ????????????
-        
+        依據題目與階段產生工具 routing 決策。
+
         Args:
-            - ????????????
-        
+            - question: 原始任務問題。
+            - stage: 目前工具 routing 所屬階段。
+
         Returns:
-            - ????????????
+            - dict[str, Any]: 包含 use_search、use_calculator、use_attachment 等欄位的 routing dict。
         """
         decision = self.system_routing_contract.route(
             question=question,
@@ -165,13 +185,13 @@ class EvidenceBuilder:
 
     def _empty_routing(self) -> dict[str, Any]:
         """
-        ????????????
-        
+        建立不啟用任何工具的空 routing 結果。
+
         Args:
-            - ????????????
-        
+            - 無。
+
         Returns:
-            - ????????????
+            - dict[str, Any]: 所有工具皆為 False 的 routing dict。
         """
         return {
             "use_calculator": False,
@@ -188,50 +208,50 @@ class EvidenceBuilder:
 
     def _empty_tool_result(self) -> dict[str, Any]:
         """
-        ????????????
-        
+        建立未使用工具時的空工具結果。
+
         Args:
-            - ????????????
-        
+            - 無。
+
         Returns:
-            - ????????????
+            - dict[str, Any]: 包含空 tool_usage、context 與 used=False 的結果。
         """
         return {"tool_usage": [], "context": "", "used": False}
 
     def _empty_context_result(self) -> dict[str, Any]:
         """
-        ????????????
-        
+        建立沒有 context 的空 evidence 結果。
+
         Args:
-            - ????????????
-        
+            - 無。
+
         Returns:
-            - ????????????
+            - dict[str, Any]: 包含空 tool_usage、context 與 used=False 的結果。
         """
         return {"tool_usage": [], "context": "", "used": False}
 
     def _current_attachment(self) -> dict[str, Any] | None:
         """
-        ????????????
-        
+        從 runtime 取得目前任務的 attachment metadata。
+
         Args:
-            - ????????????
-        
+            - 無。
+
         Returns:
-            - ????????????
+            - dict[str, Any] | None: 若 runtime.current_attachment 存在且有效則回傳，否則回傳 None。
         """
         attachment = getattr(self.runtime, "current_attachment", None)
         return attachment if isinstance(attachment, dict) and attachment else None
 
     def _attachment_type(self) -> str | None:
         """
-        ????????????
-        
+        從目前 attachment metadata 推斷附檔類型。
+
         Args:
-            - ????????????
-        
+            - 無。
+
         Returns:
-            - ????????????
+            - str | None: 附檔副檔名，例如 pdf、xlsx、png；無法判斷時回傳 None。
         """
         attachment = self._current_attachment() or {}
         extension = str(attachment.get("extension", "") or "").strip().lower()
@@ -244,13 +264,13 @@ class EvidenceBuilder:
 
     def _build_attachment_evidence(self, question: str) -> dict[str, Any]:
         """
-        ????????????
-        
+        讀取目前 attachment 並建立可放入 Agent prompt 的 evidence context。
+
         Args:
-            - ????????????
-        
+            - question: 原始任務問題，用於讓 attachment reader 做問題導向摘要。
+
         Returns:
-            - ????????????
+            - dict[str, Any]: 包含 attachment context、tool_usage 與 used 狀態。
         """
         attachment = self._current_attachment()
         if not attachment:
@@ -264,13 +284,15 @@ class EvidenceBuilder:
 
     def _build_calculator_evidence(self, question: str, agent_id: str, stage: str) -> dict[str, Any]:
         """
-        ????????????
-        
+        呼叫 python_calculator 工具建立計算證據。
+
         Args:
-            - ????????????
-        
+            - question: 原始任務問題或計算描述。
+            - agent_id: 呼叫工具的 Agent id。
+            - stage: 工具呼叫所屬階段。
+
         Returns:
-            - ????????????
+            - dict[str, Any]: 包含 calculator context、tool_usage 與 used 狀態。
         """
         if self.tool_manager is None:
             return self._empty_tool_result()
@@ -305,13 +327,16 @@ class EvidenceBuilder:
         attachment_context: str = "",
     ) -> dict[str, Any]:
         """
-        ????????????
-        
+        呼叫 deterministic_solver 建立封閉型任務的確定性答案證據。
+
         Args:
-            - ????????????
-        
+            - question: 原始任務問題。
+            - agent_id: 呼叫工具的 Agent id。
+            - stage: 工具呼叫所屬階段。
+            - attachment_context: attachment reader 產生的文字內容，供 solver 使用。
+
         Returns:
-            - ????????????
+            - dict[str, Any]: 包含 solver context、tool_usage、solver 原始結果與 used 狀態。
         """
         if self.tool_manager is None:
             return self._empty_context_result()
@@ -352,13 +377,15 @@ class EvidenceBuilder:
 
     def _build_search_evidence(self, question: str, agent_id: str, stage: str) -> dict[str, Any]:
         """
-        ????????????
-        
+        使用新版 EvidenceSearcher 建立 evidence-oriented search context。
+
         Args:
-            - ????????????
-        
+            - question: 原始任務問題。
+            - agent_id: 呼叫 search 的 Agent id。
+            - stage: 工具呼叫所屬階段。
+
         Returns:
-            - ????????????
+            - dict[str, Any]: 包含 search context、query plan、tool_usage、候選答案與 used 狀態。
         """
         if self.tool_manager is None:
             return self._empty_tool_result()
@@ -377,7 +404,11 @@ class EvidenceBuilder:
             tool_usage = output.tool_usage
             query_plan = searcher.to_dict(output)
             queries = [query.query for query in output.queries]
-            best_verified_candidate = output.candidates[0].__dict__ if output.candidates else None
+            best_verified_candidate = (
+                output.verified_candidates[0].__dict__
+                if output.verified_candidates
+                else output.candidates[0].__dict__ if output.candidates else None
+            )
         except Exception as exc:
             context = ""
             tool_usage = [
@@ -424,13 +455,13 @@ class EvidenceBuilder:
 
     def _question_requires_web(self, question: str) -> bool:
         """
-        ????????????
-        
+        判斷題目是否明確需要網路搜尋。
+
         Args:
-            - ????????????
-        
+            - question: 原始任務問題。
+
         Returns:
-            - ????????????
+            - bool: 題目包含 website、latest、current、online 等線索時回傳 True。
         """
         normalized = str(question or "").lower()
         return any(
@@ -451,13 +482,13 @@ class EvidenceBuilder:
 
     def _join_contexts(self, contexts: list[str]) -> str:
         """
-        ????????????
-        
+        將多段 evidence context 合併成單一 prompt 文字。
+
         Args:
-            - ????????????
-        
+            - contexts: 多段可能為空的 evidence context。
+
         Returns:
-            - ????????????
+            - str: 以空行分隔後的合併 context。
         """
         valid = [ctx for ctx in contexts if ctx and ctx.strip()]
         return "\n\n".join(valid).strip()
@@ -471,13 +502,16 @@ class EvidenceBuilder:
         search: dict[str, Any],
     ) -> str:
         """
-        ????????????
-        
+        從多種工具 evidence 中選出最適合作為主要 prompt context 的內容。
+
         Args:
-            - ????????????
-        
+            - attachment: attachment evidence 結果。
+            - calc: calculator evidence 結果。
+            - solver: deterministic solver evidence 結果。
+            - search: search evidence 結果。
+
         Returns:
-            - ????????????
+            - str: 優先順序為 solver、attachment、search、calculator 的主要 context。
         """
         for item in (solver, attachment, search, calc):
             if item.get("used") and str(item.get("context", "") or "").strip():

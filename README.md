@@ -160,10 +160,20 @@ OLLAMA_API_KEY=
 OLLAMA_TIMEOUT=120
 
 Nemotron_MODEL_ID=nemotron-mini:4b
-Phi_MODEL_ID=phi4-mini:3.8b
+Minicpm_MODEL_ID=yefx/minicpm3_4b
 Qwen_MODEL_ID=qwen3:4b
 Gemma_MODEL_ID=gemma3:4b
 ```
+
+The default model aliases used by the GAIA runner are mapped by `SLM_Agent` to
+the environment variables above:
+
+| Internal alias | Environment variable | Example local model |
+| --- | --- | --- |
+| `nemotron-mini:4b` | `Nemotron_MODEL_ID` | `nemotron-3-nano:4b` |
+| `minicpm3:4b` | `Minicpm_MODEL_ID` | `yefx/minicpm3_4b` |
+| `qwen3:4b` | `Qwen_MODEL_ID` | `qwen3:4b` |
+| `gemma3:4b` | `Gemma_MODEL_ID` | `gemma4:e4b` |
 
 Optional vision and attachment settings:
 
@@ -179,7 +189,13 @@ SEARCH_BACKEND=searxng
 SEARXNG_URL=http://localhost:8080
 TAVILY_API_KEY=
 SERPAPI_API_KEY=
+PERPLEXITY_API_KEY=
 ```
+
+Supported search backends include `hybrid`, `advanced`, `searxng`, `tavily`,
+`serpapi`, `duckduckgo`, and `perplexity`. The search tool can return structured
+results and, when precision is needed, conditionally fetch full page content for
+evidence extraction.
 
 GAIA dataset access may require:
 
@@ -253,7 +269,7 @@ The default GAIA runner configures four agents:
 | Agent | Default model |
 | --- | --- |
 | `nemotron` | `nemotron-mini:4b` |
-| `phi` | `phi4-mini:3.8b` |
+| `minicpm` | `minicpm3:4b` |
 | `qwen` | `qwen3:4b` |
 | `gemma` | `gemma3:4b` |
 
@@ -302,11 +318,45 @@ Currently supported Stage 1 tools include:
 
 | Tool | Purpose |
 | --- | --- |
-| `search` | Search for external evidence. |
+| `search` | Build evidence-oriented web search context. |
 | `python_calculator` | Compute deterministic arithmetic or small calculations. |
 
 Tool calls are cached by normalized tool name and arguments. If two runs ask for
 the same tool with the same arguments, SCP reuses the cached result.
+
+The shared search flow uses `EvidenceSearcher`:
+
+```text
+question
+-> query planning
+-> structured search
+-> source filtering
+-> evidence extraction
+-> candidate answer extraction
+-> prompt rendering
+```
+
+The prompt sent to agents is intentionally compact:
+
+```text
+Original Question:
+...
+
+Query:
+[Q1] ...
+
+Evidence:
+[E1]
+Source: ...
+Query: Q1
+Text: ...
+
+Candidate Answer:
+[C1] answer=...; type=...; evidence=E1
+```
+
+URLs, filtered sources, relevance scores, and other diagnostics are kept in the
+exported `raw_result` for debugging, but are not included in the agent prompt.
 
 ## Scoring
 

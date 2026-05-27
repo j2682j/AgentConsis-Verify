@@ -213,10 +213,25 @@ class Stage2Runner:
             - list[dict]: 每次工具使用的 run_index、tool_name、tool_args、reasoning_step 與 result_summary。
         """
         evidence: list[dict] = []
+        seen_contexts: set[str] = set()
 
         for run in target.runs:
             if not run.parse_completed:
                 continue
+            tool_context = str(run.tool_context or "").strip()
+            if tool_context and tool_context not in seen_contexts:
+                seen_contexts.add(tool_context)
+                evidence.append(
+                    {
+                        "run_index": run.run_index,
+                        "question": self.question,
+                        "tool_name": "shared_evidence",
+                        "tool_args": {},
+                        "reasoning_step": "shared evidence provided before Stage1 reasoning",
+                        "cache_hit": False,
+                        "result_summary": tool_context[:2000],
+                    }
+                )
 
             for index, tool_call in enumerate(run.tool_calls):
                 tool_result = (

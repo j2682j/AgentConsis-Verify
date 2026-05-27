@@ -39,6 +39,7 @@ class EvidenceRunner:
         routing_contract: SystemRoutingContract | None = None,
         attachment_evidence_builder: AttachmentEvidenceBuilder | None = None,
         deterministic_solver: DeterministicSolver | None = None,
+        compact_search_evidence: bool = False,
     ) -> None:
         self.question = question
         self.attachment = attachment or {}
@@ -48,6 +49,7 @@ class EvidenceRunner:
         self.routing_contract = routing_contract or SystemRoutingContract()
         self.attachment_evidence_builder = attachment_evidence_builder or AttachmentEvidenceBuilder()
         self.deterministic_solver = deterministic_solver or DeterministicSolver()
+        self.compact_search_evidence = compact_search_evidence
 
     def run(self) -> dict[str, Any]:
         """
@@ -220,7 +222,10 @@ class EvidenceRunner:
             ]
 
         try:
-            searcher = EvidenceSearcher(tool_manager=self.tool_manager)
+            searcher = EvidenceSearcher(
+                tool_manager=self.tool_manager,
+                compact_evidence=self.compact_search_evidence,
+            )
             output = searcher.search(
                 self.question,
                 max_queries=3,

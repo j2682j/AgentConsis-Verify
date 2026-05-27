@@ -11,10 +11,13 @@ from .config import (
     SearchQueryPlan,
     SearchSourceCandidate,
 )
-from .evidence_renderer import EvidenceRenderer
-from .extractor import CandidateExtractor, EvidenceExtractor
-from .search_query_planner import SearchQueryPlanner
-from .search_source_filter import SourceFilter
+from .analysis import QuestionAnalyzer
+from .compression import EvidenceCompressor
+from .extraction import EvidenceExtractor, QuestionTermFilter, TypedCandidateExtractor
+from .filtering import SourceFilter
+from .planning import CandidateVerificationSearcher, SearchQueryPlanner
+from .rendering import AgentEvidenceRenderer, EvidenceRenderer
+from .verification import CandidateVerifier
 
 
 class EvidenceSearcher:
@@ -26,7 +29,7 @@ class EvidenceSearcher:
         - query_planner: Optional SearchQueryPlanner instance.
         - source_filter: Optional SourceFilter instance.
         - evidence_extractor: Optional EvidenceExtractor instance.
-        - candidate_extractor: Optional CandidateExtractor instance.
+        - candidate_extractor: Optional TypedCandidateExtractor instance.
         - renderer: Optional EvidenceRenderer instance.
 
     Returns:
@@ -40,15 +43,32 @@ class EvidenceSearcher:
         query_planner: SearchQueryPlanner | None = None,
         source_filter: SourceFilter | None = None,
         evidence_extractor: EvidenceExtractor | None = None,
-        candidate_extractor: CandidateExtractor | None = None,
+        candidate_extractor: TypedCandidateExtractor | None = None,
+        candidate_verifier: CandidateVerifier | None = None,
+        evidence_compressor: EvidenceCompressor | None = None,
         renderer: EvidenceRenderer | None = None,
+        agent_renderer: AgentEvidenceRenderer | None = None,
+        question_analyzer: QuestionAnalyzer | None = None,
+        question_term_filter: QuestionTermFilter | None = None,
+        candidate_verification_searcher: CandidateVerificationSearcher | None = None,
+        compact_evidence: bool = False,
     ) -> None:
         self.tool_manager = tool_manager
         self.query_planner = query_planner or SearchQueryPlanner()
         self.source_filter = source_filter or SourceFilter()
         self.evidence_extractor = evidence_extractor or EvidenceExtractor()
-        self.candidate_extractor = candidate_extractor or CandidateExtractor()
+        self.candidate_extractor = candidate_extractor or TypedCandidateExtractor()
+        self.candidate_verifier = candidate_verifier or CandidateVerifier()
+        self.evidence_compressor = evidence_compressor or EvidenceCompressor()
         self.renderer = renderer or EvidenceRenderer()
+        self.agent_renderer = agent_renderer or AgentEvidenceRenderer()
+        self.question_analyzer = question_analyzer or QuestionAnalyzer()
+        self.question_term_filter = question_term_filter or QuestionTermFilter()
+        self.candidate_verification_searcher = candidate_verification_searcher or CandidateVerificationSearcher(
+            tool_manager=tool_manager,
+            domain_parser=self._domain,
+        )
+        self.compact_evidence = compact_evidence
 
     def search(
         self,
@@ -74,6 +94,7 @@ class EvidenceSearcher:
         Returns:
             - EvidenceOutput: Structured evidence bundle for rendering or scoring.
         """
+        analysis = self.question_analyzer.analyze(question)
         plan_dict = self.query_planner.plan(question=question, max_queries=max_queries)
         queries = self._build_query_plans(plan_dict)
         if not queries:
@@ -114,24 +135,91 @@ class EvidenceSearcher:
             question=question,
             sources=filtered_sources,
         )
-        candidates = self.candidate_extractor.extract_candidates(
+        raw_candidates = self.candidate_extractor.extract_candidates(
             question=question,
+            analysis=analysis,
             evidence_items=evidence_items,
             sources=filtered_sources,
+            max_candidates=10,
+        )
+        candidates, rejected_candidates = self.question_term_filter.filter(
+            question=question,
+            analysis=analysis,
+            candidates=raw_candidates,
+        )
+
+        verification_results, verification_tool_usage = self.candidate_verification_searcher.verify_candidates(
+            question=question,
+            analysis=analysis,
+            candidates=candidates[:5],
             max_candidates=5,
+            max_results_per_query=3,
+            max_full_page_results=1,
+            agent_id=agent_id,
+            stage=f"{stage}_candidate_verification",
+        )
+        tool_usage.extend(verification_tool_usage)
+
+        verification_sources: list[SearchSourceCandidate] = []
+        verification_queries: list[SearchQueryPlan] = []
+        for verification in verification_results:
+            verification_queries.extend(verification.queries)
+            verification_sources.extend(verification.sources)
+
+        filtered_verification_sources = self.source_filter.filter_sources(verification_sources)
+        blocked_sources.extend(source for source in verification_sources if source.blocked)
+        verification_evidence = self.evidence_extractor.extract(
+            question=question,
+            sources=filtered_verification_sources,
+            max_items=12,
+            max_chars_per_item=360,
+        )
+        for index, item in enumerate(verification_evidence, start=1):
+            item.evidence_id = f"V{index}"
+
+        all_sources = [*filtered_sources, *filtered_verification_sources]
+        all_evidence = [*evidence_items, *verification_evidence]
+        verified_candidates, fact_cards = self.candidate_verifier.verify(
+            question=question,
+            candidates=candidates,
+            evidence_items=all_evidence,
+            sources=all_sources,
+            analysis=analysis,
+        )
+        answer_type = analysis.answer_type
+        agent_packet = self.evidence_compressor.compress(
+            question=question,
+            answer_type=answer_type,
+            verified_candidates=verified_candidates,
+            fact_cards=fact_cards,
         )
 
         output = EvidenceOutput(
             question=question,
-            queries=queries,
-            sources=filtered_sources,
-            evidence_items=evidence_items,
+            queries=[*queries, *verification_queries],
+            sources=all_sources,
+            evidence_items=all_evidence,
             candidates=candidates,
             summary="",
+            verified_candidates=verified_candidates,
+            fact_cards=fact_cards,
+            agent_packet=agent_packet,
+            question_analysis=analysis,
+            candidate_diagnostics=self._candidate_diagnostics(
+                analysis=analysis,
+                raw_candidates=raw_candidates,
+                filtered_candidates=candidates,
+                verified_candidates=verified_candidates,
+                rejected_candidates=rejected_candidates,
+            ),
             tool_usage=tool_usage,
             blocked_sources=blocked_sources,
         )
-        output.summary = self.renderer.render(output)
+        output.summary = (
+            self.agent_renderer.render(agent_packet)
+            if self.compact_evidence
+            else self.renderer.render(output)
+        )
         return output
 
     def render(self, output: EvidenceOutput) -> str:
@@ -268,6 +356,44 @@ class EvidenceSearcher:
         if any(marker in lowered for marker in ("url", "website")):
             return "website"
         return "entity"
+
+    def _answer_type(self, question: str, candidates: list[Any]) -> str:
+        if candidates:
+            return str(candidates[0].answer_type or "entity")
+        lowered = question.lower()
+        if "who" in lowered:
+            return "person"
+        if "where" in lowered:
+            return "place"
+        if "when" in lowered or "date" in lowered or "year" in lowered:
+            return "date"
+        if "title" in lowered or "book" in lowered or "paper" in lowered:
+            return "title"
+        if any(marker in lowered for marker in ("number", "how many", "amount", "score")):
+            return "number"
+        return "entity"
+
+    def _candidate_diagnostics(
+        self,
+        *,
+        analysis: Any,
+        raw_candidates: list[Any],
+        filtered_candidates: list[Any],
+        verified_candidates: list[Any],
+        rejected_candidates: list[dict[str, str]],
+    ) -> dict[str, Any]:
+        top_candidate = verified_candidates[0] if verified_candidates else None
+        return {
+            "answer_type": getattr(analysis, "answer_type", "unknown"),
+            "raw_candidate_count": len(raw_candidates),
+            "filtered_candidate_count": len(filtered_candidates),
+            "verified_candidate_count": len(verified_candidates),
+            "top_candidate": getattr(top_candidate, "answer", "") if top_candidate else "",
+            "top_candidate_confidence": getattr(top_candidate, "confidence", 0.0) if top_candidate else 0.0,
+            "top_candidate_support": getattr(top_candidate, "support_count", 0) if top_candidate else 0,
+            "top_candidate_refute": getattr(top_candidate, "refute_count", 0) if top_candidate else 0,
+            "rejected_candidates": rejected_candidates[:20],
+        }
 
     def _domain(self, url: str) -> str:
         try:

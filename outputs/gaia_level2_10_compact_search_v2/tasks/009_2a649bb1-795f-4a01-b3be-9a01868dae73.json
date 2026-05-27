@@ -1,0 +1,1775 @@
+{
+  "task_id": "2a649bb1-795f-4a01-b3be-9a01868dae73",
+  "level": "2",
+  "question": "What are the EC numbers of the two most commonly used chemicals for the virus testing method in the paper about SPFMV and SPCSV in the Pearl Of Africa from 2016? Return the semicolon-separated numbers in the order of the alphabetized chemicals.",
+  "attachment": {},
+  "predicted": "",
+  "expected": "3.1.3.1; 1.11.1.7",
+  "exact_match": false,
+  "partial_match": false,
+  "score": 0.0,
+  "winner_agent_id": "",
+  "response_time_seconds": 89.60943179996684,
+  "total_tokens": 13727,
+  "token_usage": {
+    "stage1": {
+      "prompt_tokens": 7440,
+      "completion_tokens": 6287,
+      "total_tokens": 13727
+    },
+    "stage2": {
+      "prompt_tokens": 0,
+      "completion_tokens": 0,
+      "total_tokens": 0
+    },
+    "total": {
+      "prompt_tokens": 7440,
+      "completion_tokens": 6287,
+      "total_tokens": 13727
+    }
+  },
+  "search_summary": {
+    "candidate_count": 3,
+    "fact_count": 3,
+    "top_candidate": "Both SPFMV",
+    "top_candidate_confidence": 0.45,
+    "top_candidate_support": 1,
+    "top_candidate_refute": 0,
+    "missing_info": [],
+    "risk_flags": []
+  },
+  "execution_time": 89.61007571220398,
+  "error": "",
+  "network_summary": {
+    "question": "What are the EC numbers of the two most commonly used chemicals for the virus testing method in the paper about SPFMV and SPCSV in the Pearl Of Africa from 2016? Return the semicolon-separated numbers in the order of the alphabetized chemicals.",
+    "final_answer": "",
+    "winner_agent_id": "",
+    "stage1_results": [
+      {
+        "agent_id": "nemotron",
+        "model_name": "nemotron-mini:4b",
+        "runs": [
+          {
+            "agent_id": "nemotron",
+            "model_name": "nemotron-mini:4b",
+            "run_index": 1,
+            "raw_reply": "REASONING =\nstep 1. The task is to identify the EC numbers of the two most commonly used chemicals for the virus testing method described in the 2016 paper on SPFMV and SPCSV.  \nstep 2. The provided candidate answers (C1, C2, C3) do not contain EC numbers; they refer to virus names, geographic regions, and paper type.  \nstep 3. The supporting facts (F3, F9, F19) confirm the content of the candidates but still do not supply any EC numbers.  \nstep 4. Since no candidate or fact includes the required EC numbers, the information is insufficient and we must request more evidence.  \nFINAL_ANSWER = NEED_MORE_EVIDENCE",
+            "reasoning": "",
+            "final_answer": "",
+            "parse_completed": false,
+            "tool_context": "Search_Result:\nOriginal Question:\nWhat are the EC numbers of the two most commonly used chemicals for the virus testing method in the paper about SPFMV and SPCSV in the Pearl Of Africa from 2016? Return the semicolon-separated numbers in the order of the alphabetized chemicals.\n\nAnswer Type: title\n\nVerified Candidate Answer:\n[C1] answer=Both SPFMV; type=title; support=1; refute=0; neutral=5; confidence=0.45; risk=-\n[C2] answer=East Africa; type=title; support=1; refute=0; neutral=5; confidence=0.45; risk=-\n[C3] answer=Identification: Institutional Paper; type=title; support=1; refute=0; neutral=6; confidence=0.45; risk=-\n\nFact:\n[F3] supports C1; confidence=1.0\nClaim: Both SPFMV and Sweet potato chlorotic stunt virus (SPCSV) have higher prevalence and distribution across East Africa than any of the sweet potato viruses ...\nConstraint Match: africa, spcsv, spfmv, virus\n[F9] supports C2; confidence=1.0\nClaim: Both SPFMV and Sweet potato chlorotic stunt virus (SPCSV) have higher prevalence and distribution across East Africa than any of the sweet potato viruses ...\nConstraint Match: africa, spcsv, spfmv, virus\n[F19] supports C3; confidence=0.905\nClaim: Details. Identification: Institutional Paper 45; Publication date.\nConstraint Match: 2016, paper\n\nMissing Info:\nNone\n\nRisk Flags:\nNone",
+            "prompt_tokens": 612,
+            "completion_tokens": 423,
+            "total_tokens": 1035,
+            "tool_calls": [],
+            "tool_results": [],
+            "trajectory": []
+          },
+          {
+            "agent_id": "nemotron",
+            "model_name": "nemotron-mini:4b",
+            "run_index": 2,
+            "raw_reply": "REASONING =\nstep 1. The task asks for EC numbers of chemicals used in a virus testing method, which are specific external facts not provided in the evidence.\nstep 2. The verified candidates (C1, C2, C3) are titles or descriptions unrelated to EC numbers.\nstep 3. No evidence links chemicals to EC numbers, so the required information cannot be derived.\n\nFINAL_ANSWER = NEED_MORE_EVIDENCE",
+            "reasoning": "",
+            "final_answer": "",
+            "parse_completed": false,
+            "tool_context": "Search_Result:\nOriginal Question:\nWhat are the EC numbers of the two most commonly used chemicals for the virus testing method in the paper about SPFMV and SPCSV in the Pearl Of Africa from 2016? Return the semicolon-separated numbers in the order of the alphabetized chemicals.\n\nAnswer Type: title\n\nVerified Candidate Answer:\n[C1] answer=Both SPFMV; type=title; support=1; refute=0; neutral=5; confidence=0.45; risk=-\n[C2] answer=East Africa; type=title; support=1; refute=0; neutral=5; confidence=0.45; risk=-\n[C3] answer=Identification: Institutional Paper; type=title; support=1; refute=0; neutral=6; confidence=0.45; risk=-\n\nFact:\n[F3] supports C1; confidence=1.0\nClaim: Both SPFMV and Sweet potato chlorotic stunt virus (SPCSV) have higher prevalence and distribution across East Africa than any of the sweet potato viruses ...\nConstraint Match: africa, spcsv, spfmv, virus\n[F9] supports C2; confidence=1.0\nClaim: Both SPFMV and Sweet potato chlorotic stunt virus (SPCSV) have higher prevalence and distribution across East Africa than any of the sweet potato viruses ...\nConstraint Match: africa, spcsv, spfmv, virus\n[F19] supports C3; confidence=0.905\nClaim: Details. Identification: Institutional Paper 45; Publication date.\nConstraint Match: 2016, paper\n\nMissing Info:\nNone\n\nRisk Flags:\nNone",
+            "prompt_tokens": 612,
+            "completion_tokens": 211,
+            "total_tokens": 823,
+            "tool_calls": [],
+            "tool_results": [],
+            "trajectory": []
+          },
+          {
+            "agent_id": "nemotron",
+            "model_name": "nemotron-mini:4b",
+            "run_index": 3,
+            "raw_reply": "REASONING =  \nstep 1. The verified candidate answer (C1) only states the chemical names “Both SPFMV” and does not provide any EC numbers.  \nstep 2. None of the evidence items (F3, F9, F19) mention EC numbers for the chemicals SPFMV or SPCSV.  \nstep 3. Since the required EC numbers are not present in the available evidence, the answer cannot be determined from the given data.  \nFINAL_ANSWER = NEED_MORE_EVIDENCE",
+            "reasoning": "",
+            "final_answer": "",
+            "parse_completed": false,
+            "tool_context": "Search_Result:\nOriginal Question:\nWhat are the EC numbers of the two most commonly used chemicals for the virus testing method in the paper about SPFMV and SPCSV in the Pearl Of Africa from 2016? Return the semicolon-separated numbers in the order of the alphabetized chemicals.\n\nAnswer Type: title\n\nVerified Candidate Answer:\n[C1] answer=Both SPFMV; type=title; support=1; refute=0; neutral=5; confidence=0.45; risk=-\n[C2] answer=East Africa; type=title; support=1; refute=0; neutral=5; confidence=0.45; risk=-\n[C3] answer=Identification: Institutional Paper; type=title; support=1; refute=0; neutral=6; confidence=0.45; risk=-\n\nFact:\n[F3] supports C1; confidence=1.0\nClaim: Both SPFMV and Sweet potato chlorotic stunt virus (SPCSV) have higher prevalence and distribution across East Africa than any of the sweet potato viruses ...\nConstraint Match: africa, spcsv, spfmv, virus\n[F9] supports C2; confidence=1.0\nClaim: Both SPFMV and Sweet potato chlorotic stunt virus (SPCSV) have higher prevalence and distribution across East Africa than any of the sweet potato viruses ...\nConstraint Match: africa, spcsv, spfmv, virus\n[F19] supports C3; confidence=0.905\nClaim: Details. Identification: Institutional Paper 45; Publication date.\nConstraint Match: 2016, paper\n\nMissing Info:\nNone\n\nRisk Flags:\nNone",
+            "prompt_tokens": 612,
+            "completion_tokens": 427,
+            "total_tokens": 1039,
+            "tool_calls": [],
+            "tool_results": [],
+            "trajectory": []
+          }
+        ],
+        "compressed_answer": "",
+        "compressed_reasoning": "",
+        "confidence_score": 0.0,
+        "active": false
+      },
+      {
+        "agent_id": "minicpm",
+        "model_name": "minicpm3:4b",
+        "runs": [
+          {
+            "agent_id": "minicpm",
+            "model_name": "minicpm3:4b",
+            "run_index": 1,
+            "raw_reply": "REASONING =\nNo information is provided about the EC numbers of the two most commonly used chemicals for the virus testing method in the paper about SPFMV and SPCSV in the Pearl Of Africa from 2016. The provided facts do not contain any relevant information about EC numbers or the specific chemicals used in the virus testing method.\n\nFIINAL_ANSWE",
+            "reasoning": "",
+            "final_answer": "",
+            "parse_completed": false,
+            "tool_context": "Search_Result:\nOriginal Question:\nWhat are the EC numbers of the two most commonly used chemicals for the virus testing method in the paper about SPFMV and SPCSV in the Pearl Of Africa from 2016? Return the semicolon-separated numbers in the order of the alphabetized chemicals.\n\nAnswer Type: title\n\nVerified Candidate Answer:\n[C1] answer=Both SPFMV; type=title; support=1; refute=0; neutral=5; confidence=0.45; risk=-\n[C2] answer=East Africa; type=title; support=1; refute=0; neutral=5; confidence=0.45; risk=-\n[C3] answer=Identification: Institutional Paper; type=title; support=1; refute=0; neutral=6; confidence=0.45; risk=-\n\nFact:\n[F3] supports C1; confidence=1.0\nClaim: Both SPFMV and Sweet potato chlorotic stunt virus (SPCSV) have higher prevalence and distribution across East Africa than any of the sweet potato viruses ...\nConstraint Match: africa, spcsv, spfmv, virus\n[F9] supports C2; confidence=1.0\nClaim: Both SPFMV and Sweet potato chlorotic stunt virus (SPCSV) have higher prevalence and distribution across East Africa than any of the sweet potato viruses ...\nConstraint Match: africa, spcsv, spfmv, virus\n[F19] supports C3; confidence=0.905\nClaim: Details. Identification: Institutional Paper 45; Publication date.\nConstraint Match: 2016, paper\n\nMissing Info:\nNone\n\nRisk Flags:\nNone",
+            "prompt_tokens": 672,
+            "completion_tokens": 80,
+            "total_tokens": 752,
+            "tool_calls": [],
+            "tool_results": [],
+            "trajectory": []
+          },
+          {
+            "agent_id": "minicpm",
+            "model_name": "minicpm3:4b",
+            "run_index": 2,
+            "raw_reply": "REASONING = \nThere is no direct mention of EC numbers for the chemicals used in the virus testing method in the provided information. The search results did not yield any specific EC numbers. Therefore, it is not possible to determine the EC numbers for the two most commonly used chemicals for the virus testing method in the paper about SPFMV and SPCSV in the Pearl Of Africa from 2016.\n\nFIINAL_ANSWE",
+            "reasoning": "",
+            "final_answer": "",
+            "parse_completed": false,
+            "tool_context": "Search_Result:\nOriginal Question:\nWhat are the EC numbers of the two most commonly used chemicals for the virus testing method in the paper about SPFMV and SPCSV in the Pearl Of Africa from 2016? Return the semicolon-separated numbers in the order of the alphabetized chemicals.\n\nAnswer Type: title\n\nVerified Candidate Answer:\n[C1] answer=Both SPFMV; type=title; support=1; refute=0; neutral=5; confidence=0.45; risk=-\n[C2] answer=East Africa; type=title; support=1; refute=0; neutral=5; confidence=0.45; risk=-\n[C3] answer=Identification: Institutional Paper; type=title; support=1; refute=0; neutral=6; confidence=0.45; risk=-\n\nFact:\n[F3] supports C1; confidence=1.0\nClaim: Both SPFMV and Sweet potato chlorotic stunt virus (SPCSV) have higher prevalence and distribution across East Africa than any of the sweet potato viruses ...\nConstraint Match: africa, spcsv, spfmv, virus\n[F9] supports C2; confidence=1.0\nClaim: Both SPFMV and Sweet potato chlorotic stunt virus (SPCSV) have higher prevalence and distribution across East Africa than any of the sweet potato viruses ...\nConstraint Match: africa, spcsv, spfmv, virus\n[F19] supports C3; confidence=0.905\nClaim: Details. Identification: Institutional Paper 45; Publication date.\nConstraint Match: 2016, paper\n\nMissing Info:\nNone\n\nRisk Flags:\nNone",
+            "prompt_tokens": 672,
+            "completion_tokens": 94,
+            "total_tokens": 766,
+            "tool_calls": [],
+            "tool_results": [],
+            "trajectory": []
+          },
+          {
+            "agent_id": "minicpm",
+            "model_name": "minicpm3:4b",
+            "run_index": 3,
+            "raw_reply": "REASONING =\nThere is no direct mention of EC numbers for the chemicals used in the virus testing method in the provided information. The answer to this question cannot be determined from the given evidence.\n\nFIINAL_ANSWEr = NEED_MORE_EVIDEnce",
+            "reasoning": "",
+            "final_answer": "",
+            "parse_completed": false,
+            "tool_context": "Search_Result:\nOriginal Question:\nWhat are the EC numbers of the two most commonly used chemicals for the virus testing method in the paper about SPFMV and SPCSV in the Pearl Of Africa from 2016? Return the semicolon-separated numbers in the order of the alphabetized chemicals.\n\nAnswer Type: title\n\nVerified Candidate Answer:\n[C1] answer=Both SPFMV; type=title; support=1; refute=0; neutral=5; confidence=0.45; risk=-\n[C2] answer=East Africa; type=title; support=1; refute=0; neutral=5; confidence=0.45; risk=-\n[C3] answer=Identification: Institutional Paper; type=title; support=1; refute=0; neutral=6; confidence=0.45; risk=-\n\nFact:\n[F3] supports C1; confidence=1.0\nClaim: Both SPFMV and Sweet potato chlorotic stunt virus (SPCSV) have higher prevalence and distribution across East Africa than any of the sweet potato viruses ...\nConstraint Match: africa, spcsv, spfmv, virus\n[F9] supports C2; confidence=1.0\nClaim: Both SPFMV and Sweet potato chlorotic stunt virus (SPCSV) have higher prevalence and distribution across East Africa than any of the sweet potato viruses ...\nConstraint Match: africa, spcsv, spfmv, virus\n[F19] supports C3; confidence=0.905\nClaim: Details. Identification: Institutional Paper 45; Publication date.\nConstraint Match: 2016, paper\n\nMissing Info:\nNone\n\nRisk Flags:\nNone",
+            "prompt_tokens": 672,
+            "completion_tokens": 62,
+            "total_tokens": 734,
+            "tool_calls": [],
+            "tool_results": [],
+            "trajectory": []
+          }
+        ],
+        "compressed_answer": "",
+        "compressed_reasoning": "",
+        "confidence_score": 0.0,
+        "active": false
+      },
+      {
+        "agent_id": "qwen",
+        "model_name": "qwen3:4b",
+        "runs": [
+          {
+            "agent_id": "qwen",
+            "model_name": "qwen3:4b",
+            "run_index": 1,
+            "raw_reply": "REASONING = \nstep 1. The question asks for EC numbers of the two most commonly used chemicals for virus testing in a 2016 paper about SPFMV and SPCSV in \"Pearl Of Africa\". EC numbers typically refer to enzyme classification numbers, but in this context, the user likely means chemical reagents or test chemicals.\nstep 2. The Verified Candidate Answers (C1, C2, C3) are all titles: \"Both SPFMV\", \"East Africa\", and \"Identification: Institutional Paper\". None of these provide EC numbers as requested.\nstep 3. The supporting evidence (F3, F9, F19) confirms these titles but does not include EC numbers, chemical test reagents, or any numerical data related to virus testing methods.\nstep 4. The Missing Info and Risk Flags indicate no additional data exists in the current evidence to identify EC numbers for SPFMV/SPCSV testing in the specified paper.\nstep 5. Since the evidence does not contain EC numbers and the verified candidates are unrelated to numerical answers, the required information is absent.\n\nFINAL_ANSWER = NEED_MORE_EVIDENCE",
+            "reasoning": "",
+            "final_answer": "",
+            "parse_completed": false,
+            "tool_context": "Search_Result:\nOriginal Question:\nWhat are the EC numbers of the two most commonly used chemicals for the virus testing method in the paper about SPFMV and SPCSV in the Pearl Of Africa from 2016? Return the semicolon-separated numbers in the order of the alphabetized chemicals.\n\nAnswer Type: title\n\nVerified Candidate Answer:\n[C1] answer=Both SPFMV; type=title; support=1; refute=0; neutral=5; confidence=0.45; risk=-\n[C2] answer=East Africa; type=title; support=1; refute=0; neutral=5; confidence=0.45; risk=-\n[C3] answer=Identification: Institutional Paper; type=title; support=1; refute=0; neutral=6; confidence=0.45; risk=-\n\nFact:\n[F3] supports C1; confidence=1.0\nClaim: Both SPFMV and Sweet potato chlorotic stunt virus (SPCSV) have higher prevalence and distribution across East Africa than any of the sweet potato viruses ...\nConstraint Match: africa, spcsv, spfmv, virus\n[F9] supports C2; confidence=1.0\nClaim: Both SPFMV and Sweet potato chlorotic stunt virus (SPCSV) have higher prevalence and distribution across East Africa than any of the sweet potato viruses ...\nConstraint Match: africa, spcsv, spfmv, virus\n[F19] supports C3; confidence=0.905\nClaim: Details. Identification: Institutional Paper 45; Publication date.\nConstraint Match: 2016, paper\n\nMissing Info:\nNone\n\nRisk Flags:\nNone",
+            "prompt_tokens": 580,
+            "completion_tokens": 1232,
+            "total_tokens": 1812,
+            "tool_calls": [],
+            "tool_results": [],
+            "trajectory": []
+          },
+          {
+            "agent_id": "qwen",
+            "model_name": "qwen3:4b",
+            "run_index": 2,
+            "raw_reply": "REASONING = \nstep 1. The user asks for EC numbers of the two most commonly used chemicals for virus testing in a 2016 paper about SPFMV and SPCSV in \"Pearl Of Africa\". \nstep 2. Verified Candidate Answers (C1, C2, C3) are all titles or sections of the paper (e.g., \"Both SPFMV\", \"East Africa\", \"Identification: Institutional Paper\") and do not contain EC numbers or chemical identifiers. \nstep 3. The search results and supporting facts (F3, F9, F19) describe the prevalence of SPFMV/SPCSV in East Africa and paper details but provide no EC numbers for testing chemicals. \nstep 4. The question requires EC numbers (enzyme commission numbers, which typically refer to enzymes, not testing chemicals), but the evidence does not include any chemical EC numbers or relevant data for this specific paper. \nstep 5. Since no Evidence item supports EC numbers and all Verified Candidates are unrelated to the requested answer, the response must be NEED_MORE_EVIDENCE.\n\nFINAL_ANSWER = NEED_MORE_EVIDENCE",
+            "reasoning": "",
+            "final_answer": "",
+            "parse_completed": false,
+            "tool_context": "Search_Result:\nOriginal Question:\nWhat are the EC numbers of the two most commonly used chemicals for the virus testing method in the paper about SPFMV and SPCSV in the Pearl Of Africa from 2016? Return the semicolon-separated numbers in the order of the alphabetized chemicals.\n\nAnswer Type: title\n\nVerified Candidate Answer:\n[C1] answer=Both SPFMV; type=title; support=1; refute=0; neutral=5; confidence=0.45; risk=-\n[C2] answer=East Africa; type=title; support=1; refute=0; neutral=5; confidence=0.45; risk=-\n[C3] answer=Identification: Institutional Paper; type=title; support=1; refute=0; neutral=6; confidence=0.45; risk=-\n\nFact:\n[F3] supports C1; confidence=1.0\nClaim: Both SPFMV and Sweet potato chlorotic stunt virus (SPCSV) have higher prevalence and distribution across East Africa than any of the sweet potato viruses ...\nConstraint Match: africa, spcsv, spfmv, virus\n[F9] supports C2; confidence=1.0\nClaim: Both SPFMV and Sweet potato chlorotic stunt virus (SPCSV) have higher prevalence and distribution across East Africa than any of the sweet potato viruses ...\nConstraint Match: africa, spcsv, spfmv, virus\n[F19] supports C3; confidence=0.905\nClaim: Details. Identification: Institutional Paper 45; Publication date.\nConstraint Match: 2016, paper\n\nMissing Info:\nNone\n\nRisk Flags:\nNone",
+            "prompt_tokens": 580,
+            "completion_tokens": 1060,
+            "total_tokens": 1640,
+            "tool_calls": [],
+            "tool_results": [],
+            "trajectory": []
+          },
+          {
+            "agent_id": "qwen",
+            "model_name": "qwen3:4b",
+            "run_index": 3,
+            "raw_reply": "REASONING = \nstep 1. The question asks for EC numbers of the two most commonly used chemicals for virus testing in a 2016 paper about SPFMV and SPCSV from \"Pearl Of Africa\". \nstep 2. Verified Candidate Answers (C1, C2, C3) only provide titles (\"Both SPFMV\", \"East Africa\", \"Identification: Institutional Paper\") with no EC numbers or chemical testing details. \nstep 3. Search results (Facts [F3], [F9], [F19]) support the titles but contain no EC numbers, chemical reagents, or virus testing methodologies. The constraint matches mention \"africa\", \"spcsv\", \"spfmv\", \"virus\", and \"2016\" but lack specific chemical identifiers. \nstep 4. No evidence directly states EC numbers for virus testing chemicals in this context. The required data (EC numbers) is absent from all provided evidence. \nstep 5. Since the evidence does not support any EC number answers and the question requires specific external facts, the answer cannot be derived from available data.\n\nFINAL_ANSWER = NEED_MORE_EVIDENCE",
+            "reasoning": "",
+            "final_answer": "",
+            "parse_completed": false,
+            "tool_context": "Search_Result:\nOriginal Question:\nWhat are the EC numbers of the two most commonly used chemicals for the virus testing method in the paper about SPFMV and SPCSV in the Pearl Of Africa from 2016? Return the semicolon-separated numbers in the order of the alphabetized chemicals.\n\nAnswer Type: title\n\nVerified Candidate Answer:\n[C1] answer=Both SPFMV; type=title; support=1; refute=0; neutral=5; confidence=0.45; risk=-\n[C2] answer=East Africa; type=title; support=1; refute=0; neutral=5; confidence=0.45; risk=-\n[C3] answer=Identification: Institutional Paper; type=title; support=1; refute=0; neutral=6; confidence=0.45; risk=-\n\nFact:\n[F3] supports C1; confidence=1.0\nClaim: Both SPFMV and Sweet potato chlorotic stunt virus (SPCSV) have higher prevalence and distribution across East Africa than any of the sweet potato viruses ...\nConstraint Match: africa, spcsv, spfmv, virus\n[F9] supports C2; confidence=1.0\nClaim: Both SPFMV and Sweet potato chlorotic stunt virus (SPCSV) have higher prevalence and distribution across East Africa than any of the sweet potato viruses ...\nConstraint Match: africa, spcsv, spfmv, virus\n[F19] supports C3; confidence=0.905\nClaim: Details. Identification: Institutional Paper 45; Publication date.\nConstraint Match: 2016, paper\n\nMissing Info:\nNone\n\nRisk Flags:\nNone",
+            "prompt_tokens": 580,
+            "completion_tokens": 979,
+            "total_tokens": 1559,
+            "tool_calls": [],
+            "tool_results": [],
+            "trajectory": []
+          }
+        ],
+        "compressed_answer": "",
+        "compressed_reasoning": "",
+        "confidence_score": 0.0,
+        "active": false
+      },
+      {
+        "agent_id": "gemma",
+        "model_name": "gemma3:4b",
+        "runs": [
+          {
+            "agent_id": "gemma",
+            "model_name": "gemma3:4b",
+            "run_index": 1,
+            "raw_reply": "REASONING =\nstep 1. The user is asking for the EC numbers of the two most commonly used chemicals for the virus testing method described in a specific paper concerning SPFMV and SPCSV in the Pearl Of Africa from 2016.\nstep 2. I reviewed the provided Search Results and Evidence. The evidence confirms the existence and general topic of the paper (SPFMV and SPCSV in East Africa, 2016) but does not contain any information regarding the specific chemicals used for the virus testing method, nor their EC numbers.\nstep 3. Since the required specific facts (chemical names and EC numbers) are entirely missing from the provided evidence, I cannot answer the question.\nstep 4. I must request a more targeted search to find the methodology section or materials list of the specified paper.\nFINAL_ANSWER = NEED_MORE_EVIDENCE",
+            "reasoning": "",
+            "final_answer": "",
+            "parse_completed": false,
+            "tool_context": "Search_Result:\nOriginal Question:\nWhat are the EC numbers of the two most commonly used chemicals for the virus testing method in the paper about SPFMV and SPCSV in the Pearl Of Africa from 2016? Return the semicolon-separated numbers in the order of the alphabetized chemicals.\n\nAnswer Type: title\n\nVerified Candidate Answer:\n[C1] answer=Both SPFMV; type=title; support=1; refute=0; neutral=5; confidence=0.45; risk=-\n[C2] answer=East Africa; type=title; support=1; refute=0; neutral=5; confidence=0.45; risk=-\n[C3] answer=Identification: Institutional Paper; type=title; support=1; refute=0; neutral=6; confidence=0.45; risk=-\n\nFact:\n[F3] supports C1; confidence=1.0\nClaim: Both SPFMV and Sweet potato chlorotic stunt virus (SPCSV) have higher prevalence and distribution across East Africa than any of the sweet potato viruses ...\nConstraint Match: africa, spcsv, spfmv, virus\n[F9] supports C2; confidence=1.0\nClaim: Both SPFMV and Sweet potato chlorotic stunt virus (SPCSV) have higher prevalence and distribution across East Africa than any of the sweet potato viruses ...\nConstraint Match: africa, spcsv, spfmv, virus\n[F19] supports C3; confidence=0.905\nClaim: Details. Identification: Institutional Paper 45; Publication date.\nConstraint Match: 2016, paper\n\nMissing Info:\nNone\n\nRisk Flags:\nNone",
+            "prompt_tokens": 616,
+            "completion_tokens": 548,
+            "total_tokens": 1164,
+            "tool_calls": [],
+            "tool_results": [],
+            "trajectory": []
+          },
+          {
+            "agent_id": "gemma",
+            "model_name": "gemma3:4b",
+            "run_index": 2,
+            "raw_reply": "REASONING =\nstep 1. The user is asking for the EC numbers of the two most commonly used chemicals for the virus testing method described in a specific paper: \"about SPFMV and SPCSV in the Pearl Of Africa from 2016\".\nstep 2. I reviewed the provided Search_Result, Facts, and Candidate Answers.\nstep 3. The evidence confirms the existence and general topic of the paper (SPFMV and SPCSV in East Africa, 2016) but does not contain any information regarding the specific chemicals, the testing method, or their corresponding EC numbers.\nstep 4. Since the required chemical names and EC numbers are not present in the evidence, I cannot answer the question.\nFINAL_ANSWER = NEED_MORE_EVIDENCE",
+            "reasoning": "",
+            "final_answer": "",
+            "parse_completed": false,
+            "tool_context": "Search_Result:\nOriginal Question:\nWhat are the EC numbers of the two most commonly used chemicals for the virus testing method in the paper about SPFMV and SPCSV in the Pearl Of Africa from 2016? Return the semicolon-separated numbers in the order of the alphabetized chemicals.\n\nAnswer Type: title\n\nVerified Candidate Answer:\n[C1] answer=Both SPFMV; type=title; support=1; refute=0; neutral=5; confidence=0.45; risk=-\n[C2] answer=East Africa; type=title; support=1; refute=0; neutral=5; confidence=0.45; risk=-\n[C3] answer=Identification: Institutional Paper; type=title; support=1; refute=0; neutral=6; confidence=0.45; risk=-\n\nFact:\n[F3] supports C1; confidence=1.0\nClaim: Both SPFMV and Sweet potato chlorotic stunt virus (SPCSV) have higher prevalence and distribution across East Africa than any of the sweet potato viruses ...\nConstraint Match: africa, spcsv, spfmv, virus\n[F9] supports C2; confidence=1.0\nClaim: Both SPFMV and Sweet potato chlorotic stunt virus (SPCSV) have higher prevalence and distribution across East Africa than any of the sweet potato viruses ...\nConstraint Match: africa, spcsv, spfmv, virus\n[F19] supports C3; confidence=0.905\nClaim: Details. Identification: Institutional Paper 45; Publication date.\nConstraint Match: 2016, paper\n\nMissing Info:\nNone\n\nRisk Flags:\nNone",
+            "prompt_tokens": 616,
+            "completion_tokens": 523,
+            "total_tokens": 1139,
+            "tool_calls": [],
+            "tool_results": [],
+            "trajectory": []
+          },
+          {
+            "agent_id": "gemma",
+            "model_name": "gemma3:4b",
+            "run_index": 3,
+            "raw_reply": "REASONING =\nstep 1. The user is asking for the EC numbers of the two most commonly used chemicals for the virus testing method described in a specific scientific paper concerning SPFMV and SPCSV in the Pearl of Africa from 2016.\nstep 2. I reviewed the provided search results and evidence. The evidence confirms the existence and topic of the paper (SPFMV and SPCSV prevalence in East Africa/Pearl of Africa, 2016).\nstep 3. However, none of the provided evidence (F3, F9, F19) or the candidate answers (C1, C2, C3) mention any chemicals, their usage in a virus testing method, or their corresponding EC numbers.\nstep 4. Since the required specific factual information (the chemicals and their EC numbers) is entirely missing, I cannot answer the question based on the current evidence.\nstep 5. I must request a more targeted search query to find the methodology section or materials/methods section of the specified paper.\nFINAL_ANSWER = NEED_MORE_EVIDENCE",
+            "reasoning": "",
+            "final_answer": "",
+            "parse_completed": false,
+            "tool_context": "Search_Result:\nOriginal Question:\nWhat are the EC numbers of the two most commonly used chemicals for the virus testing method in the paper about SPFMV and SPCSV in the Pearl Of Africa from 2016? Return the semicolon-separated numbers in the order of the alphabetized chemicals.\n\nAnswer Type: title\n\nVerified Candidate Answer:\n[C1] answer=Both SPFMV; type=title; support=1; refute=0; neutral=5; confidence=0.45; risk=-\n[C2] answer=East Africa; type=title; support=1; refute=0; neutral=5; confidence=0.45; risk=-\n[C3] answer=Identification: Institutional Paper; type=title; support=1; refute=0; neutral=6; confidence=0.45; risk=-\n\nFact:\n[F3] supports C1; confidence=1.0\nClaim: Both SPFMV and Sweet potato chlorotic stunt virus (SPCSV) have higher prevalence and distribution across East Africa than any of the sweet potato viruses ...\nConstraint Match: africa, spcsv, spfmv, virus\n[F9] supports C2; confidence=1.0\nClaim: Both SPFMV and Sweet potato chlorotic stunt virus (SPCSV) have higher prevalence and distribution across East Africa than any of the sweet potato viruses ...\nConstraint Match: africa, spcsv, spfmv, virus\n[F19] supports C3; confidence=0.905\nClaim: Details. Identification: Institutional Paper 45; Publication date.\nConstraint Match: 2016, paper\n\nMissing Info:\nNone\n\nRisk Flags:\nNone",
+            "prompt_tokens": 616,
+            "completion_tokens": 648,
+            "total_tokens": 1264,
+            "tool_calls": [],
+            "tool_results": [],
+            "trajectory": []
+          }
+        ],
+        "compressed_answer": "",
+        "compressed_reasoning": "",
+        "confidence_score": 0.0,
+        "active": false
+      }
+    ],
+    "judge_results": [],
+    "agent_scores": [
+      {
+        "agent_id": "nemotron",
+        "model_name": "nemotron-mini:4b",
+        "temperature": 0.5,
+        "confidence_score": 0.0,
+        "judge_scores": [],
+        "avg_judge_score": 0.0,
+        "penalty_score": -1.0,
+        "penalty_reasons": [
+          "inactive_or_no_answer"
+        ],
+        "total_score": -Infinity
+      },
+      {
+        "agent_id": "minicpm",
+        "model_name": "minicpm3:4b",
+        "temperature": 0.5,
+        "confidence_score": 0.0,
+        "judge_scores": [],
+        "avg_judge_score": 0.0,
+        "penalty_score": -1.0,
+        "penalty_reasons": [
+          "inactive_or_no_answer"
+        ],
+        "total_score": -Infinity
+      },
+      {
+        "agent_id": "qwen",
+        "model_name": "qwen3:4b",
+        "temperature": 0.5,
+        "confidence_score": 0.0,
+        "judge_scores": [],
+        "avg_judge_score": 0.0,
+        "penalty_score": -1.0,
+        "penalty_reasons": [
+          "inactive_or_no_answer"
+        ],
+        "total_score": -Infinity
+      },
+      {
+        "agent_id": "gemma",
+        "model_name": "gemma3:4b",
+        "temperature": 0.5,
+        "confidence_score": 0.0,
+        "judge_scores": [],
+        "avg_judge_score": 0.0,
+        "penalty_score": -1.0,
+        "penalty_reasons": [
+          "inactive_or_no_answer"
+        ],
+        "total_score": -Infinity
+      }
+    ],
+    "metadata": {
+      "stage1_runs_per_agent": 3,
+      "response_time_seconds": 89.60943179996684,
+      "response_time_ms": 89609.432,
+      "token_usage": {
+        "stage1": {
+          "prompt_tokens": 7440,
+          "completion_tokens": 6287,
+          "total_tokens": 13727
+        },
+        "stage2": {
+          "prompt_tokens": 0,
+          "completion_tokens": 0,
+          "total_tokens": 0
+        },
+        "total": {
+          "prompt_tokens": 7440,
+          "completion_tokens": 6287,
+          "total_tokens": 13727
+        }
+      },
+      "max_stage1_workers": 12,
+      "max_stage2_workers": 1,
+      "stage2_max_tokens": 512,
+      "enable_stage1_tool_use": false,
+      "enable_compact_search_evidence": true,
+      "max_stage1_tool_turns": 2,
+      "enable_stage1_early_stop": false,
+      "previous_best_agent_id": "nemotron",
+      "stage1_early_stop_max_retries": 1,
+      "stage1_attempts": 1,
+      "stage1_early_stop": false,
+      "stage1_early_stop_reason": "",
+      "stage2_skipped": false,
+      "cross_agent_consensus_used": false,
+      "cross_agent_consensus_supporting_agents": [],
+      "cross_agent_consensus_answer": "",
+      "active_agent_count": 0,
+      "search_used": true,
+      "attachment_used": false,
+      "solver_used": false,
+      "routing": {
+        "use_calculator": false,
+        "use_search": true,
+        "use_deterministic_solver": true,
+        "use_python_solver": true,
+        "use_attachment": false,
+        "calculator_expression": null,
+        "task_type": "hybrid_search_and_solver",
+        "trigger_terms": [
+          "paper",
+          "year",
+          "order"
+        ],
+        "tool_policy": {
+          "prefer": [
+            "search",
+            "deterministic_solver",
+            "python_solver"
+          ],
+          "optional": [],
+          "avoid": []
+        },
+        "routing_reasons": [
+          "question contains factual lookup signals: paper, year",
+          "question contains deterministic computation/data-processing signals: order",
+          "stage1 round0 system contract enables early evidence gathering"
+        ],
+        "routing_source": "system_routing_contract"
+      },
+      "tool_usage": [
+        {
+          "ok": true,
+          "tool_name": "search",
+          "output_text": "Original Question:\nWhat are the EC numbers of the two most commonly used chemicals for the virus testing method in the paper about SPFMV and SPCSV in the Pearl Of Africa from 2016? Return the semicolon-separated numbers in the order of the alphabetized chemicals.\n\nAnswer Type: title\n\nVerified Candidate Answer:\n[C1] answer=Both SPFMV; type=title; support=1; refute=0; neutral=5; confidence=0.45; risk=-\n[C2] answer=East Africa; type=title; support=1; refute=0; neutral=5; confidence=0.45; risk=-\n[C3] answer=Identification: Institutional Paper; type=title; support=1; refute=0; neutral=6; confidence=0.45; risk=-\n\nFact:\n[F3] supports C1; confidence=1.0\nClaim: Both SPFMV and Sweet potato chlorotic stunt virus (SPCSV) have higher prevalence and distribution across East Africa than any of the sweet potato viruses ...\nConstraint Match: africa, spcsv, spfmv, virus\n[F9] supports C2; confidence=1.0\nClaim: Both SPFMV and Sweet potato chlorotic stunt virus (SPCSV) have higher prevalence and distribution across East Africa than any of the sweet potato viruses ...\nConstraint Match: africa, spcsv, spfmv, virus\n[F19] supports C3; confidence=0.905\nClaim: Details. Identification: Institutional Paper 45; Publication date.\nConstraint Match: 2016, paper\n\nMissing Info:\nNone\n\nRisk Flags:\nNone",
+          "raw_result": {
+            "question": "What are the EC numbers of the two most commonly used chemicals for the virus testing method in the paper about SPFMV and SPCSV in the Pearl Of Africa from 2016? Return the semicolon-separated numbers in the order of the alphabetized chemicals.",
+            "queries": [
+              {
+                "query_id": "Q1",
+                "query": "What are the EC numbers of the two most commonly used chemicals for the virus testing method in the paper about SPFMV and SPCSV in the Pearl Of Africa from 2016 Return the semicolon-separated numbers in the order of the alphabetized chemicals",
+                "purpose": "core_question",
+                "priority": 99,
+                "source_hints": [],
+                "expected_answer_type": "title",
+                "requires_full_page": true
+              },
+              {
+                "query_id": "Q2",
+                "query": "\"EC\" paper author 2016",
+                "purpose": "quoted_or_entity_focus",
+                "priority": 98,
+                "source_hints": [],
+                "expected_answer_type": "title",
+                "requires_full_page": true
+              },
+              {
+                "query_id": "Q3",
+                "query": "\"SPFMV\" paper author 2016",
+                "purpose": "source_or_keyword_focus",
+                "priority": 97,
+                "source_hints": [],
+                "expected_answer_type": "title",
+                "requires_full_page": true
+              }
+            ],
+            "sources": [
+              {
+                "source_id": "S2",
+                "query_id": "Q1",
+                "title": "[PDF] AGENT KB: LEVERAGING CROSS-DOMAIN EXPE",
+                "url": "https://openreview.net/pdf/a550d4e3ac6444b1b65375ce337dd0aebf3bfb57.pdf",
+                "domain": "openreview.net",
+                "snippet": "What are the EC numbers of the two most commonly used chemicals for the virus testing method in the paper about SPFMV and SPCSV in the Pearl Of Africa from.",
+                "raw_content": "What are the EC numbers of the two most commonly used chemicals for the virus testing method in the paper about SPFMV and SPCSV in the Pearl Of Africa from.",
+                "rank": 2,
+                "rerank_score": 15.2,
+                "fetched": true,
+                "blocked": false,
+                "block_reason": ""
+              },
+              {
+                "source_id": "S3",
+                "query_id": "Q1",
+                "title": "Your AI Agent's Search Tool Is Failing. Here's How to ... - GenseeAI",
+                "url": "https://www.gensee.ai/blogs/introducing-gensee-search-agent.html",
+                "domain": "www.gensee.ai",
+                "snippet": "The Question: 'What are the EC numbers of the two most commonly used ... paper about SPFMV and SPCSV in the Pearl Of Africa from 2016? Return them in ...",
+                "raw_content": "The Question: 'What are the EC numbers of the two most commonly used ... paper about SPFMV and SPCSV in the Pearl Of Africa from 2016? Return them in ...",
+                "rank": 3,
+                "rerank_score": 11.7,
+                "fetched": true,
+                "blocked": false,
+                "block_reason": ""
+              },
+              {
+                "source_id": "S4",
+                "query_id": "Q1",
+                "title": "Early-Stage Phenotyping of Sweet Potato Virus Disease Caused by Sweet ...",
+                "url": "https://apsjournals.apsnet.org/doi/10.1094/PDIS-08-21-1650-RE",
+                "domain": "apsjournals.apsnet.org",
+                "snippet": "Sweet potato virus disease (SPVD) is a global constraint to sweetpotato (Ipomoea batatas) production, especially under intensive cultivation in the humid tropics such as East Africa. The objectives of this study were to develop a precision SPVD phenotyping protocol, to find new SPVD-resistant genotypes, and to standardize the first stages of screening for SPVD resistance. The first part of the ...",
+                "raw_content": "Sweet potato virus disease (SPVD) is a global constraint to sweetpotato (Ipomoea batatas) production, especially under intensive cultivation in the humid tropics such as East Africa. The objectives of this study were to develop a precision SPVD phenotyping protocol, to find new SPVD-resistant genotypes, and to standardize the first stages of screening for SPVD resistance. The first part of the ...",
+                "rank": 4,
+                "rerank_score": 8.75,
+                "fetched": true,
+                "blocked": false,
+                "block_reason": ""
+              },
+              {
+                "source_id": "S6",
+                "query_id": "Q2",
+                "title": "Trend in EC submissions by authors from 2012 to 2016. - ResearchGate",
+                "url": "https://www.researchgate.net/figure/Trend-in-EC-submissions-by-authors-from-2012-to-2016_fig1_321434264",
+                "domain": "www.researchgate.net",
+                "snippet": "Trend in EC submissions by authors from 2012 to 2016. Trend in time to initial decision for articles and ECs from 2012 to 2016.",
+                "raw_content": "Trend in EC submissions by authors from 2012 to 2016. Trend in time to initial decision for articles and ECs from 2012 to 2016.",
+                "rank": 1,
+                "rerank_score": 10.0,
+                "fetched": true,
+                "blocked": false,
+                "block_reason": ""
+              },
+              {
+                "source_id": "S7",
+                "query_id": "Q2",
+                "title": "Report on Public Finances in EMU 2016",
+                "url": "https://economy-finance.ec.europa.eu/publications/report-public-finances-emu-2016_en",
+                "domain": "economy-finance.ec.europa.eu",
+                "snippet": "Details. Identification: Institutional Paper 45; Publication date. 19 December 2016. Author: Directorate-General for Economic and Financial Affairs ...",
+                "raw_content": "Details. Identification: Institutional Paper 45; Publication date. 19 December 2016. Author: Directorate-General for Economic and Financial Affairs ...",
+                "rank": 2,
+                "rerank_score": 8.1,
+                "fetched": true,
+                "blocked": false,
+                "block_reason": ""
+              },
+              {
+                "source_id": "S8",
+                "query_id": "Q2",
+                "title": "EC '16- Proceedings of the 2016 ACM Conference on Economics and Computation",
+                "url": "https://www.sigecom.org/ec16/toc.html",
+                "domain": "www.sigecom.org",
+                "snippet": "SESSION: Best Paper and Best Dissertation Award Presentations Deferred Acceptance with Compensation Chains Piotr Dworczak",
+                "raw_content": "SESSION: Best Paper and Best Dissertation Award Presentations Deferred Acceptance with Compensation Chains Piotr Dworczak",
+                "rank": 3,
+                "rerank_score": 5.6,
+                "fetched": true,
+                "blocked": false,
+                "block_reason": ""
+              },
+              {
+                "source_id": "S9",
+                "query_id": "Q2",
+                "title": "dblp: ACM-EC 2016",
+                "url": "https://dblp.org/db/conf/sigecom/sigecom2016",
+                "domain": "dblp.org",
+                "snippet": "Bibliographic content of ACM-EC 2016 Vincent Conitzer, Dirk Bergemann, Yiling Chen: Proceedings of the 2016 ACM Conference on Economics and Computation, EC '16, Maastricht, The Netherlands, July 24-28, 2016. ACM 2016, ISBN 978-1-4503-3936-",
+                "raw_content": "Bibliographic content of ACM-EC 2016 Vincent Conitzer, Dirk Bergemann, Yiling Chen: Proceedings of the 2016 ACM Conference on Economics and Computation, EC '16, Maastricht, The Netherlands, July 24-28, 2016. ACM 2016, ISBN 978-1-4503-3936-",
+                "rank": 4,
+                "rerank_score": 4.85,
+                "fetched": true,
+                "blocked": false,
+                "block_reason": ""
+              },
+              {
+                "source_id": "S10",
+                "query_id": "Q2",
+                "title": "EC'16 || 17th ACM Conference on Economics and Computation",
+                "url": "https://www.sigecom.org/ec16/",
+                "domain": "www.sigecom.org",
+                "snippet": "EC '16 Complete Schedule here! EC '16 Proceedings. The 2016 ACM SIGecom Test of Time Award is given to: • J. Bartholdi and J. Orlin, Single Transferable ...",
+                "raw_content": "EC '16 Complete Schedule here! EC '16 Proceedings. The 2016 ACM SIGecom Test of Time Award is given to: • J. Bartholdi and J. Orlin, Single Transferable ...",
+                "rank": 5,
+                "rerank_score": 2.4,
+                "fetched": true,
+                "blocked": false,
+                "block_reason": ""
+              },
+              {
+                "source_id": "S11",
+                "query_id": "Q3",
+                "title": "Effects of Sweet Potato Feathery Mottle Virus and ... - ResearchGate",
+                "url": "https://www.researchgate.net/publication/283980876_Effects_of_Sweet_Potato_Feathery_Mottle_Virus_and_Sweet_Potato_Chlorotic_Stunt_Virus_on_the_Yield_of_SweetPotato_in_Uganda",
+                "domain": "www.researchgate.net",
+                "snippet": "SPFMV and SPCSV can cause yield losses of up to 40% and 52% in single infections, respectively (Adikini et al., (2016) . However, the combination of these ...",
+                "raw_content": "SPFMV and SPCSV can cause yield losses of up to 40% and 52% in single infections, respectively (Adikini et al., (2016) . However, the combination of these ...",
+                "rank": 1,
+                "rerank_score": 3.5,
+                "fetched": true,
+                "blocked": false,
+                "block_reason": ""
+              },
+              {
+                "source_id": "S12",
+                "query_id": "Q3",
+                "title": "Interaction between potyvirus and crinivirus in sweet potato - Redalyc",
+                "url": "https://www.redalyc.org/journal/2530/253068033012/html/",
+                "domain": "www.redalyc.org",
+                "snippet": "2016, Nhlapo et al. 2018). In co-infections, there is a synergistic interaction with an increase in the virus concentration, replication and movement of SPFMV.",
+                "raw_content": "2016, Nhlapo et al. 2018). In co-infections, there is a synergistic interaction with an increase in the virus concentration, replication and movement of SPFMV.",
+                "rank": 2,
+                "rerank_score": 3.4,
+                "fetched": true,
+                "blocked": false,
+                "block_reason": ""
+              },
+              {
+                "source_id": "S13",
+                "query_id": "Q3",
+                "title": "Prevalence of sweetpotato viruses in Acholi sub-region, northern Uganda",
+                "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC6716578/",
+                "domain": "pmc.ncbi.nlm.nih.gov",
+                "snippet": "Co-infections involving SPFMV and SPCSV produce a severe disease syndrome known as sweetpotato virus disease (SPVD) that is associated with severe yield losses ...",
+                "raw_content": "Co-infections involving SPFMV and SPCSV produce a severe disease syndrome known as sweetpotato virus disease (SPVD) that is associated with severe yield losses ...",
+                "rank": 3,
+                "rerank_score": 2.55,
+                "fetched": true,
+                "blocked": false,
+                "block_reason": ""
+              },
+              {
+                "source_id": "S14",
+                "query_id": "Q3",
+                "title": "Detection of Viruses and Elimination of Sweet Potato Feathery Mottle ...",
+                "url": "https://www.mdpi.com/2077-0472/14/11/1929",
+                "domain": "www.mdpi.com",
+                "snippet": "Oct 30, 2024 · Sweet potato feathery mottle virus (SPFMV) was detected in 12 of the 15 source plants tested. Triple infections of SPFMV, sweet potato chlorotic ...",
+                "raw_content": "Oct 30, 2024 · Sweet potato feathery mottle virus (SPFMV) was detected in 12 of the 15 source plants tested. Triple infections of SPFMV, sweet potato chlorotic ...",
+                "rank": 4,
+                "rerank_score": 1.2,
+                "fetched": true,
+                "blocked": false,
+                "block_reason": ""
+              },
+              {
+                "source_id": "S15",
+                "query_id": "Q3",
+                "title": "Genomic analysis of Sweet potato feathery mottle virus from East Africa",
+                "url": "https://www.sciencedirect.com/science/article/pii/S0885576519303534",
+                "domain": "www.sciencedirect.com",
+                "snippet": "Both SPFMV and Sweet potato chlorotic stunt virus (SPCSV) have higher prevalence and distribution across East Africa than any of the sweet potato viruses ...",
+                "raw_content": "Both SPFMV and Sweet potato chlorotic stunt virus (SPCSV) have higher prevalence and distribution across East Africa than any of the sweet potato viruses ...",
+                "rank": 5,
+                "rerank_score": 1.15,
+                "fetched": true,
+                "blocked": false,
+                "block_reason": ""
+              }
+            ],
+            "evidence_items": [
+              {
+                "evidence_id": "E1",
+                "source_id": "S2",
+                "query_id": "Q1",
+                "text": "What are the EC numbers of the two most commonly used chemicals for the virus testing method in the paper about SPFMV and SPCSV in the Pearl Of Africa from.",
+                "title": "[PDF] AGENT KB: LEVERAGING CROSS-DOMAIN EXPE",
+                "url": "https://openreview.net/pdf/a550d4e3ac6444b1b65375ce337dd0aebf3bfb57.pdf",
+                "relevance_score": 35.5,
+                "matched_terms": [
+                  "about",
+                  "africa",
+                  "chemicals",
+                  "commonly",
+                  "from",
+                  "method",
+                  "most",
+                  "numbers",
+                  "paper",
+                  "pearl",
+                  "spcsv",
+                  "spfmv"
+                ],
+                "extracted_answer": ""
+              },
+              {
+                "evidence_id": "E2",
+                "source_id": "S3",
+                "query_id": "Q1",
+                "text": "The Question: 'What are the EC numbers of the two most commonly used ... paper about SPFMV and SPCSV in the Pearl Of Africa from 2016? Return them in ...",
+                "title": "Your AI Agent's Search Tool Is Failing. Here's How to ... - GenseeAI",
+                "url": "https://www.gensee.ai/blogs/introducing-gensee-search-agent.html",
+                "relevance_score": 32.25,
+                "matched_terms": [
+                  "2016",
+                  "about",
+                  "africa",
+                  "commonly",
+                  "from",
+                  "most",
+                  "numbers",
+                  "paper",
+                  "pearl",
+                  "return",
+                  "spcsv",
+                  "spfmv"
+                ],
+                "extracted_answer": ""
+              },
+              {
+                "evidence_id": "E3",
+                "source_id": "S15",
+                "query_id": "Q3",
+                "text": "Both SPFMV and Sweet potato chlorotic stunt virus (SPCSV) have higher prevalence and distribution across East Africa than any of the sweet potato viruses ...",
+                "title": "Genomic analysis of Sweet potato feathery mottle virus from East Africa",
+                "url": "https://www.sciencedirect.com/science/article/pii/S0885576519303534",
+                "relevance_score": 12.615,
+                "matched_terms": [
+                  "africa",
+                  "spcsv",
+                  "spfmv",
+                  "virus"
+                ],
+                "extracted_answer": ""
+              },
+              {
+                "evidence_id": "E4",
+                "source_id": "S11",
+                "query_id": "Q3",
+                "text": "SPFMV and SPCSV can cause yield losses of up to 40% and 52% in single infections, respectively (Adikini et al., (2016) . However, the combination of these ...",
+                "title": "Effects of Sweet Potato Feathery Mottle Virus and ... - ResearchGate",
+                "url": "https://www.researchgate.net/publication/283980876_Effects_of_Sweet_Potato_Feathery_Mottle_Virus_and_Sweet_Potato_Chlorotic_Stunt_Virus_on_the_Yield_of_SweetPotato_in_Uganda",
+                "relevance_score": 11.6,
+                "matched_terms": [
+                  "2016",
+                  "spcsv",
+                  "spfmv"
+                ],
+                "extracted_answer": ""
+              },
+              {
+                "evidence_id": "E5",
+                "source_id": "S12",
+                "query_id": "Q3",
+                "text": "2016, Nhlapo et al. 2018). In co-infections, there is a synergistic interaction with an increase in the virus concentration, replication and movement of SPFMV.",
+                "title": "Interaction between potyvirus and crinivirus in sweet potato - Redalyc",
+                "url": "https://www.redalyc.org/journal/2530/253068033012/html/",
+                "relevance_score": 11.59,
+                "matched_terms": [
+                  "2016",
+                  "spfmv",
+                  "virus"
+                ],
+                "extracted_answer": ""
+              },
+              {
+                "evidence_id": "E6",
+                "source_id": "S13",
+                "query_id": "Q3",
+                "text": "Co-infections involving SPFMV and SPCSV produce a severe disease syndrome known as sweetpotato virus disease (SPVD) that is associated with severe yield losses ...",
+                "title": "Prevalence of sweetpotato viruses in Acholi sub-region, northern Uganda",
+                "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC6716578/",
+                "relevance_score": 10.755,
+                "matched_terms": [
+                  "spcsv",
+                  "spfmv",
+                  "virus"
+                ],
+                "extracted_answer": ""
+              },
+              {
+                "evidence_id": "E7",
+                "source_id": "S6",
+                "query_id": "Q2",
+                "text": "Trend in EC submissions by authors from 2012 to 2016. Trend in time to initial decision for articles and ECs from 2012 to 2016.",
+                "title": "Trend in EC submissions by authors from 2012 to 2016. - ResearchGate",
+                "url": "https://www.researchgate.net/figure/Trend-in-EC-submissions-by-authors-from-2012-to-2016_fig1_321434264",
+                "relevance_score": 9.75,
+                "matched_terms": [
+                  "2016",
+                  "from"
+                ],
+                "extracted_answer": ""
+              },
+              {
+                "evidence_id": "E8",
+                "source_id": "S7",
+                "query_id": "Q2",
+                "text": "Details. Identification: Institutional Paper 45; Publication date. 19 December 2016. Author: Directorate-General for Economic and Financial Affairs ...",
+                "title": "Report on Public Finances in EMU 2016",
+                "url": "https://economy-finance.ec.europa.eu/publications/report-public-finances-emu-2016_en",
+                "relevance_score": 9.75,
+                "matched_terms": [
+                  "2016",
+                  "paper"
+                ],
+                "extracted_answer": ""
+              }
+            ],
+            "candidates": [
+              {
+                "answer": "Both SPFMV",
+                "answer_type": "title",
+                "support_count": 1,
+                "verification_score": 16.615000000000002,
+                "evidence_ids": [
+                  "E3"
+                ],
+                "source_ids": [
+                  "S15"
+                ],
+                "verified": true
+              },
+              {
+                "answer": "East Africa",
+                "answer_type": "title",
+                "support_count": 1,
+                "verification_score": 16.615000000000002,
+                "evidence_ids": [
+                  "E3"
+                ],
+                "source_ids": [
+                  "S15"
+                ],
+                "verified": true
+              },
+              {
+                "answer": "Identification: Institutional Paper",
+                "answer_type": "title",
+                "support_count": 1,
+                "verification_score": 11.75,
+                "evidence_ids": [
+                  "E8"
+                ],
+                "source_ids": [
+                  "S7"
+                ],
+                "verified": true
+              },
+              {
+                "answer": "Author: Directorate-General",
+                "answer_type": "title",
+                "support_count": 1,
+                "verification_score": 11.75,
+                "evidence_ids": [
+                  "E8"
+                ],
+                "source_ids": [
+                  "S7"
+                ],
+                "verified": true
+              },
+              {
+                "answer": "Financial Affairs",
+                "answer_type": "title",
+                "support_count": 1,
+                "verification_score": 11.75,
+                "evidence_ids": [
+                  "E8"
+                ],
+                "source_ids": [
+                  "S7"
+                ],
+                "verified": true
+              }
+            ],
+            "summary": "Original Question:\nWhat are the EC numbers of the two most commonly used chemicals for the virus testing method in the paper about SPFMV and SPCSV in the Pearl Of Africa from 2016? Return the semicolon-separated numbers in the order of the alphabetized chemicals.\n\nAnswer Type: title\n\nVerified Candidate Answer:\n[C1] answer=Both SPFMV; type=title; support=1; refute=0; neutral=5; confidence=0.45; risk=-\n[C2] answer=East Africa; type=title; support=1; refute=0; neutral=5; confidence=0.45; risk=-\n[C3] answer=Identification: Institutional Paper; type=title; support=1; refute=0; neutral=6; confidence=0.45; risk=-\n\nFact:\n[F3] supports C1; confidence=1.0\nClaim: Both SPFMV and Sweet potato chlorotic stunt virus (SPCSV) have higher prevalence and distribution across East Africa than any of the sweet potato viruses ...\nConstraint Match: africa, spcsv, spfmv, virus\n[F9] supports C2; confidence=1.0\nClaim: Both SPFMV and Sweet potato chlorotic stunt virus (SPCSV) have higher prevalence and distribution across East Africa than any of the sweet potato viruses ...\nConstraint Match: africa, spcsv, spfmv, virus\n[F19] supports C3; confidence=0.905\nClaim: Details. Identification: Institutional Paper 45; Publication date.\nConstraint Match: 2016, paper\n\nMissing Info:\nNone\n\nRisk Flags:\nNone",
+            "verified_candidates": [
+              {
+                "candidate_id": "C1",
+                "answer": "Both SPFMV",
+                "answer_type": "title",
+                "support_count": 1,
+                "refute_count": 0,
+                "neutral_count": 5,
+                "confidence": 0.45,
+                "evidence_ids": [
+                  "E3"
+                ],
+                "support_fact_ids": [
+                  "F3"
+                ],
+                "refute_fact_ids": [],
+                "risk_flags": []
+              },
+              {
+                "candidate_id": "C2",
+                "answer": "East Africa",
+                "answer_type": "title",
+                "support_count": 1,
+                "refute_count": 0,
+                "neutral_count": 5,
+                "confidence": 0.45,
+                "evidence_ids": [
+                  "E3"
+                ],
+                "support_fact_ids": [
+                  "F9"
+                ],
+                "refute_fact_ids": [],
+                "risk_flags": []
+              },
+              {
+                "candidate_id": "C3",
+                "answer": "Identification: Institutional Paper",
+                "answer_type": "title",
+                "support_count": 1,
+                "refute_count": 0,
+                "neutral_count": 6,
+                "confidence": 0.45,
+                "evidence_ids": [
+                  "E8"
+                ],
+                "support_fact_ids": [
+                  "F19"
+                ],
+                "refute_fact_ids": [],
+                "risk_flags": []
+              },
+              {
+                "candidate_id": "C4",
+                "answer": "Author: Directorate-General",
+                "answer_type": "title",
+                "support_count": 1,
+                "refute_count": 0,
+                "neutral_count": 6,
+                "confidence": 0.45,
+                "evidence_ids": [
+                  "E8"
+                ],
+                "support_fact_ids": [
+                  "F26"
+                ],
+                "refute_fact_ids": [],
+                "risk_flags": []
+              },
+              {
+                "candidate_id": "C5",
+                "answer": "Financial Affairs",
+                "answer_type": "title",
+                "support_count": 1,
+                "refute_count": 0,
+                "neutral_count": 6,
+                "confidence": 0.45,
+                "evidence_ids": [
+                  "E8"
+                ],
+                "support_fact_ids": [
+                  "F33"
+                ],
+                "refute_fact_ids": [],
+                "risk_flags": []
+              }
+            ],
+            "fact_cards": [
+              {
+                "fact_id": "F1",
+                "claim": "What are the EC numbers of the two most commonly used chemicals for the virus testing method in the paper about SPFMV and SPCSV in the Pearl Of Africa from.",
+                "relation": "neutral",
+                "candidate_id": "C1",
+                "source_id": "S2",
+                "evidence_id": "E1",
+                "confidence": 0.5,
+                "constraint_matches": [
+                  "africa",
+                  "chemicals",
+                  "commonly",
+                  "method",
+                  "most",
+                  "numbers",
+                  "paper",
+                  "pearl"
+                ]
+              },
+              {
+                "fact_id": "F2",
+                "claim": "The Question: 'What are the EC numbers of the two most commonly used ...",
+                "relation": "neutral",
+                "candidate_id": "C1",
+                "source_id": "S3",
+                "evidence_id": "E2",
+                "confidence": 0.5,
+                "constraint_matches": [
+                  "2016",
+                  "africa",
+                  "commonly",
+                  "most",
+                  "numbers",
+                  "paper",
+                  "pearl",
+                  "spcsv"
+                ]
+              },
+              {
+                "fact_id": "F3",
+                "claim": "Both SPFMV and Sweet potato chlorotic stunt virus (SPCSV) have higher prevalence and distribution across East Africa than any of the sweet potato viruses ...",
+                "relation": "support",
+                "candidate_id": "C1",
+                "source_id": "S15",
+                "evidence_id": "E3",
+                "confidence": 1.0,
+                "constraint_matches": [
+                  "africa",
+                  "spcsv",
+                  "spfmv",
+                  "virus"
+                ]
+              },
+              {
+                "fact_id": "F4",
+                "claim": "SPFMV and SPCSV can cause yield losses of up to 40% and 52% in single infections, respectively (Adikini et al., (2016) .",
+                "relation": "neutral",
+                "candidate_id": "C1",
+                "source_id": "S11",
+                "evidence_id": "E4",
+                "confidence": 0.438,
+                "constraint_matches": [
+                  "2016",
+                  "spcsv",
+                  "spfmv"
+                ]
+              },
+              {
+                "fact_id": "F5",
+                "claim": "2016, Nhlapo et al. 2018). In co-infections, there is a synergistic interaction with an increase in the virus concentration, replication and movement of SPFMV.",
+                "relation": "neutral",
+                "candidate_id": "C1",
+                "source_id": "S12",
+                "evidence_id": "E5",
+                "confidence": 0.438,
+                "constraint_matches": [
+                  "2016",
+                  "spfmv",
+                  "virus"
+                ]
+              },
+              {
+                "fact_id": "F6",
+                "claim": "Co-infections involving SPFMV and SPCSV produce a severe disease syndrome known as sweetpotato virus disease (SPVD) that is associated with severe yield losses ...",
+                "relation": "neutral",
+                "candidate_id": "C1",
+                "source_id": "S13",
+                "evidence_id": "E6",
+                "confidence": 0.438,
+                "constraint_matches": [
+                  "spcsv",
+                  "spfmv",
+                  "virus"
+                ]
+              },
+              {
+                "fact_id": "F7",
+                "claim": "What are the EC numbers of the two most commonly used chemicals for the virus testing method in the paper about SPFMV and SPCSV in the Pearl Of Africa from.",
+                "relation": "neutral",
+                "candidate_id": "C2",
+                "source_id": "S2",
+                "evidence_id": "E1",
+                "confidence": 0.5,
+                "constraint_matches": [
+                  "africa",
+                  "chemicals",
+                  "commonly",
+                  "method",
+                  "most",
+                  "numbers",
+                  "paper",
+                  "pearl"
+                ]
+              },
+              {
+                "fact_id": "F8",
+                "claim": "The Question: 'What are the EC numbers of the two most commonly used ...",
+                "relation": "neutral",
+                "candidate_id": "C2",
+                "source_id": "S3",
+                "evidence_id": "E2",
+                "confidence": 0.5,
+                "constraint_matches": [
+                  "2016",
+                  "africa",
+                  "commonly",
+                  "most",
+                  "numbers",
+                  "paper",
+                  "pearl",
+                  "spcsv"
+                ]
+              },
+              {
+                "fact_id": "F9",
+                "claim": "Both SPFMV and Sweet potato chlorotic stunt virus (SPCSV) have higher prevalence and distribution across East Africa than any of the sweet potato viruses ...",
+                "relation": "support",
+                "candidate_id": "C2",
+                "source_id": "S15",
+                "evidence_id": "E3",
+                "confidence": 1.0,
+                "constraint_matches": [
+                  "africa",
+                  "spcsv",
+                  "spfmv",
+                  "virus"
+                ]
+              },
+              {
+                "fact_id": "F10",
+                "claim": "SPFMV and SPCSV can cause yield losses of up to 40% and 52% in single infections, respectively (Adikini et al., (2016) .",
+                "relation": "neutral",
+                "candidate_id": "C2",
+                "source_id": "S11",
+                "evidence_id": "E4",
+                "confidence": 0.438,
+                "constraint_matches": [
+                  "2016",
+                  "spcsv",
+                  "spfmv"
+                ]
+              },
+              {
+                "fact_id": "F11",
+                "claim": "2016, Nhlapo et al. 2018). In co-infections, there is a synergistic interaction with an increase in the virus concentration, replication and movement of SPFMV.",
+                "relation": "neutral",
+                "candidate_id": "C2",
+                "source_id": "S12",
+                "evidence_id": "E5",
+                "confidence": 0.438,
+                "constraint_matches": [
+                  "2016",
+                  "spfmv",
+                  "virus"
+                ]
+              },
+              {
+                "fact_id": "F12",
+                "claim": "Co-infections involving SPFMV and SPCSV produce a severe disease syndrome known as sweetpotato virus disease (SPVD) that is associated with severe yield losses ...",
+                "relation": "neutral",
+                "candidate_id": "C2",
+                "source_id": "S13",
+                "evidence_id": "E6",
+                "confidence": 0.438,
+                "constraint_matches": [
+                  "spcsv",
+                  "spfmv",
+                  "virus"
+                ]
+              },
+              {
+                "fact_id": "F13",
+                "claim": "What are the EC numbers of the two most commonly used chemicals for the virus testing method in the paper about SPFMV and SPCSV in the Pearl Of Africa from.",
+                "relation": "neutral",
+                "candidate_id": "C3",
+                "source_id": "S2",
+                "evidence_id": "E1",
+                "confidence": 0.5,
+                "constraint_matches": [
+                  "africa",
+                  "chemicals",
+                  "commonly",
+                  "method",
+                  "most",
+                  "numbers",
+                  "paper",
+                  "pearl"
+                ]
+              },
+              {
+                "fact_id": "F14",
+                "claim": "The Question: 'What are the EC numbers of the two most commonly used ...",
+                "relation": "neutral",
+                "candidate_id": "C3",
+                "source_id": "S3",
+                "evidence_id": "E2",
+                "confidence": 0.5,
+                "constraint_matches": [
+                  "2016",
+                  "africa",
+                  "commonly",
+                  "most",
+                  "numbers",
+                  "paper",
+                  "pearl",
+                  "spcsv"
+                ]
+              },
+              {
+                "fact_id": "F15",
+                "claim": "Both SPFMV and Sweet potato chlorotic stunt virus (SPCSV) have higher prevalence and distribution across East Africa than any of the sweet potato viruses ...",
+                "relation": "neutral",
+                "candidate_id": "C3",
+                "source_id": "S15",
+                "evidence_id": "E3",
+                "confidence": 0.5,
+                "constraint_matches": [
+                  "africa",
+                  "spcsv",
+                  "spfmv",
+                  "virus"
+                ]
+              },
+              {
+                "fact_id": "F16",
+                "claim": "SPFMV and SPCSV can cause yield losses of up to 40% and 52% in single infections, respectively (Adikini et al., (2016) .",
+                "relation": "neutral",
+                "candidate_id": "C3",
+                "source_id": "S11",
+                "evidence_id": "E4",
+                "confidence": 0.438,
+                "constraint_matches": [
+                  "2016",
+                  "spcsv",
+                  "spfmv"
+                ]
+              },
+              {
+                "fact_id": "F17",
+                "claim": "2016, Nhlapo et al. 2018). In co-infections, there is a synergistic interaction with an increase in the virus concentration, replication and movement of SPFMV.",
+                "relation": "neutral",
+                "candidate_id": "C3",
+                "source_id": "S12",
+                "evidence_id": "E5",
+                "confidence": 0.438,
+                "constraint_matches": [
+                  "2016",
+                  "spfmv",
+                  "virus"
+                ]
+              },
+              {
+                "fact_id": "F18",
+                "claim": "Co-infections involving SPFMV and SPCSV produce a severe disease syndrome known as sweetpotato virus disease (SPVD) that is associated with severe yield losses ...",
+                "relation": "neutral",
+                "candidate_id": "C3",
+                "source_id": "S13",
+                "evidence_id": "E6",
+                "confidence": 0.438,
+                "constraint_matches": [
+                  "spcsv",
+                  "spfmv",
+                  "virus"
+                ]
+              },
+              {
+                "fact_id": "F19",
+                "claim": "Details. Identification: Institutional Paper 45; Publication date.",
+                "relation": "support",
+                "candidate_id": "C3",
+                "source_id": "S7",
+                "evidence_id": "E8",
+                "confidence": 0.905,
+                "constraint_matches": [
+                  "2016",
+                  "paper"
+                ]
+              },
+              {
+                "fact_id": "F20",
+                "claim": "What are the EC numbers of the two most commonly used chemicals for the virus testing method in the paper about SPFMV and SPCSV in the Pearl Of Africa from.",
+                "relation": "neutral",
+                "candidate_id": "C4",
+                "source_id": "S2",
+                "evidence_id": "E1",
+                "confidence": 0.5,
+                "constraint_matches": [
+                  "africa",
+                  "chemicals",
+                  "commonly",
+                  "method",
+                  "most",
+                  "numbers",
+                  "paper",
+                  "pearl"
+                ]
+              },
+              {
+                "fact_id": "F21",
+                "claim": "The Question: 'What are the EC numbers of the two most commonly used ...",
+                "relation": "neutral",
+                "candidate_id": "C4",
+                "source_id": "S3",
+                "evidence_id": "E2",
+                "confidence": 0.5,
+                "constraint_matches": [
+                  "2016",
+                  "africa",
+                  "commonly",
+                  "most",
+                  "numbers",
+                  "paper",
+                  "pearl",
+                  "spcsv"
+                ]
+              },
+              {
+                "fact_id": "F22",
+                "claim": "Both SPFMV and Sweet potato chlorotic stunt virus (SPCSV) have higher prevalence and distribution across East Africa than any of the sweet potato viruses ...",
+                "relation": "neutral",
+                "candidate_id": "C4",
+                "source_id": "S15",
+                "evidence_id": "E3",
+                "confidence": 0.5,
+                "constraint_matches": [
+                  "africa",
+                  "spcsv",
+                  "spfmv",
+                  "virus"
+                ]
+              },
+              {
+                "fact_id": "F23",
+                "claim": "SPFMV and SPCSV can cause yield losses of up to 40% and 52% in single infections, respectively (Adikini et al., (2016) .",
+                "relation": "neutral",
+                "candidate_id": "C4",
+                "source_id": "S11",
+                "evidence_id": "E4",
+                "confidence": 0.438,
+                "constraint_matches": [
+                  "2016",
+                  "spcsv",
+                  "spfmv"
+                ]
+              },
+              {
+                "fact_id": "F24",
+                "claim": "2016, Nhlapo et al. 2018). In co-infections, there is a synergistic interaction with an increase in the virus concentration, replication and movement of SPFMV.",
+                "relation": "neutral",
+                "candidate_id": "C4",
+                "source_id": "S12",
+                "evidence_id": "E5",
+                "confidence": 0.438,
+                "constraint_matches": [
+                  "2016",
+                  "spfmv",
+                  "virus"
+                ]
+              },
+              {
+                "fact_id": "F25",
+                "claim": "Co-infections involving SPFMV and SPCSV produce a severe disease syndrome known as sweetpotato virus disease (SPVD) that is associated with severe yield losses ...",
+                "relation": "neutral",
+                "candidate_id": "C4",
+                "source_id": "S13",
+                "evidence_id": "E6",
+                "confidence": 0.438,
+                "constraint_matches": [
+                  "spcsv",
+                  "spfmv",
+                  "virus"
+                ]
+              },
+              {
+                "fact_id": "F26",
+                "claim": "Details. Identification: Institutional Paper 45; Publication date.",
+                "relation": "support",
+                "candidate_id": "C4",
+                "source_id": "S7",
+                "evidence_id": "E8",
+                "confidence": 0.905,
+                "constraint_matches": [
+                  "2016",
+                  "paper"
+                ]
+              },
+              {
+                "fact_id": "F27",
+                "claim": "What are the EC numbers of the two most commonly used chemicals for the virus testing method in the paper about SPFMV and SPCSV in the Pearl Of Africa from.",
+                "relation": "neutral",
+                "candidate_id": "C5",
+                "source_id": "S2",
+                "evidence_id": "E1",
+                "confidence": 0.5,
+                "constraint_matches": [
+                  "africa",
+                  "chemicals",
+                  "commonly",
+                  "method",
+                  "most",
+                  "numbers",
+                  "paper",
+                  "pearl"
+                ]
+              },
+              {
+                "fact_id": "F28",
+                "claim": "The Question: 'What are the EC numbers of the two most commonly used ...",
+                "relation": "neutral",
+                "candidate_id": "C5",
+                "source_id": "S3",
+                "evidence_id": "E2",
+                "confidence": 0.5,
+                "constraint_matches": [
+                  "2016",
+                  "africa",
+                  "commonly",
+                  "most",
+                  "numbers",
+                  "paper",
+                  "pearl",
+                  "spcsv"
+                ]
+              },
+              {
+                "fact_id": "F29",
+                "claim": "Both SPFMV and Sweet potato chlorotic stunt virus (SPCSV) have higher prevalence and distribution across East Africa than any of the sweet potato viruses ...",
+                "relation": "neutral",
+                "candidate_id": "C5",
+                "source_id": "S15",
+                "evidence_id": "E3",
+                "confidence": 0.5,
+                "constraint_matches": [
+                  "africa",
+                  "spcsv",
+                  "spfmv",
+                  "virus"
+                ]
+              },
+              {
+                "fact_id": "F30",
+                "claim": "SPFMV and SPCSV can cause yield losses of up to 40% and 52% in single infections, respectively (Adikini et al., (2016) .",
+                "relation": "neutral",
+                "candidate_id": "C5",
+                "source_id": "S11",
+                "evidence_id": "E4",
+                "confidence": 0.438,
+                "constraint_matches": [
+                  "2016",
+                  "spcsv",
+                  "spfmv"
+                ]
+              },
+              {
+                "fact_id": "F31",
+                "claim": "2016, Nhlapo et al. 2018). In co-infections, there is a synergistic interaction with an increase in the virus concentration, replication and movement of SPFMV.",
+                "relation": "neutral",
+                "candidate_id": "C5",
+                "source_id": "S12",
+                "evidence_id": "E5",
+                "confidence": 0.438,
+                "constraint_matches": [
+                  "2016",
+                  "spfmv",
+                  "virus"
+                ]
+              },
+              {
+                "fact_id": "F32",
+                "claim": "Co-infections involving SPFMV and SPCSV produce a severe disease syndrome known as sweetpotato virus disease (SPVD) that is associated with severe yield losses ...",
+                "relation": "neutral",
+                "candidate_id": "C5",
+                "source_id": "S13",
+                "evidence_id": "E6",
+                "confidence": 0.438,
+                "constraint_matches": [
+                  "spcsv",
+                  "spfmv",
+                  "virus"
+                ]
+              },
+              {
+                "fact_id": "F33",
+                "claim": "Details. Identification: Institutional Paper 45; Publication date.",
+                "relation": "support",
+                "candidate_id": "C5",
+                "source_id": "S7",
+                "evidence_id": "E8",
+                "confidence": 0.905,
+                "constraint_matches": [
+                  "2016",
+                  "paper"
+                ]
+              }
+            ],
+            "agent_packet": {
+              "question": "What are the EC numbers of the two most commonly used chemicals for the virus testing method in the paper about SPFMV and SPCSV in the Pearl Of Africa from 2016? Return the semicolon-separated numbers in the order of the alphabetized chemicals.",
+              "answer_type": "title",
+              "candidates": [
+                {
+                  "candidate_id": "C1",
+                  "answer": "Both SPFMV",
+                  "answer_type": "title",
+                  "support_count": 1,
+                  "refute_count": 0,
+                  "neutral_count": 5,
+                  "confidence": 0.45,
+                  "evidence_ids": [
+                    "E3"
+                  ],
+                  "support_fact_ids": [
+                    "F3"
+                  ],
+                  "refute_fact_ids": [],
+                  "risk_flags": []
+                },
+                {
+                  "candidate_id": "C2",
+                  "answer": "East Africa",
+                  "answer_type": "title",
+                  "support_count": 1,
+                  "refute_count": 0,
+                  "neutral_count": 5,
+                  "confidence": 0.45,
+                  "evidence_ids": [
+                    "E3"
+                  ],
+                  "support_fact_ids": [
+                    "F9"
+                  ],
+                  "refute_fact_ids": [],
+                  "risk_flags": []
+                },
+                {
+                  "candidate_id": "C3",
+                  "answer": "Identification: Institutional Paper",
+                  "answer_type": "title",
+                  "support_count": 1,
+                  "refute_count": 0,
+                  "neutral_count": 6,
+                  "confidence": 0.45,
+                  "evidence_ids": [
+                    "E8"
+                  ],
+                  "support_fact_ids": [
+                    "F19"
+                  ],
+                  "refute_fact_ids": [],
+                  "risk_flags": []
+                }
+              ],
+              "facts": [
+                {
+                  "fact_id": "F3",
+                  "claim": "Both SPFMV and Sweet potato chlorotic stunt virus (SPCSV) have higher prevalence and distribution across East Africa than any of the sweet potato viruses ...",
+                  "relation": "support",
+                  "candidate_id": "C1",
+                  "source_id": "S15",
+                  "evidence_id": "E3",
+                  "confidence": 1.0,
+                  "constraint_matches": [
+                    "africa",
+                    "spcsv",
+                    "spfmv",
+                    "virus"
+                  ]
+                },
+                {
+                  "fact_id": "F9",
+                  "claim": "Both SPFMV and Sweet potato chlorotic stunt virus (SPCSV) have higher prevalence and distribution across East Africa than any of the sweet potato viruses ...",
+                  "relation": "support",
+                  "candidate_id": "C2",
+                  "source_id": "S15",
+                  "evidence_id": "E3",
+                  "confidence": 1.0,
+                  "constraint_matches": [
+                    "africa",
+                    "spcsv",
+                    "spfmv",
+                    "virus"
+                  ]
+                },
+                {
+                  "fact_id": "F19",
+                  "claim": "Details. Identification: Institutional Paper 45; Publication date.",
+                  "relation": "support",
+                  "candidate_id": "C3",
+                  "source_id": "S7",
+                  "evidence_id": "E8",
+                  "confidence": 0.905,
+                  "constraint_matches": [
+                    "2016",
+                    "paper"
+                  ]
+                }
+              ],
+              "missing_info": [],
+              "risk_flags": []
+            },
+            "tool_usage": [
+              {
+                "ok": true,
+                "tool_name": "search",
+                "output_text": "{'results': [{'title': 'harbor-datasets/datasets/gaia/2a649bb1-795f-4a01-b3be ... - GitHub', 'url': 'https://github.com/laude-institute/harbor-datasets/blob/main/datasets/gaia/2a649bb1-795f-4a01-b3be-9a01868dae73/instruction.md', 'content': 'Question What are the EC numbers of the two most commonly used chemicals for the virus testing method in the paper about SPFMV and SPCSV in the Pearl Of Africa from 2016? Return the semicolon-separated numbers in the order of the alphabetized chemicals.', 'raw_content': 'Question What are the EC numbers of the two most commonly used chemicals for the virus testing method in the paper about SPFMV and SPCSV in the Pearl Of Africa from 2016? Return the semicolon-separated numbers in the order of the alphabetized chemicals.', 'rerank_score': 16.55}, {'title': '[PDF] AGENT KB: LEVERAGING CROSS-DOMAIN EXPE', 'url': 'https://openreview.net/pdf/a550d4e3ac6444b1b65375ce337dd0aebf3bfb57.pdf', 'content': 'What are the EC numbers of the two most commonly used chemicals for the virus testing method in the paper about SPFMV and SPCSV in the Pearl Of Africa from.', 'raw_content': 'What are the EC numbers of the two most commonly used chemicals for the virus testing method in the paper about SPFMV and SPCSV in the Pearl Of Africa from.', 'rerank_score': 15.2}, {'title': \"Your AI Agent's Search Tool Is Failing. Here's How to ... - GenseeAI\", 'url': 'https://www.gensee.ai/blogs/introducing-gensee-search-agent.html', 'content': \"The Question: 'What are the EC numbers of the two most commonly used ... paper about SPFMV and SPCSV in the Pearl Of Africa from 2016? Return them in ...\", 'raw_content': \"The Question: 'What are the EC numbers of the two most commonly used ... paper about SPFMV and SPCSV in the Pearl Of Africa from 2016? Return them in ...\", 'rerank_score': 11.7}, {'title': 'Early-Stage Phenotyping of Sweet Potato Virus Disease Caused by Sweet ...', 'url': 'https://apsjournals.apsnet.org/doi/10.1094/PDIS-08-21-1650-RE', 'content': 'Sweet potato virus disease (SPVD) is a global constraint to sweetpotato (Ipomoea batatas) production, especially under intensive cultivation in the humid tropics such as East Africa. The objectives of this study were to develop a precision SPVD phenotyping protocol, to find new SPVD-resistant genotypes, and to standardize the first stages of screening for SPVD resistance. The first part of the ...', 'raw_content': 'Sweet potato virus disease (SPVD) is a global constraint to sweetpotato (Ipomoea batatas) production, especially under intensive cultivation in the humid tropics such as East Africa. The objectives of this study were to develop a precision SPVD phenotyping protocol, to find new SPVD-resistant genotypes, and to standardize the first stages of screening for SPVD resistance. The first part of the ...', 'rerank_score': 8.75}, {'title': 'Datasets at Hugging Face', 'url': 'https://huggingface.co/datasets/Intelligent-Internet/GAIA-Subset-Benchmark', 'content': '# Comprehensive Report: EC Numbers of Chemicals Used in SPFMV and SPCSV Virus Testing in the Pearl of Africa (2016) ## Introduction The query seeks to identify ...', 'raw_content': '# Comprehensive Report: EC Numbers of Chemicals Used in SPFMV and SPCSV Virus Testing in the Pearl of Africa (2016) ## Introduction The query seeks to identify ...', 'rerank_score': 8.2}], 'backend': 'searxng', 'answer': None, 'notices': []}",
+                "raw_result": {
+                  "results": [
+                    {
+                      "title": "harbor-datasets/datasets/gaia/2a649bb1-795f-4a01-b3be ... - GitHub",
+                      "url": "https://github.com/laude-institute/harbor-datasets/blob/main/datasets/gaia/2a649bb1-795f-4a01-b3be-9a01868dae73/instruction.md",
+                      "content": "Question What are the EC numbers of the two most commonly used chemicals for the virus testing method in the paper about SPFMV and SPCSV in the Pearl Of Africa from 2016? Return the semicolon-separated numbers in the order of the alphabetized chemicals.",
+                      "raw_content": "Question What are the EC numbers of the two most commonly used chemicals for the virus testing method in the paper about SPFMV and SPCSV in the Pearl Of Africa from 2016? Return the semicolon-separated numbers in the order of the alphabetized chemicals.",
+                      "rerank_score": 16.55
+                    },
+                    {
+                      "title": "[PDF] AGENT KB: LEVERAGING CROSS-DOMAIN EXPE",
+                      "url": "https://openreview.net/pdf/a550d4e3ac6444b1b65375ce337dd0aebf3bfb57.pdf",
+                      "content": "What are the EC numbers of the two most commonly used chemicals for the virus testing method in the paper about SPFMV and SPCSV in the Pearl Of Africa from.",
+                      "raw_content": "What are the EC numbers of the two most commonly used chemicals for the virus testing method in the paper about SPFMV and SPCSV in the Pearl Of Africa from.",
+                      "rerank_score": 15.2
+                    },
+                    {
+                      "title": "Your AI Agent's Search Tool Is Failing. Here's How to ... - GenseeAI",
+                      "url": "https://www.gensee.ai/blogs/introducing-gensee-search-agent.html",
+                      "content": "The Question: 'What are the EC numbers of the two most commonly used ... paper about SPFMV and SPCSV in the Pearl Of Africa from 2016? Return them in ...",
+                      "raw_content": "The Question: 'What are the EC numbers of the two most commonly used ... paper about SPFMV and SPCSV in the Pearl Of Africa from 2016? Return them in ...",
+                      "rerank_score": 11.7
+                    },
+                    {
+                      "title": "Early-Stage Phenotyping of Sweet Potato Virus Disease Caused by Sweet ...",
+                      "url": "https://apsjournals.apsnet.org/doi/10.1094/PDIS-08-21-1650-RE",
+                      "content": "Sweet potato virus disease (SPVD) is a global constraint to sweetpotato (Ipomoea batatas) production, especially under intensive cultivation in the humid tropics such as East Africa. The objectives of this study were to develop a precision SPVD phenotyping protocol, to find new SPVD-resistant genotypes, and to standardize the first stages of screening for SPVD resistance. The first part of the ...",
+                      "raw_content": "Sweet potato virus disease (SPVD) is a global constraint to sweetpotato (Ipomoea batatas) production, especially under intensive cultivation in the humid tropics such as East Africa. The objectives of this study were to develop a precision SPVD phenotyping protocol, to find new SPVD-resistant genotypes, and to standardize the first stages of screening for SPVD resistance. The first part of the ...",
+                      "rerank_score": 8.75
+                    },
+                    {
+                      "title": "Datasets at Hugging Face",
+                      "url": "https://huggingface.co/datasets/Intelligent-Internet/GAIA-Subset-Benchmark",
+                      "content": "# Comprehensive Report: EC Numbers of Chemicals Used in SPFMV and SPCSV Virus Testing in the Pearl of Africa (2016) ## Introduction The query seeks to identify ...",
+                      "raw_content": "# Comprehensive Report: EC Numbers of Chemicals Used in SPFMV and SPCSV Virus Testing in the Pearl of Africa (2016) ## Introduction The query seeks to identify ...",
+                      "rerank_score": 8.2
+                    }
+                  ],
+                  "backend": "searxng",
+                  "answer": null,
+                  "notices": []
+                },
+                "error": null
+              },
+              {
+                "ok": true,
+                "tool_name": "search",
+                "output_text": "{'results': [{'title': 'Trend in EC submissions by authors from 2012 to 2016. - ResearchGate', 'url': 'https://www.researchgate.net/figure/Trend-in-EC-submissions-by-authors-from-2012-to-2016_fig1_321434264', 'content': 'Trend in EC submissions by authors from 2012 to 2016. Trend in time to initial decision for articles and ECs from 2012 to 2016.', 'raw_content': 'Trend in EC submissions by authors from 2012 to 2016. Trend in time to initial decision for articles and ECs from 2012 to 2016.', 'rerank_score': 10.0}, {'title': 'Report on Public Finances in EMU 2016', 'url': 'https://economy-finance.ec.europa.eu/publications/report-public-finances-emu-2016_en', 'content': 'Details. Identification: Institutional Paper 45; Publication date. 19 December 2016. Author: Directorate-General for Economic and Financial Affairs ...', 'raw_content': 'Details. Identification: Institutional Paper 45; Publication date. 19 December 2016. Author: Directorate-General for Economic and Financial Affairs ...', 'rerank_score': 8.1}, {'title': \"EC '16- Proceedings of the 2016 ACM Conference on Economics and Computation\", 'url': 'https://www.sigecom.org/ec16/toc.html', 'content': 'SESSION: Best Paper and Best Dissertation Award Presentations Deferred Acceptance with Compensation Chains Piotr Dworczak', 'raw_content': 'SESSION: Best Paper and Best Dissertation Award Presentations Deferred Acceptance with Compensation Chains Piotr Dworczak', 'rerank_score': 5.6}, {'title': 'dblp: ACM-EC 2016', 'url': 'https://dblp.org/db/conf/sigecom/sigecom2016', 'content': \"Bibliographic content of ACM-EC 2016 Vincent Conitzer, Dirk Bergemann, Yiling Chen: Proceedings of the 2016 ACM Conference on Economics and Computation, EC '16, Maastricht, The Netherlands, July 24-28, 2016. ACM 2016, ISBN 978-1-4503-3936-\", 'raw_content': \"Bibliographic content of ACM-EC 2016 Vincent Conitzer, Dirk Bergemann, Yiling Chen: Proceedings of the 2016 ACM Conference on Economics and Computation, EC '16, Maastricht, The Netherlands, July 24-28, 2016. ACM 2016, ISBN 978-1-4503-3936-\", 'rerank_score': 4.85}, {'title': \"EC'16 || 17th ACM Conference on Economics and Computation\", 'url': 'https://www.sigecom.org/ec16/', 'content': \"EC '16 Complete Schedule here! EC '16 Proceedings. The 2016 ACM SIGecom Test of Time Award is given to: • J. Bartholdi and J. Orlin, Single Transferable ...\", 'raw_content': \"EC '16 Complete Schedule here! EC '16 Proceedings. The 2016 ACM SIGecom Test of Time Award is given to: • J. Bartholdi and J. Orlin, Single Transferable ...\", 'rerank_score': 2.4}], 'backend': 'searxng', 'answer': None, 'notices': []}",
+                "raw_result": {
+                  "results": [
+                    {
+                      "title": "Trend in EC submissions by authors from 2012 to 2016. - ResearchGate",
+                      "url": "https://www.researchgate.net/figure/Trend-in-EC-submissions-by-authors-from-2012-to-2016_fig1_321434264",
+                      "content": "Trend in EC submissions by authors from 2012 to 2016. Trend in time to initial decision for articles and ECs from 2012 to 2016.",
+                      "raw_content": "Trend in EC submissions by authors from 2012 to 2016. Trend in time to initial decision for articles and ECs from 2012 to 2016.",
+                      "rerank_score": 10.0
+                    },
+                    {
+                      "title": "Report on Public Finances in EMU 2016",
+                      "url": "https://economy-finance.ec.europa.eu/publications/report-public-finances-emu-2016_en",
+                      "content": "Details. Identification: Institutional Paper 45; Publication date. 19 December 2016. Author: Directorate-General for Economic and Financial Affairs ...",
+                      "raw_content": "Details. Identification: Institutional Paper 45; Publication date. 19 December 2016. Author: Directorate-General for Economic and Financial Affairs ...",
+                      "rerank_score": 8.1
+                    },
+                    {
+                      "title": "EC '16- Proceedings of the 2016 ACM Conference on Economics and Computation",
+                      "url": "https://www.sigecom.org/ec16/toc.html",
+                      "content": "SESSION: Best Paper and Best Dissertation Award Presentations Deferred Acceptance with Compensation Chains Piotr Dworczak",
+                      "raw_content": "SESSION: Best Paper and Best Dissertation Award Presentations Deferred Acceptance with Compensation Chains Piotr Dworczak",
+                      "rerank_score": 5.6
+                    },
+                    {
+                      "title": "dblp: ACM-EC 2016",
+                      "url": "https://dblp.org/db/conf/sigecom/sigecom2016",
+                      "content": "Bibliographic content of ACM-EC 2016 Vincent Conitzer, Dirk Bergemann, Yiling Chen: Proceedings of the 2016 ACM Conference on Economics and Computation, EC '16, Maastricht, The Netherlands, July 24-28, 2016. ACM 2016, ISBN 978-1-4503-3936-",
+                      "raw_content": "Bibliographic content of ACM-EC 2016 Vincent Conitzer, Dirk Bergemann, Yiling Chen: Proceedings of the 2016 ACM Conference on Economics and Computation, EC '16, Maastricht, The Netherlands, July 24-28, 2016. ACM 2016, ISBN 978-1-4503-3936-",
+                      "rerank_score": 4.85
+                    },
+                    {
+                      "title": "EC'16 || 17th ACM Conference on Economics and Computation",
+                      "url": "https://www.sigecom.org/ec16/",
+                      "content": "EC '16 Complete Schedule here! EC '16 Proceedings. The 2016 ACM SIGecom Test of Time Award is given to: • J. Bartholdi and J. Orlin, Single Transferable ...",
+                      "raw_content": "EC '16 Complete Schedule here! EC '16 Proceedings. The 2016 ACM SIGecom Test of Time Award is given to: • J. Bartholdi and J. Orlin, Single Transferable ...",
+                      "rerank_score": 2.4
+                    }
+                  ],
+                  "backend": "searxng",
+                  "answer": null,
+                  "notices": []
+                },
+                "error": null
+              },
+              {
+                "ok": true,
+                "tool_name": "search",
+                "output_text": "{'results': [{'title': 'Effects of Sweet Potato Feathery Mottle Virus and ... - ResearchGate', 'url': 'https://www.researchgate.net/publication/283980876_Effects_of_Sweet_Potato_Feathery_Mottle_Virus_and_Sweet_Potato_Chlorotic_Stunt_Virus_on_the_Yield_of_SweetPotato_in_Uganda', 'content': 'SPFMV and SPCSV can cause yield losses of up to 40% and 52% in single infections, respectively (Adikini et al., (2016) . However, the combination of these ...', 'raw_content': 'SPFMV and SPCSV can cause yield losses of up to 40% and 52% in single infections, respectively (Adikini et al., (2016) . However, the combination of these ...', 'rerank_score': 3.5}, {'title': 'Interaction between potyvirus and crinivirus in sweet potato - Redalyc', 'url': 'https://www.redalyc.org/journal/2530/253068033012/html/', 'content': '2016, Nhlapo et al. 2018). In co-infections, there is a synergistic interaction with an increase in the virus concentration, replication and movement of SPFMV.', 'raw_content': '2016, Nhlapo et al. 2018). In co-infections, there is a synergistic interaction with an increase in the virus concentration, replication and movement of SPFMV.', 'rerank_score': 3.4}, {'title': 'Prevalence of sweetpotato viruses in Acholi sub-region, northern Uganda', 'url': 'https://pmc.ncbi.nlm.nih.gov/articles/PMC6716578/', 'content': 'Co-infections involving SPFMV and SPCSV produce a severe disease syndrome known as sweetpotato virus disease (SPVD) that is associated with severe yield losses ...', 'raw_content': 'Co-infections involving SPFMV and SPCSV produce a severe disease syndrome known as sweetpotato virus disease (SPVD) that is associated with severe yield losses ...', 'rerank_score': 2.55}, {'title': 'Detection of Viruses and Elimination of Sweet Potato Feathery Mottle ...', 'url': 'https://www.mdpi.com/2077-0472/14/11/1929', 'content': 'Oct 30, 2024 · Sweet potato feathery mottle virus (SPFMV) was detected in 12 of the 15 source plants tested. Triple infections of SPFMV, sweet potato chlorotic ...', 'raw_content': 'Oct 30, 2024 · Sweet potato feathery mottle virus (SPFMV) was detected in 12 of the 15 source plants tested. Triple infections of SPFMV, sweet potato chlorotic ...', 'rerank_score': 1.2}, {'title': 'Genomic analysis of Sweet potato feathery mottle virus from East Africa', 'url': 'https://www.sciencedirect.com/science/article/pii/S0885576519303534', 'content': 'Both SPFMV and Sweet potato chlorotic stunt virus (SPCSV) have higher prevalence and distribution across East Africa than any of the sweet potato viruses ...', 'raw_content': 'Both SPFMV and Sweet potato chlorotic stunt virus (SPCSV) have higher prevalence and distribution across East Africa than any of the sweet potato viruses ...', 'rerank_score': 1.15}], 'backend': 'searxng', 'answer': None, 'notices': []}",
+                "raw_result": {
+                  "results": [
+                    {
+                      "title": "Effects of Sweet Potato Feathery Mottle Virus and ... - ResearchGate",
+                      "url": "https://www.researchgate.net/publication/283980876_Effects_of_Sweet_Potato_Feathery_Mottle_Virus_and_Sweet_Potato_Chlorotic_Stunt_Virus_on_the_Yield_of_SweetPotato_in_Uganda",
+                      "content": "SPFMV and SPCSV can cause yield losses of up to 40% and 52% in single infections, respectively (Adikini et al., (2016) . However, the combination of these ...",
+                      "raw_content": "SPFMV and SPCSV can cause yield losses of up to 40% and 52% in single infections, respectively (Adikini et al., (2016) . However, the combination of these ...",
+                      "rerank_score": 3.5
+                    },
+                    {
+                      "title": "Interaction between potyvirus and crinivirus in sweet potato - Redalyc",
+                      "url": "https://www.redalyc.org/journal/2530/253068033012/html/",
+                      "content": "2016, Nhlapo et al. 2018). In co-infections, there is a synergistic interaction with an increase in the virus concentration, replication and movement of SPFMV.",
+                      "raw_content": "2016, Nhlapo et al. 2018). In co-infections, there is a synergistic interaction with an increase in the virus concentration, replication and movement of SPFMV.",
+                      "rerank_score": 3.4
+                    },
+                    {
+                      "title": "Prevalence of sweetpotato viruses in Acholi sub-region, northern Uganda",
+                      "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC6716578/",
+                      "content": "Co-infections involving SPFMV and SPCSV produce a severe disease syndrome known as sweetpotato virus disease (SPVD) that is associated with severe yield losses ...",
+                      "raw_content": "Co-infections involving SPFMV and SPCSV produce a severe disease syndrome known as sweetpotato virus disease (SPVD) that is associated with severe yield losses ...",
+                      "rerank_score": 2.55
+                    },
+                    {
+                      "title": "Detection of Viruses and Elimination of Sweet Potato Feathery Mottle ...",
+                      "url": "https://www.mdpi.com/2077-0472/14/11/1929",
+                      "content": "Oct 30, 2024 · Sweet potato feathery mottle virus (SPFMV) was detected in 12 of the 15 source plants tested. Triple infections of SPFMV, sweet potato chlorotic ...",
+                      "raw_content": "Oct 30, 2024 · Sweet potato feathery mottle virus (SPFMV) was detected in 12 of the 15 source plants tested. Triple infections of SPFMV, sweet potato chlorotic ...",
+                      "rerank_score": 1.2
+                    },
+                    {
+                      "title": "Genomic analysis of Sweet potato feathery mottle virus from East Africa",
+                      "url": "https://www.sciencedirect.com/science/article/pii/S0885576519303534",
+                      "content": "Both SPFMV and Sweet potato chlorotic stunt virus (SPCSV) have higher prevalence and distribution across East Africa than any of the sweet potato viruses ...",
+                      "raw_content": "Both SPFMV and Sweet potato chlorotic stunt virus (SPCSV) have higher prevalence and distribution across East Africa than any of the sweet potato viruses ...",
+                      "rerank_score": 1.15
+                    }
+                  ],
+                  "backend": "searxng",
+                  "answer": null,
+                  "notices": []
+                },
+                "error": null
+              }
+            ],
+            "blocked_sources": [
+              {
+                "source_id": "S1",
+                "query_id": "Q1",
+                "title": "harbor-datasets/datasets/gaia/2a649bb1-795f-4a01-b3be ... - GitHub",
+                "url": "https://github.com/laude-institute/harbor-datasets/blob/main/datasets/gaia/2a649bb1-795f-4a01-b3be-9a01868dae73/instruction.md",
+                "domain": "github.com",
+                "snippet": "Question What are the EC numbers of the two most commonly used chemicals for the virus testing method in the paper about SPFMV and SPCSV in the Pearl Of Africa from 2016? Return the semicolon-separated numbers in the order of the alphabetized chemicals.",
+                "raw_content": "Question What are the EC numbers of the two most commonly used chemicals for the virus testing method in the paper about SPFMV and SPCSV in the Pearl Of Africa from 2016? Return the semicolon-separated numbers in the order of the alphabetized chemicals.",
+                "rank": 1,
+                "rerank_score": 16.55,
+                "fetched": true,
+                "blocked": true,
+                "block_reason": "benchmark_or_dataset_source"
+              },
+              {
+                "source_id": "S5",
+                "query_id": "Q1",
+                "title": "Datasets at Hugging Face",
+                "url": "https://huggingface.co/datasets/Intelligent-Internet/GAIA-Subset-Benchmark",
+                "domain": "huggingface.co",
+                "snippet": "# Comprehensive Report: EC Numbers of Chemicals Used in SPFMV and SPCSV Virus Testing in the Pearl of Africa (2016) ## Introduction The query seeks to identify ...",
+                "raw_content": "# Comprehensive Report: EC Numbers of Chemicals Used in SPFMV and SPCSV Virus Testing in the Pearl of Africa (2016) ## Introduction The query seeks to identify ...",
+                "rank": 5,
+                "rerank_score": 8.2,
+                "fetched": true,
+                "blocked": true,
+                "block_reason": "benchmark_or_dataset_source"
+              }
+            ]
+          },
+          "error": null
+        },
+        {
+          "ok": false,
+          "tool_name": "deterministic_solver",
+          "output_text": "",
+          "raw_result": {
+            "used_deterministic_solver": false,
+            "task_type": "not_ready",
+            "answer": null,
+            "answer_text": "",
+            "confidence": 0.0,
+            "evidence": {},
+            "evidence_source": "none",
+            "readiness": {
+              "is_deterministic_task": true,
+              "is_closed_world": false,
+              "has_complete_data": false,
+              "evidence_source": "none",
+              "reason": "question appears to require external factual evidence and no verified search evidence is available"
+            },
+            "error": "question appears to require external factual evidence and no verified search evidence is available"
+          },
+          "error": "question appears to require external factual evidence and no verified search evidence is available"
+        }
+      ],
+      "penalty_results": [
+        {
+          "agent_id": "nemotron",
+          "penalty": -1.0,
+          "reasons": [
+            "inactive_or_no_answer"
+          ]
+        },
+        {
+          "agent_id": "minicpm",
+          "penalty": -1.0,
+          "reasons": [
+            "inactive_or_no_answer"
+          ]
+        },
+        {
+          "agent_id": "qwen",
+          "penalty": -1.0,
+          "reasons": [
+            "inactive_or_no_answer"
+          ]
+        },
+        {
+          "agent_id": "gemma",
+          "penalty": -1.0,
+          "reasons": [
+            "inactive_or_no_answer"
+          ]
+        }
+      ]
+    }
+  }
+}

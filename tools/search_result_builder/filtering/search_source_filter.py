@@ -1,8 +1,8 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 """Filter search sources before evidence extraction."""
 
-from .config import SearchSourceCandidate
+from ..config import SearchSourceCandidate
 
 
 class SourceFilter:
@@ -30,6 +30,26 @@ class SourceFilter:
         "openresearcher",
         "web-bench",
         "final answer",
+        "expected answer",
+    )
+    BENCHMARK_LEAK_MARKERS = (
+        "assistants/gaia",
+        "inspect_evals",
+        "gaia benchmark",
+        "gaia-benchmark",
+        "gaia_subset",
+        "gaia-subset",
+        "webvoyager/data/gaia",
+        "harbor-datasets",
+        "open deep researcher",
+    )
+    NO_RESULT_MARKERS = (
+        "couldn't find a match",
+        "could not find a match",
+        "no results found",
+        "did not match any documents",
+        "missing:",
+        "login required",
     )
     LOW_TRUST_DOMAIN_MARKERS = (
         "quora.com",
@@ -37,6 +57,7 @@ class SourceFilter:
         "facebook.com",
         "instagram.com",
         "tiktok.com",
+        "linkedin.com",
     )
 
     def filter_sources(self, sources: list[SearchSourceCandidate]) -> list[SearchSourceCandidate]:
@@ -80,6 +101,12 @@ class SourceFilter:
         if any(marker in domain for marker in self.LOW_TRUST_DOMAIN_MARKERS):
             return "low_trust_domain"
 
+        if any(marker in haystack for marker in self.BENCHMARK_LEAK_MARKERS):
+            return "benchmark_or_dataset_source"
+
+        if any(marker in haystack for marker in self.NO_RESULT_MARKERS):
+            return "no_result_or_login_page"
+
         if any(marker in domain for marker in self.BLOCKED_DOMAIN_MARKERS) and any(
             marker in haystack for marker in self.BLOCKED_TEXT_MARKERS
         ):
@@ -92,3 +119,4 @@ class SourceFilter:
 
 
 __all__ = ["SourceFilter"]
+

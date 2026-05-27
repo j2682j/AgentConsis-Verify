@@ -28,7 +28,7 @@ from tools.tool_manager import ToolManager
 
 DEFAULT_AGENT_SPECS = [
     ("nemotron", "nemotron-mini:4b"),
-    ("phi", "phi4-mini:3.8b"),
+    ("minicpm", "minicpm3:4b"),
     ("qwen", "qwen3:4b"),
     ("gemma", "gemma3:4b"),
 ]
@@ -80,6 +80,35 @@ def dataclass_to_dict(value: Any) -> Any:
     return value
 
 
+def extract_search_summary(network_summary: dict[str, Any]) -> dict[str, Any]:
+    metadata = network_summary.get("metadata", {}) or {}
+    for usage in metadata.get("tool_usage", []) or []:
+        raw_result = usage.get("raw_result")
+        if not isinstance(raw_result, dict):
+            continue
+        diagnostics = raw_result.get("candidate_diagnostics") or {}
+        packet = raw_result.get("agent_packet") or {}
+        candidates = packet.get("candidates") or raw_result.get("verified_candidates") or []
+        facts = packet.get("facts") or raw_result.get("fact_cards") or []
+        top = candidates[0] if candidates and isinstance(candidates[0], dict) else {}
+        return {
+            "answer_type": diagnostics.get("answer_type", ""),
+            "raw_candidate_count": diagnostics.get("raw_candidate_count", 0),
+            "filtered_candidate_count": diagnostics.get("filtered_candidate_count", 0),
+            "verified_candidate_count": diagnostics.get("verified_candidate_count", 0),
+            "candidate_count": len(candidates),
+            "fact_count": len(facts),
+            "top_candidate": diagnostics.get("top_candidate", top.get("answer", "")),
+            "top_candidate_confidence": diagnostics.get("top_candidate_confidence", top.get("confidence", 0.0)),
+            "top_candidate_support": diagnostics.get("top_candidate_support", top.get("support_count", 0)),
+            "top_candidate_refute": diagnostics.get("top_candidate_refute", top.get("refute_count", 0)),
+            "rejected_candidates": diagnostics.get("rejected_candidates", []),
+            "missing_info": packet.get("missing_info", []),
+            "risk_flags": packet.get("risk_flags", []),
+        }
+    return {}
+
+
 def safe_filename(value: Any, fallback: str) -> str:
     text = str(value or "").strip() or fallback
     text = re.sub(r"[^A-Za-z0-9_.-]+", "_", text)
@@ -112,6 +141,7 @@ def run_sample(
     stage2_max_tokens: int,
     enable_stage1_early_stop: bool,
     enable_stage1_tool_use: bool,
+    enable_compact_search_evidence: bool,
     max_stage1_tool_turns: int,
     previous_best_agent_id: str | None,
     stage1_early_stop_max_retries: int,
@@ -126,6 +156,7 @@ def run_sample(
         stage2_max_tokens=stage2_max_tokens,
         enable_stage1_early_stop=enable_stage1_early_stop,
         enable_stage1_tool_use=enable_stage1_tool_use,
+        enable_compact_search_evidence=enable_compact_search_evidence,
         max_stage1_tool_turns=max_stage1_tool_turns,
         previous_best_agent_id=previous_best_agent_id,
         stage1_early_stop_max_retries=stage1_early_stop_max_retries,
@@ -171,6 +202,7 @@ def run_sample(
         "response_time_seconds": response_time_seconds,
         "total_tokens": total_tokens,
         "token_usage": token_usage,
+        "search_summary": extract_search_summary(network_summary),
         "execution_time": time.time() - start_time,
         "error": error,
         "network_summary": network_summary,
@@ -390,6 +422,7 @@ def write_markdown_report(results: dict[str, Any], output_path: str | Path) -> P
         token_usage = result.get("token_usage", {}) or (
             network_metadata
         ).get("token_usage", {}) or {}
+        search_summary = result.get("search_summary", {}) or {}
 
         lines.extend(
             [
@@ -397,6 +430,7 @@ def write_markdown_report(results: dict[str, Any], output_path: str | Path) -> P
                 "",
                 f"- Stage1 early stop enabled: {network_metadata.get('enable_stage1_early_stop', False)}",
                 f"- Stage1 tool use enabled: {network_metadata.get('enable_stage1_tool_use', False)}",
+                f"- Compact search evidence enabled: {network_metadata.get('enable_compact_search_evidence', False)}",
                 f"- Max Stage1 tool turns: {network_metadata.get('max_stage1_tool_turns', 0)}",
                 f"- Stage1 early stop used: {network_metadata.get('stage1_early_stop', False)}",
                 f"- Stage1 attempts: {network_metadata.get('stage1_attempts', 0)}",
@@ -424,6 +458,29 @@ def write_markdown_report(results: dict[str, Any], output_path: str | Path) -> P
                     f"{usage.get('completion_tokens', 0)} | {usage.get('total_tokens', 0)} |"
                 )
             lines.append("")
+
+        if search_summary:
+            rejected_text = "; ".join(
+                f"{item.get('answer', '')}:{item.get('reason', '')}"
+                for item in search_summary.get("rejected_candidates", []) or []
+            )
+            lines.extend(
+                [
+                    "**Search Summary**",
+                    "",
+                    f"- Answer type: {search_summary.get('answer_type', '') or '-'}",
+                    f"- Raw/filter/verified candidates: {search_summary.get('raw_candidate_count', 0)} / {search_summary.get('filtered_candidate_count', 0)} / {search_summary.get('verified_candidate_count', 0)}",
+                    f"- Candidate count: {search_summary.get('candidate_count', 0)}",
+                    f"- Fact count: {search_summary.get('fact_count', 0)}",
+                    f"- Top candidate: {search_summary.get('top_candidate', '') or '-'}",
+                    f"- Top candidate confidence: {search_summary.get('top_candidate_confidence', 0.0)}",
+                    f"- Support/refute: {search_summary.get('top_candidate_support', 0)} / {search_summary.get('top_candidate_refute', 0)}",
+                    f"- Rejected candidates: {short_cell(rejected_text, 180) or '-'}",
+                    f"- Missing info: {', '.join(search_summary.get('missing_info', []) or []) or '-'}",
+                    f"- Risk flags: {', '.join(search_summary.get('risk_flags', []) or []) or '-'}",
+                    "",
+                ]
+            )
 
         lines.extend(
             [
@@ -564,6 +621,7 @@ def run_gaia_evaluation(args: argparse.Namespace) -> dict[str, Any]:
     print(f"[INFO] stage1_runs_per_agent={args.stage1_runs_per_agent}")
     print(f"[INFO] stage2_max_tokens={args.stage2_max_tokens}")
     print(f"[INFO] enable_stage1_tool_use={args.enable_stage1_tool_use}")
+    print(f"[INFO] compact_search_evidence={args.compact_search_evidence}")
     print(f"[INFO] max_stage1_tool_turns={args.max_stage1_tool_turns}")
     print(f"[INFO] enable_stage1_early_stop={args.enable_stage1_early_stop}")
     print(f"[INFO] stage1_early_stop_max_retries={args.stage1_early_stop_max_retries}")
@@ -584,6 +642,7 @@ def run_gaia_evaluation(args: argparse.Namespace) -> dict[str, Any]:
             stage2_max_tokens=args.stage2_max_tokens,
             enable_stage1_early_stop=args.enable_stage1_early_stop,
             enable_stage1_tool_use=args.enable_stage1_tool_use,
+            enable_compact_search_evidence=args.compact_search_evidence,
             max_stage1_tool_turns=args.max_stage1_tool_turns,
             previous_best_agent_id=previous_best_agent_id,
             stage1_early_stop_max_retries=args.stage1_early_stop_max_retries,
@@ -627,6 +686,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--stage1-runs-per-agent", type=int, default=3)
     parser.add_argument("--stage2-max-tokens", type=int, default=512)
     parser.add_argument("--enable-stage1-tool-use", action="store_true")
+    parser.add_argument("--compact-search-evidence", action="store_true")
     parser.add_argument("--max-stage1-tool-turns", type=int, default=2)
     parser.add_argument("--enable-stage1-early-stop", action="store_true")
     parser.add_argument("--stage1-early-stop-max-retries", type=int, default=1)
