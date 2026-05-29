@@ -43,6 +43,8 @@ python run_gaia.py --level 2 --max-samples 1 --enable-stage1-tool-use --log-name
 - Added optional Stage 1 tool-use trajectory.
 - Added Stage 2 pairwise judge scoring over reasoning steps.
 - Added rule-based answer validation and penalty calculation.
+- Added optional signal-based search query planning with model-generated queries,
+  spaCy NER hard constraints, and token-probability ranking.
 
 ## Key Features
 
@@ -53,6 +55,8 @@ python run_gaia.py --level 2 --max-samples 1 --enable-stage1-tool-use --log-name
 - **Cross-agent Stage 2 judging**: agents judge other agents' reasoning steps.
 - **Step-level scoring**: judge score is computed over explicit reasoning steps.
 - **Rule-based penalties**: malformed answers, tool-call-as-answer, refusal-like answers, and tool failures can reduce score.
+- **Signal-based search planning**: optionally ranks model-generated search queries
+  using spaCy NER entities and low-probability token signals.
 - **GAIA-oriented evaluation**: includes dataset loading, attachment preparation, batch running, per-task export, Markdown reporting, and accuracy statistics.
 
 ## Overview
@@ -148,6 +152,22 @@ Install the project dependencies according to your local environment.
 This project expects local model serving through an OpenAI-compatible endpoint,
 such as Ollama-compatible APIs.
 
+Optional dependencies for signal-based search query planning:
+
+```bash
+pip install spacy transformers torch
+python -m spacy download en_core_web_md
+```
+
+The signal planner also uses a HuggingFace causal LM for token probability
+analysis. The current default is:
+
+```text
+Qwen/Qwen3-4B
+```
+
+This model is loaded only when `--enable-signal-search-queries` is used.
+
 ## Environment Variables
 
 Create a `.env` file in the project root. Do not commit real secrets.
@@ -222,6 +242,16 @@ python run_gaia.py ^
   --log-name gaia_level2_tool_test
 ```
 
+Run one GAIA example with signal-based search query planning:
+
+```bash
+python run_gaia.py ^
+  --level 2 ^
+  --max-samples 1 ^
+  --enable-signal-search-queries ^
+  --log-name gaia_level2_signal_query_test
+```
+
 Run the full GAIA Level 1 validation split:
 
 ```bash
@@ -255,6 +285,7 @@ Important options:
 | `--stage2-max-tokens` | Maximum tokens for Stage 2 judge responses. |
 | `--enable-stage1-tool-use` | Enable tool trajectory during Stage 1. |
 | `--max-stage1-tool-turns` | Maximum tool-use turns per Stage 1 run. |
+| `--enable-signal-search-queries` | Use model query + spaCy NER + token probability to rank search queries. |
 | `--enable-stage1-early-stop` | Enable early stopping during Stage 1. |
 | `--stage1-early-stop-max-retries` | Retry budget for early-stop mode. |
 | `--models` | Comma-separated model list. |
@@ -335,6 +366,43 @@ question
 -> candidate answer extraction
 -> prompt rendering
 ```
+
+By default, query planning uses the legacy rule-based `SearchQueryPlanner`.
+When `--enable-signal-search-queries` is enabled, the same planner switches to
+`mode="signal"` and returns only ordered query candidates plus
+`precision_needed=True`.
+
+Signal mode uses three query signals:
+
+| Signal | Role |
+| --- | --- |
+| Model-generated query | Produces readable, search-engine-ready complete queries. |
+| spaCy NER | Extracts hard constraints such as dates, sources, fields, and compound entities. |
+| Token probability | Finds high-importance low-probability terms for ranking and filtering. |
+
+The current signal strategy searches complete model-generated queries. spaCy NER
+and token probability are used to rank those queries, not as standalone search
+queries. This avoids overly broad searches such as `Physics`, `Society`, or
+`three`.
+
+The signal planner lives under:
+
+```text
+tools/search_result_builder/search_query_generate/
+```
+
+The main classes are:
+
+| Class | Purpose |
+| --- | --- |
+| `ModelQueryCandidateGenerator` | Uses local `qwen3:4b` to generate complete query candidates. |
+| `NerQueryCandidateGenerator` | Uses `en_core_web_md` spaCy NER and generic compound entity merging. |
+| `TokenProbabilityAnalyzer` | Scores NER terms by low token probability using a HuggingFace causal LM. |
+| `SearchQueryCombiner` | Combines the three signals and selects ranked query candidates. |
+
+Compound NER merging is generic: adjacent spaCy entities are merged only when
+the original text between them contains connective words or punctuation, and the
+merged span is at most 20 characters. The original spaCy entities are preserved.
 
 The prompt sent to agents is intentionally compact:
 
@@ -459,6 +527,7 @@ The Markdown report summarizes:
 | `parsers/` | Parses reasoning steps, tool requests, final answers, and judge outputs. |
 | `score/` | Computes confidence, validation, penalties, and final scores. |
 | `tools/` | Provides search, calculation, attachment handling, and tool caching. |
+| `tools/search_result_builder/search_query_generate/` | Generates and ranks signal-based search query candidates. |
 
 ## Development Notes
 
@@ -474,6 +543,12 @@ Recommended tool-use smoke test:
 python run_gaia.py --level 2 --max-samples 1 --enable-stage1-tool-use --log-name smoke_tool_test
 ```
 
+Recommended signal-search smoke test:
+
+```bash
+python run_gaia.py --level 2 --max-samples 1 --enable-signal-search-queries --log-name smoke_signal_search
+```
+
 Useful checks:
 
 ```bash
@@ -486,6 +561,8 @@ python run_gaia.py --help
 - Model quality depends strongly on the local SLMs and endpoint configuration.
 - Some GAIA tasks may require richer tool routing, better attachment understanding, or stronger semantic answer equivalence.
 - Web search quality depends on the configured backend.
+- Signal-based search query planning is slower because it may call `qwen3:4b`,
+  load spaCy, and load `Qwen/Qwen3-4B` for token probability analysis.
 - Token usage is reported only when the model endpoint returns usage metadata.
 
 ## Acknowledgements
