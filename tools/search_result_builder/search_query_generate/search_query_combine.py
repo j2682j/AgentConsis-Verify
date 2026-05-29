@@ -13,9 +13,9 @@ try:
 except Exception:  # pragma: no cover - optional dependency
     load_dotenv = None
 
-from model_query_candidate import ModelQueryCandidateGenerator, QueryCandidate
-from ner_query_candidate import EntityCandidate, NerQueryCandidate, NerQueryCandidateGenerator
-from token_prob_compute import TextUnitScore, TokenProbabilityAnalyzer, TokenProbabilityQueryCandidate
+from .model_query_candidate import ModelQueryCandidateGenerator, QueryCandidate
+from .ner_query_candidate import EntityCandidate, NerQueryCandidate, NerQueryCandidateGenerator
+from .token_prob_compute import TextUnitScore, TokenProbabilityAnalyzer, TokenProbabilityQueryCandidate
 from tools.search_tool import SearchTool
 
 

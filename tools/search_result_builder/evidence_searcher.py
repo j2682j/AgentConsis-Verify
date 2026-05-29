@@ -52,9 +52,12 @@ class EvidenceSearcher:
         question_term_filter: QuestionTermFilter | None = None,
         candidate_verification_searcher: CandidateVerificationSearcher | None = None,
         compact_evidence: bool = False,
+        enable_signal_query_planner: bool = False,
     ) -> None:
         self.tool_manager = tool_manager
-        self.query_planner = query_planner or SearchQueryPlanner()
+        self.query_planner = query_planner or SearchQueryPlanner(
+            mode="signal" if enable_signal_query_planner else "legacy"
+        )
         self.source_filter = source_filter or SourceFilter()
         self.evidence_extractor = evidence_extractor or EvidenceExtractor()
         self.candidate_extractor = candidate_extractor or TypedCandidateExtractor()

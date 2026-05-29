@@ -40,6 +40,7 @@ class EvidenceRunner:
         attachment_evidence_builder: AttachmentEvidenceBuilder | None = None,
         deterministic_solver: DeterministicSolver | None = None,
         compact_search_evidence: bool = False,
+        enable_signal_search_queries: bool = False,
     ) -> None:
         self.question = question
         self.attachment = attachment or {}
@@ -50,6 +51,7 @@ class EvidenceRunner:
         self.attachment_evidence_builder = attachment_evidence_builder or AttachmentEvidenceBuilder()
         self.deterministic_solver = deterministic_solver or DeterministicSolver()
         self.compact_search_evidence = compact_search_evidence
+        self.enable_signal_search_queries = enable_signal_search_queries
 
     def run(self) -> dict[str, Any]:
         """
@@ -225,6 +227,7 @@ class EvidenceRunner:
             searcher = EvidenceSearcher(
                 tool_manager=self.tool_manager,
                 compact_evidence=self.compact_search_evidence,
+                enable_signal_query_planner=self.enable_signal_search_queries,
             )
             output = searcher.search(
                 self.question,

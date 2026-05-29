@@ -62,6 +62,7 @@ class Network:
         previous_best_agent_id: str | None = None,
         stage1_early_stop_max_retries: int = 1,
         enable_compact_search_evidence: bool = False,
+        enable_signal_search_queries: bool = False,
         search_result: str = "",
         attachment_result: str = "",
     ) -> None:
@@ -79,6 +80,7 @@ class Network:
         self.previous_best_agent_id = previous_best_agent_id
         self.stage1_early_stop_max_retries = max(0, stage1_early_stop_max_retries)
         self.enable_compact_search_evidence = enable_compact_search_evidence
+        self.enable_signal_search_queries = enable_signal_search_queries
         self.search_result = search_result
         self.attachment_result = attachment_result
 
@@ -97,6 +99,7 @@ class Network:
             search_result=self.search_result,
             attachment_result=self.attachment_result,
             compact_search_evidence=self.enable_compact_search_evidence,
+            enable_signal_search_queries=self.enable_signal_search_queries,
         )
         self.stage1_runner = Stage1Runner(
             question=self.question,
@@ -202,6 +205,7 @@ class Network:
                 "stage2_max_tokens": self.stage2_max_tokens,
                 "enable_stage1_tool_use": self.enable_stage1_tool_use,
                 "enable_compact_search_evidence": self.enable_compact_search_evidence,
+                "enable_signal_search_queries": self.enable_signal_search_queries,
                 "max_stage1_tool_turns": self.max_stage1_tool_turns,
                 "enable_stage1_early_stop": self.enable_stage1_early_stop,
                 "previous_best_agent_id": self.previous_best_agent_id or "",

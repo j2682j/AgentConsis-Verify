@@ -110,8 +110,39 @@ class SearchQueryPlanner:
         "You",
     }
 
+    def __init__(
+        self,
+        *,
+        mode: str = "legacy",
+        signal_num_model_candidates: int = 6,
+        signal_num_ner_candidates: int = 8,
+        signal_num_token_candidates: int = 8,
+        signal_precision_needed: bool = True,
+    ) -> None:
+        """
+        初始化搜尋 query planner。
+
+        Args:
+            - mode: query planning 模式，legacy 使用原本規則，signal 使用 model/NER/token probability。
+            - signal_num_model_candidates: signal 模式下模型產生的 query 數量。
+            - signal_num_ner_candidates: signal 模式下 NER query 數量。
+            - signal_num_token_candidates: signal 模式下 token probability 保留數量。
+            - signal_precision_needed: signal 模式是否啟用精準搜尋。
+
+        Returns:
+            - None。
+        """
+        self.mode = mode
+        self.signal_num_model_candidates = signal_num_model_candidates
+        self.signal_num_ner_candidates = signal_num_ner_candidates
+        self.signal_num_token_candidates = signal_num_token_candidates
+        self.signal_precision_needed = signal_precision_needed
+
     def plan(self, question: str, max_queries: int = 5) -> dict[str, Any]:
         """plan 的主要實作。"""
+        if self.mode == "signal":
+            return self._plan_with_query_signals(question, max_queries=max_queries)
+
         text = normalize_text(question)
         if not text:
             return {
@@ -169,6 +200,48 @@ class SearchQueryPlanner:
             "year_tokens": year_tokens,
             "precision_needed": precision_needed,
         }
+
+    def _plan_with_query_signals(self, question: str, max_queries: int = 5) -> dict[str, Any]:
+        """
+        使用 model query、spaCy NER 與 token probability 產生排序後的搜尋 query。
+
+        Args:
+            - question: 原始問題。
+            - max_queries: 最多回傳的 query 數量。
+
+        Returns:
+            - dict[str, Any]: 最小 query plan，只包含 queries 與 precision_needed。
+        """
+        text = normalize_text(question)
+        if not text:
+            return {"queries": [], "precision_needed": False}
+
+        try:
+            from tools.search_result_builder.search_query_generate import SearchQueryCombiner
+
+            combiner = SearchQueryCombiner()
+            signals = combiner.collect_signals(
+                text,
+                num_model_candidates=max(self.signal_num_model_candidates, max_queries * 2),
+                num_ner_candidates=self.signal_num_ner_candidates,
+                num_token_candidates=self.signal_num_token_candidates,
+            )
+            experiments = combiner.build_experiments(signals, top_k=max_queries)
+            selected_queries = [item.query for item in experiments[0].queries]
+
+            if not selected_queries:
+                selected_queries = [candidate.query for candidate in signals.model_queries]
+
+            queries = self._dedupe_queries(selected_queries)[: max(1, max_queries)]
+            if not queries:
+                return SearchQueryPlanner(mode="legacy").plan(question, max_queries=max_queries)
+
+            return {
+                "queries": queries,
+                "precision_needed": self.signal_precision_needed,
+            }
+        except Exception:
+            return SearchQueryPlanner(mode="legacy").plan(question, max_queries=max_queries)
 
     def build_verification_query(self, *, question: str, candidate_answer: str) -> str:
         """build_verification_query 的主要實作。"""
@@ -408,6 +481,26 @@ class SearchQueryPlanner:
     def _normalize_query_key(self, query: str) -> str:
         """_normalize_query_key 的內部輔助實作。"""
         return re.sub(r"\s+", " ", normalize_text(query).lower()).strip()
+
+    def _dedupe_queries(self, queries: list[str]) -> list[str]:
+        """
+        依照原始順序去除重複 query。
+
+        Args:
+            - queries: 候選 query 列表。
+
+        Returns:
+            - list[str]: 去重後的 query 列表。
+        """
+        deduped: list[str] = []
+        seen: set[str] = set()
+        for query in queries:
+            normalized = self._normalize_query_key(query)
+            if not normalized or normalized in seen:
+                continue
+            deduped.append(normalize_text(query))
+            seen.add(normalized)
+        return deduped
 
     def _trim_leading_entity_stopwords(self, candidate: str) -> str:
         """_trim_leading_entity_stopwords 的內部輔助實作。"""
