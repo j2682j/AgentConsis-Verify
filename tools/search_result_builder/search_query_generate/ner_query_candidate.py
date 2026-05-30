@@ -9,11 +9,6 @@ from pathlib import Path
 from typing import Any
 
 
-SENTENCE = """A paper about AI regulation that was originally submitted to arXiv.org in June 2022 shows a figure with three axes,
-where each axis has a label word at both ends.
-Which of these words is used to describe a type of society in a Physics and Society article submitted to arXiv.org on August 11, 2016?"""
-
-
 @dataclass
 class EntityCandidate:
     """
@@ -367,60 +362,3 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--spacy-model", default="en_core_web_md")
     parser.add_argument("--show-entities", action="store_true", help="Output extracted entities instead of query candidates.")
     return parser.parse_args(argv)
-
-
-def resolve_question(args: argparse.Namespace) -> str:
-    """
-    從 CLI、檔案、stdin 或互動輸入取得問題文字。
-
-    Args:
-        - args: CLI 參數。
-
-    Returns:
-        - str: 要分析的問題文字。
-    """
-    if args.question:
-        return str(args.question).strip()
-
-    if args.question_file:
-        return Path(args.question_file).read_text(encoding="utf-8").strip()
-
-    if not sys.stdin.isatty():
-        stdin_text = sys.stdin.read().strip()
-        if stdin_text:
-            return stdin_text
-
-    print("Enter question. Finish with an empty line:")
-    lines: list[str] = []
-    while True:
-        try:
-            line = input()
-        except EOFError:
-            break
-        if not line.strip():
-            break
-        lines.append(line)
-
-    question = "\n".join(lines).strip()
-    return question or SENTENCE
-
-
-def main(argv: list[str] | None = None) -> None:
-    if hasattr(sys.stdout, "reconfigure"):
-        sys.stdout.reconfigure(encoding="utf-8")
-
-    args = parse_args(argv)
-    question = resolve_question(args)
-    generator = NerQueryCandidateGenerator(spacy_model=args.spacy_model)
-
-    if args.show_entities:
-        entities = generator.extract_entities(question)
-        print(json.dumps([asdict(entity) for entity in entities], ensure_ascii=False, indent=2))
-        return
-
-    candidates = generator.generate(question, num_candidates=args.num_candidates)
-    print(json.dumps([asdict(candidate) for candidate in candidates], ensure_ascii=False, indent=2))
-
-
-if __name__ == "__main__":
-    main()

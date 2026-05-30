@@ -21,9 +21,6 @@ from tools.search_tool import SearchTool
 
 ROOT = Path(__file__).resolve().parent
 
-SENTENCE = """A paper about AI regulation that was originally submitted to arXiv.org in June 2022 shows a figure with three axes,
-where each axis has a label word at both ends.
-Which of these words is used to describe a type of society in a Physics and Society article submitted to arXiv.org on August 11, 2016?"""
 
 
 @dataclass
@@ -554,53 +551,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-def resolve_question(args: argparse.Namespace) -> str:
-    if args.question:
-        return args.question.strip()
-    if args.question_file:
-        return Path(args.question_file).read_text(encoding="utf-8").strip()
-    if not sys.stdin.isatty():
-        stdin_text = sys.stdin.read().strip()
-        if stdin_text:
-            return stdin_text
-    return SENTENCE
 
 
-def main(argv: list[str] | None = None) -> None:
-    if hasattr(sys.stdout, "reconfigure"):
-        sys.stdout.reconfigure(encoding="utf-8")
-
-    args = parse_args(argv)
-    if load_dotenv is not None:
-        load_dotenv(ROOT / ".env")
-
-    question = resolve_question(args)
-    combiner = SearchQueryCombiner()
-
-    if args.run_experiments:
-        payload = combiner.run_search_experiments(
-            question,
-            num_model_candidates=args.num_model_candidates,
-            num_ner_candidates=args.num_ner_candidates,
-            num_token_candidates=args.num_token_candidates,
-            top_k=args.top_k,
-            backend=args.backend,
-            max_results=args.max_results,
-        )
-        print(json.dumps(payload, ensure_ascii=False, indent=2))
-        return
-
-    candidates = combiner.combine(
-        question,
-        num_model_candidates=args.num_model_candidates,
-        num_ner_candidates=args.num_ner_candidates,
-        num_token_candidates=args.num_token_candidates,
-        enable_model=not args.disable_model,
-        enable_ner=not args.disable_ner,
-        enable_token_probability=args.enable_token_probability,
-    )
-    print(json.dumps([asdict(candidate) for candidate in candidates], ensure_ascii=False, indent=2))
 
 
-if __name__ == "__main__":
-    main()

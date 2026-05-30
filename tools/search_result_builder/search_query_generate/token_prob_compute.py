@@ -10,9 +10,6 @@ from typing import Any
 
 MODEL_NAME = "Qwen/Qwen3-4B"
 
-SENTENCE = """A paper about AI regulation that was originally submitted to arXiv.org in June 2022 shows a figure with three axes,
-where each axis has a label word at both ends.
-Which of these words is used to describe a type of society in a Physics and Society article submitted to arXiv.org on August 11, 2016?"""
 
 TARGET_UNITS = [
     "AI regulation",
@@ -400,31 +397,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-def resolve_sentence(args: argparse.Namespace) -> str:
-    if args.sentence:
-        return args.sentence.strip()
-    if args.sentence_file:
-        return Path(args.sentence_file).read_text(encoding="utf-8").strip()
-    if not sys.stdin.isatty():
-        stdin_text = sys.stdin.read().strip()
-        if stdin_text:
-            return stdin_text
-    return SENTENCE
 
 
-def main(argv: list[str] | None = None) -> None:
-    args = parse_args(argv)
-    sentence = resolve_sentence(args)
-    units = args.unit or TARGET_UNITS
-    analyzer = TokenProbabilityAnalyzer(model_name=args.model_name)
-    candidates = analyzer.generate_candidates(
-        sentence,
-        units,
-        top_k=args.top_k,
-        sort_key=args.sort_key,
-    )
-    print(json.dumps([asdict(candidate) for candidate in candidates], ensure_ascii=False, indent=2))
 
 
-if __name__ == "__main__":
-    main()

@@ -22,10 +22,6 @@ except Exception:  # pragma: no cover - optional dependency
 
 QWEN_MODEL = "qwen3:4b"
 
-SENTENCE = """A paper about AI regulation that was originally submitted to arXiv.org in June 2022 shows a figure with three axes,
-where each axis has a label word at both ends.
-Which of these words is used to describe a type of society in a Physics and Society article submitted to arXiv.org on August 11, 2016?"""
-
 
 @dataclass
 class QueryCandidate:
@@ -339,65 +335,3 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--temperature", type=float, default=0.2)
     parser.add_argument("--show-prompt", action="store_true")
     return parser.parse_args(argv)
-
-
-def resolve_question(args: argparse.Namespace) -> str:
-    """
-    Resolve question text from CLI argument, file, stdin, or interactive input.
-
-    Args:
-        - args: Parsed CLI arguments.
-
-    Returns:
-        - str: Question text for query candidate generation.
-    """
-    if args.question:
-        return str(args.question).strip()
-
-    if args.question_file:
-        return Path(args.question_file).read_text(encoding="utf-8").strip()
-
-    if not sys.stdin.isatty():
-        stdin_text = sys.stdin.read().strip()
-        if stdin_text:
-            return stdin_text
-
-    print("Enter question. Finish with an empty line:")
-    lines: list[str] = []
-    while True:
-        try:
-            line = input()
-        except EOFError:
-            break
-        if not line.strip():
-            break
-        lines.append(line)
-
-    question = "\n".join(lines).strip()
-    if question:
-        return question
-
-    return SENTENCE
-
-
-def main(argv: list[str] | None = None) -> None:
-    args = parse_args(argv)
-    if load_dotenv is not None:
-        load_dotenv(ROOT / ".env")
-    question = resolve_question(args)
-
-    generator = ModelQueryCandidateGenerator(
-        model_name=args.model,
-        max_tokens=args.max_tokens,
-        temperature=args.temperature,
-    )
-    if args.show_prompt:
-        print(json.dumps(generator.build_messages(question, num_candidates=args.num_candidates), ensure_ascii=False, indent=2))
-        return
-
-    candidates = generator.generate(question, num_candidates=args.num_candidates)
-    print_candidates(candidates)
-
-
-if __name__ == "__main__":
-    main()
