@@ -78,6 +78,8 @@ class CandidateAnswer:
     evidence_ids: list[str] = field(default_factory=list)
     source_ids: list[str] = field(default_factory=list)
     verified: bool = False
+    probability_score: float = 0.0
+    probability_details: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass

@@ -143,6 +143,7 @@ def run_sample(
     enable_stage1_tool_use: bool,
     enable_compact_search_evidence: bool,
     enable_signal_search_queries: bool,
+    enable_probability_candidate_rerank: bool,
     max_stage1_tool_turns: int,
     previous_best_agent_id: str | None,
     stage1_early_stop_max_retries: int,
@@ -159,6 +160,7 @@ def run_sample(
         enable_stage1_tool_use=enable_stage1_tool_use,
         enable_compact_search_evidence=enable_compact_search_evidence,
         enable_signal_search_queries=enable_signal_search_queries,
+        enable_probability_candidate_rerank=enable_probability_candidate_rerank,
         max_stage1_tool_turns=max_stage1_tool_turns,
         previous_best_agent_id=previous_best_agent_id,
         stage1_early_stop_max_retries=stage1_early_stop_max_retries,
@@ -434,6 +436,7 @@ def write_markdown_report(results: dict[str, Any], output_path: str | Path) -> P
                 f"- Stage1 tool use enabled: {network_metadata.get('enable_stage1_tool_use', False)}",
                 f"- Compact search evidence enabled: {network_metadata.get('enable_compact_search_evidence', False)}",
                 f"- Signal search queries enabled: {network_metadata.get('enable_signal_search_queries', False)}",
+                f"- Probability candidate rerank enabled: {network_metadata.get('enable_probability_candidate_rerank', False)}",
                 f"- Max Stage1 tool turns: {network_metadata.get('max_stage1_tool_turns', 0)}",
                 f"- Stage1 early stop used: {network_metadata.get('stage1_early_stop', False)}",
                 f"- Stage1 attempts: {network_metadata.get('stage1_attempts', 0)}",
@@ -626,6 +629,7 @@ def run_gaia_evaluation(args: argparse.Namespace) -> dict[str, Any]:
     print(f"[INFO] enable_stage1_tool_use={args.enable_stage1_tool_use}")
     print(f"[INFO] compact_search_evidence={args.compact_search_evidence}")
     print(f"[INFO] enable_signal_search_queries={args.enable_signal_search_queries}")
+    print(f"[INFO] enable_probability_candidate_rerank={args.enable_probability_candidate_rerank}")
     print(f"[INFO] max_stage1_tool_turns={args.max_stage1_tool_turns}")
     print(f"[INFO] enable_stage1_early_stop={args.enable_stage1_early_stop}")
     print(f"[INFO] stage1_early_stop_max_retries={args.stage1_early_stop_max_retries}")
@@ -648,6 +652,7 @@ def run_gaia_evaluation(args: argparse.Namespace) -> dict[str, Any]:
             enable_stage1_tool_use=args.enable_stage1_tool_use,
             enable_compact_search_evidence=args.compact_search_evidence,
             enable_signal_search_queries=args.enable_signal_search_queries,
+            enable_probability_candidate_rerank=args.enable_probability_candidate_rerank,
             max_stage1_tool_turns=args.max_stage1_tool_turns,
             previous_best_agent_id=previous_best_agent_id,
             stage1_early_stop_max_retries=args.stage1_early_stop_max_retries,
@@ -693,6 +698,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--enable-stage1-tool-use", action="store_true")
     parser.add_argument("--compact-search-evidence", action="store_true")
     parser.add_argument("--enable-signal-search-queries", action="store_true")
+    parser.add_argument("--enable-probability-candidate-rerank", action="store_true")
     parser.add_argument("--max-stage1-tool-turns", type=int, default=2)
     parser.add_argument("--enable-stage1-early-stop", action="store_true")
     parser.add_argument("--stage1-early-stop-max-retries", type=int, default=1)

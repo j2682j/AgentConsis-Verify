@@ -16,6 +16,7 @@ from .compression import EvidenceCompressor
 from .extraction import EvidenceExtractor, QuestionTermFilter, TypedCandidateExtractor
 from .filtering import SourceFilter
 from .planning import CandidateVerificationSearcher, SearchQueryPlanner
+from .reranking import ProbabilityCandidateReranker
 from .rendering import AgentEvidenceRenderer, EvidenceRenderer
 from .verification import CandidateVerifier
 
@@ -51,8 +52,10 @@ class EvidenceSearcher:
         question_analyzer: QuestionAnalyzer | None = None,
         question_term_filter: QuestionTermFilter | None = None,
         candidate_verification_searcher: CandidateVerificationSearcher | None = None,
+        probability_candidate_reranker: ProbabilityCandidateReranker | None = None,
         compact_evidence: bool = False,
         enable_signal_query_planner: bool = False,
+        enable_probability_candidate_rerank: bool = False,
     ) -> None:
         self.tool_manager = tool_manager
         self.query_planner = query_planner or SearchQueryPlanner(
@@ -71,7 +74,9 @@ class EvidenceSearcher:
             tool_manager=tool_manager,
             domain_parser=self._domain,
         )
+        self.probability_candidate_reranker = probability_candidate_reranker or ProbabilityCandidateReranker()
         self.compact_evidence = compact_evidence
+        self.enable_probability_candidate_rerank = enable_probability_candidate_rerank
 
     def search(
         self,
@@ -143,13 +148,20 @@ class EvidenceSearcher:
             analysis=analysis,
             evidence_items=evidence_items,
             sources=filtered_sources,
-            max_candidates=10,
+            max_candidates=5 if self.enable_probability_candidate_rerank else 10,
         )
         candidates, rejected_candidates = self.question_term_filter.filter(
             question=question,
             analysis=analysis,
             candidates=raw_candidates,
         )
+        rerank_diagnostics: dict[str, Any] = {"enabled": False}
+        if self.enable_probability_candidate_rerank:
+            candidates, rerank_diagnostics = self.probability_candidate_reranker.rerank(
+                question=question,
+                candidates=candidates,
+                evidence_items=evidence_items,
+            )
 
         verification_results, verification_tool_usage = self.candidate_verification_searcher.verify_candidates(
             question=question,
@@ -214,6 +226,7 @@ class EvidenceSearcher:
                 filtered_candidates=candidates,
                 verified_candidates=verified_candidates,
                 rejected_candidates=rejected_candidates,
+                probability_rerank=rerank_diagnostics,
             ),
             tool_usage=tool_usage,
             blocked_sources=blocked_sources,
@@ -384,6 +397,7 @@ class EvidenceSearcher:
         filtered_candidates: list[Any],
         verified_candidates: list[Any],
         rejected_candidates: list[dict[str, str]],
+        probability_rerank: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         top_candidate = verified_candidates[0] if verified_candidates else None
         return {
@@ -396,6 +410,7 @@ class EvidenceSearcher:
             "top_candidate_support": getattr(top_candidate, "support_count", 0) if top_candidate else 0,
             "top_candidate_refute": getattr(top_candidate, "refute_count", 0) if top_candidate else 0,
             "rejected_candidates": rejected_candidates[:20],
+            "probability_rerank": probability_rerank or {"enabled": False},
         }
 
     def _domain(self, url: str) -> str:

@@ -81,7 +81,7 @@ class NerQueryCandidateGenerator:
         "NORP",
         "PRODUCT",
     }
-    MAX_COMPOUND_CHARS = 20
+    MAX_COMPOUND_CHARS = 40
     MAX_COMPOUND_WORDS = 8
 
     LABEL_SCORE = {

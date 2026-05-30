@@ -85,38 +85,34 @@ class Stage1Runner:
         runs_by_agent: dict[str, list[EachAgentReply]] = {
             config.agent_id: [] for config in self.agents
         }
-        tasks = [
-            (config, run_index)
-            for config in self.agents
-            for run_index in range(1, self.stage1_runs_per_agent + 1)
-        ]
-        if not tasks:
+        if not self.agents or self.stage1_runs_per_agent <= 0:
             return []
 
-        with ThreadPoolExecutor(max_workers=self.worker_count()) as executor:
-            future_to_task = {
-                executor.submit(self._run_single_agent, config, run_index, evidence): (config, run_index)
-                for config, run_index in tasks
-            }
-            for future in as_completed(future_to_task):
-                config, run_index = future_to_task[future]
-                try:
-                    reply = future.result()
-                except Exception as exc:
-                    reply = EachAgentReply(
-                        agent_id=config.agent_id,
-                        model_name=config.model_name,
-                        run_index=run_index,
-                        raw_reply=f"[stage1_error] {type(exc).__name__}: {exc}",
-                        reasoning="",
-                        final_answer="",
-                        parse_completed=False,
-                        tool_context=self.format_tool_context(evidence),
-                        prompt_tokens=0,
-                        completion_tokens=0,
-                        total_tokens=0,
-                    )
-                runs_by_agent[config.agent_id].append(reply)
+        for run_index in range(1, self.stage1_runs_per_agent + 1):
+            with ThreadPoolExecutor(max_workers=self.worker_count()) as executor:
+                future_to_config = {
+                    executor.submit(self._run_single_agent, config, run_index, evidence): config
+                    for config in self.agents
+                }
+                for future in as_completed(future_to_config):
+                    config = future_to_config[future]
+                    try:
+                        reply = future.result()
+                    except Exception as exc:
+                        reply = EachAgentReply(
+                            agent_id=config.agent_id,
+                            model_name=config.model_name,
+                            run_index=run_index,
+                            raw_reply=f"[stage1_error] {type(exc).__name__}: {exc}",
+                            reasoning="",
+                            final_answer="",
+                            parse_completed=False,
+                            tool_context=self.format_tool_context(evidence),
+                            prompt_tokens=0,
+                            completion_tokens=0,
+                            total_tokens=0,
+                        )
+                    runs_by_agent[config.agent_id].append(reply)
 
         results: list[AgentReasoningSummary] = []
         for config in self.agents:
@@ -134,7 +130,7 @@ class Stage1Runner:
         Returns:
             - int: 依 Agent 數、run 數與 max_workers 限制後的 worker 數。
         """
-        total_runs = max(1, len(self.agents) * self.stage1_runs_per_agent)
+        total_runs = max(1, len(self.agents))
         if self.max_workers is None:
             return total_runs
         return max(1, min(self.max_workers, total_runs))

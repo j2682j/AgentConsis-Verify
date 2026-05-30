@@ -1,0 +1,3025 @@
+{
+  "task_id": "04a04a9b-226c-43fd-b319-d5e89743676f",
+  "level": "2",
+  "question": "If we assume all articles published by Nature in 2020 (articles, only, not book reviews/columns, etc) relied on statistical significance to justify their findings and they on average came to a p-value of 0.04, how many papers would be incorrect as to their claims of statistical significance? Round the value up to the next integer.",
+  "attachment": {},
+  "predicted": "0",
+  "expected": "41",
+  "exact_match": false,
+  "partial_match": false,
+  "score": 0.0,
+  "winner_agent_id": "qwen",
+  "response_time_seconds": 110.23049689999993,
+  "total_tokens": 10666,
+  "token_usage": {
+    "stage1": {
+      "prompt_tokens": 4823,
+      "completion_tokens": 5843,
+      "total_tokens": 10666
+    },
+    "stage2": {
+      "prompt_tokens": 0,
+      "completion_tokens": 0,
+      "total_tokens": 0
+    },
+    "total": {
+      "prompt_tokens": 4823,
+      "completion_tokens": 5843,
+      "total_tokens": 10666
+    }
+  },
+  "search_summary": {
+    "answer_type": "title",
+    "raw_candidate_count": 6,
+    "filtered_candidate_count": 6,
+    "verified_candidate_count": 6,
+    "candidate_count": 3,
+    "fact_count": 6,
+    "top_candidate": "Apr 26",
+    "top_candidate_confidence": 1.0,
+    "top_candidate_support": 3,
+    "top_candidate_refute": 0,
+    "rejected_candidates": [],
+    "missing_info": [],
+    "risk_flags": []
+  },
+  "execution_time": 110.23215866088867,
+  "error": "",
+  "network_summary": {
+    "question": "If we assume all articles published by Nature in 2020 (articles, only, not book reviews/columns, etc) relied on statistical significance to justify their findings and they on average came to a p-value of 0.04, how many papers would be incorrect as to their claims of statistical significance? Round the value up to the next integer.",
+    "final_answer": "0",
+    "winner_agent_id": "qwen",
+    "stage1_results": [
+      {
+        "agent_id": "nemotron",
+        "model_name": "nemotron-mini:4b",
+        "runs": [
+          {
+            "agent_id": "nemotron",
+            "model_name": "nemotron-mini:4b",
+            "run_index": 1,
+            "raw_reply": "REASONING =\nstep 1. The question asks for the number of Nature articles in 2020 that would be incorrect in claiming statistical significance, given an average p‑value of 0.04. This requires knowing how many articles had p‑values >0.05 (non‑significant) yet claimed significance, which is not provided.  \nstep 2. All available evidence (E1‑E8) discusses the p‑value threshold (0.05) and critiques, but none give the actual count of articles or how many were incorrectly significant.  \nstep 3. Because the required count is not available in the evidence, the answer cannot be determined.  \n\nFINAL_ANSWER = NEED_MORE_EVIDENCE",
+            "reasoning": "",
+            "final_answer": "",
+            "parse_completed": false,
+            "tool_context": "Search_Result:\nOriginal Question:\nIf we assume all articles published by Nature in 2020 (articles, only, not book reviews/columns, etc) relied on statistical significance to justify their findings and they on average came to a p-value of 0.04, how many papers would be incorrect as to their claims of statistical significance? Round the value up to the next integer.\n\nQuery:\n[Q1] Nature articles 2020 p-value 0.04\n[Q2] Nature articles 2020 statistical significance threshold\n[Q3] Nature articles 2020 p-value greater than 0.05\n[V1] \"Both Nature\" \"Nature\" \"Round\" 2020\n[V2] \"Apr 26\" \"Nature\" \"Round\" 2020\n[V3] \"Oct 30\" \"Nature\" \"Round\" 2020\n[V4] \"Mar 11\" \"Nature\" \"Round\" 2020\n[V5] \"American Statistical Association\" \"Nature\" \"Round\" 2020\n\nEvidence:\n[E1]\nSource: Statistical significance: p value, 0.05 threshold, and applications to radiomics—reasons for a conservative approach | European Radiology Experimental | Springer Nature Link\nQuery: Q1\nText: On the one side, those who “rise up against statistical significance”, as did Amrhein et al. in Nature [1]; on the other side, those who recommend “do not abandon significance”, as did Ioannidis in JAMA [2]. These are two opposite viewpoints around a long-standing topic: the misuse of p value and the claim of statistical significance or non-significance. The p value is probably the most ubiquitous and, at the same ti ...\n[E2]\nSource: (PDF) p-value based statistical significance tests: Concepts, misuses, critiques, solutions and beyond\nQuery: Q1\nText: Although many cancer studies claim to have achieved a significance of 0.05, many results are not · replicable. Both Nature and Science have devoted discussions on how to understand p-value and how to define\n[E3]\nSource: The “P”-Value: The Primary Alphabet of Research Revisited - PMC\nQuery: Q1\nText: Apr 26, 2023 · Each research roves around the P value. A value less than 0.05 is considered to be statistically significant.\n[E4]\nSource: Redefine statistical significance | Nature Human Behaviour\nQuery: Q2\nText: We propose to change the default P-value threshold for statistical significance from 0.05 to 0.005 for claims of new discoveries.\n[E5]\nSource: Significance, P values and t-tests | Nature Methods\nQuery: Q3\nText: Oct 30, 2013 · The P value reported by tests is a probabilistic significance, not a biological one.\n[E6]\nSource: Statistical significance: p value, 0.05 threshold, and applications to ...\nQuery: Q3\nText: Mar 11, 2020 · In this article, we discuss the value of p value and explain why it should not be abandoned nor should the conventional threshold of 0.05 be modified.\n[E7]\nSource: (PDF) Statistical significance: p value, 0.05 threshold, and ...\nQuery: Q3\nText: Here, we summarise the unresolved debate about p value and its dichotomisation. We present the statement of the American Statistical Association against the misuse of statistical significance as ...\n[E8]\nSource: Use of the p-values as a size-dependent function to address ...\nQuery: Q3\nText: Oct 22, 2021 · This value is then compared with the threshold 0.05 to decide whether or not the null hypothesis is rejected. When working with datasets with ...\n\nCandidate Answer:\n[C1] answer=Both Nature; type=title; evidence=E2\n[C2] answer=Apr 26; type=title; evidence=E3\n[C3] answer=Oct 30; type=title; evidence=E5",
+            "prompt_tokens": 1173,
+            "completion_tokens": 724,
+            "total_tokens": 1897,
+            "tool_calls": [],
+            "tool_results": [],
+            "trajectory": []
+          }
+        ],
+        "compressed_answer": "",
+        "compressed_reasoning": "",
+        "confidence_score": 0.0,
+        "active": false
+      },
+      {
+        "agent_id": "minicpm",
+        "model_name": "minicpm3:4b",
+        "runs": [
+          {
+            "agent_id": "minicpm",
+            "model_name": "minicpm3:4b",
+            "run_index": 1,
+            "raw_reply": "REASONING = \nThere is not enough information provided to give a definitive answer. The question assumes that all Nature articles published in 2020 relied on statistical significance with a p-value of 0.04, but it does not provide the total number of articles published in 2020 by Nature. Without this information, it is impossible to determine how many papers would be incorrect regarding their claims of statistical significance.\n\nFIINAL_ANSWE",
+            "reasoning": "",
+            "final_answer": "",
+            "parse_completed": false,
+            "tool_context": "Search_Result:\nOriginal Question:\nIf we assume all articles published by Nature in 2020 (articles, only, not book reviews/columns, etc) relied on statistical significance to justify their findings and they on average came to a p-value of 0.04, how many papers would be incorrect as to their claims of statistical significance? Round the value up to the next integer.\n\nQuery:\n[Q1] Nature articles 2020 p-value 0.04\n[Q2] Nature articles 2020 statistical significance threshold\n[Q3] Nature articles 2020 p-value greater than 0.05\n[V1] \"Both Nature\" \"Nature\" \"Round\" 2020\n[V2] \"Apr 26\" \"Nature\" \"Round\" 2020\n[V3] \"Oct 30\" \"Nature\" \"Round\" 2020\n[V4] \"Mar 11\" \"Nature\" \"Round\" 2020\n[V5] \"American Statistical Association\" \"Nature\" \"Round\" 2020\n\nEvidence:\n[E1]\nSource: Statistical significance: p value, 0.05 threshold, and applications to radiomics—reasons for a conservative approach | European Radiology Experimental | Springer Nature Link\nQuery: Q1\nText: On the one side, those who “rise up against statistical significance”, as did Amrhein et al. in Nature [1]; on the other side, those who recommend “do not abandon significance”, as did Ioannidis in JAMA [2]. These are two opposite viewpoints around a long-standing topic: the misuse of p value and the claim of statistical significance or non-significance. The p value is probably the most ubiquitous and, at the same ti ...\n[E2]\nSource: (PDF) p-value based statistical significance tests: Concepts, misuses, critiques, solutions and beyond\nQuery: Q1\nText: Although many cancer studies claim to have achieved a significance of 0.05, many results are not · replicable. Both Nature and Science have devoted discussions on how to understand p-value and how to define\n[E3]\nSource: The “P”-Value: The Primary Alphabet of Research Revisited - PMC\nQuery: Q1\nText: Apr 26, 2023 · Each research roves around the P value. A value less than 0.05 is considered to be statistically significant.\n[E4]\nSource: Redefine statistical significance | Nature Human Behaviour\nQuery: Q2\nText: We propose to change the default P-value threshold for statistical significance from 0.05 to 0.005 for claims of new discoveries.\n[E5]\nSource: Significance, P values and t-tests | Nature Methods\nQuery: Q3\nText: Oct 30, 2013 · The P value reported by tests is a probabilistic significance, not a biological one.\n[E6]\nSource: Statistical significance: p value, 0.05 threshold, and applications to ...\nQuery: Q3\nText: Mar 11, 2020 · In this article, we discuss the value of p value and explain why it should not be abandoned nor should the conventional threshold of 0.05 be modified.\n[E7]\nSource: (PDF) Statistical significance: p value, 0.05 threshold, and ...\nQuery: Q3\nText: Here, we summarise the unresolved debate about p value and its dichotomisation. We present the statement of the American Statistical Association against the misuse of statistical significance as ...\n[E8]\nSource: Use of the p-values as a size-dependent function to address ...\nQuery: Q3\nText: Oct 22, 2021 · This value is then compared with the threshold 0.05 to decide whether or not the null hypothesis is rejected. When working with datasets with ...\n\nCandidate Answer:\n[C1] answer=Both Nature; type=title; evidence=E2\n[C2] answer=Apr 26; type=title; evidence=E3\n[C3] answer=Oct 30; type=title; evidence=E5",
+            "prompt_tokens": 1310,
+            "completion_tokens": 100,
+            "total_tokens": 1410,
+            "tool_calls": [],
+            "tool_results": [],
+            "trajectory": []
+          }
+        ],
+        "compressed_answer": "",
+        "compressed_reasoning": "",
+        "confidence_score": 0.0,
+        "active": false
+      },
+      {
+        "agent_id": "qwen",
+        "model_name": "qwen3:4b",
+        "runs": [
+          {
+            "agent_id": "qwen",
+            "model_name": "qwen3:4b",
+            "run_index": 1,
+            "raw_reply": "The problem asks how many papers published by *Nature* in 2020 would be **incorrect** in their claims of statistical significance, given that the **average p-value** across all such papers was **0.04**.\n\n---\n\n### Key Clarifications from the Problem\n\n- **Statistical Significance Threshold**: In standard statistical practice, a p-value **less than 0.05** is typically considered statistically significant.\n- **Given Data**: The **average p-value** across all *Nature* articles in 2020 (that used statistical significance) was **0.04**.\n- **Goal**: Determine how many of these papers would be **incorrect** in claiming statistical significance.\n\n---\n\n### Understanding \"Incorrect\" Claims\n\nA paper is **incorrect** in claiming statistical significance if its **actual p-value is ≥ 0.05** (i.e., it does **not** meet the threshold for statistical significance).\n\nHowever, the problem states that the **average p-value** is **0.04**, which is **less than 0.05**. This implies that **most** (or all) of the papers have p-values **below 0.05**, and therefore **correctly** claim statistical significance.\n\nWhile it's theoretically possible for **some** papers to have p-values **≥ 0.05**, the **average** being **0.04** strongly suggests that **very few** (if any) papers fall into the incorrect category.\n\nIn fact, for the average to be **0.04**, the number of papers with p-values **≥ 0.05** must be **very small**, and even if they exist, the **total number of such papers** would be **less than 1** (i.e., 0).\n\nThis is because the **average p-value** is a weighted average of all p-values. If even **one** paper had a p-value **≥ 0.05**, the average would be **slightly higher** than 0.04, unless the rest of the papers had **very low** p-values to compensate.\n\nGiven the context and the precision of the problem, it is **reasonable to conclude** that **no** papers were **incorrect** in their claims of statistical significance.\n\n---\n\n### Final Answer\n\n$$\n\\boxed{0}\n$$\n\nThis is the number of papers that would be **incorrect** in their claims of statistical significance, **rounded up to the next integer** (which in this case is just 0).",
+            "reasoning": "The problem asks how many papers published by *Nature* in 2020 would be **incorrect** in their claims of statistical significance, given that the **average p-value** across all such papers was **0.04**.\n---\n### Key Clarifications from the Problem\n- **Statistical Significance Threshold**: In standard statistical practice, a p-value **less than 0.05** is typically considered statistically significant.\n- **Given Data**: The **average p-value** across all *Nature* articles in 2020 (that used statistical significance) was **0.04**.\n- **Goal**: Determine how many of these papers would be **incorrect** in claiming statistical significance.\n---\n### Understanding \"Incorrect\" Claims\nA paper is **incorrect** in claiming statistical significance if its **actual p-value is ≥ 0.05** (i.e., it does **not** meet the threshold for statistical significance).\nHowever, the problem states that the **average p-value** is **0.04**, which is **less than 0.05**. This implies that **most** (or all) of the papers have p-values **below 0.05**, and therefore **correctly** claim statistical significance.\nWhile it's theoretically possible for **some** papers to have p-values **≥ 0.05**, the **average** being **0.04** strongly suggests that **very few** (if any) papers fall into the incorrect category.\nIn fact, for the average to be **0.04**, the number of papers with p-values **≥ 0.05** must be **very small**, and even if they exist, the **total number of such papers** would be **less than 1** (i.e., 0).\nThis is because the **average p-value** is a weighted average of all p-values. If even **one** paper had a p-value **≥ 0.05**, the average would be **slightly higher** than 0.04, unless the rest of the papers had **very low** p-values to compensate.\nGiven the context and the precision of the problem, it is **reasonable to conclude** that **no** papers were **incorrect** in their claims of statistical significance.\n---\n### Final Answer\n$$\n\\boxed{0}\n$$\nThis is the number of papers that would be **incorrect** in their claims of statistical significance, **rounded up to the next integer** (which in this case is just 0).",
+            "final_answer": "0",
+            "parse_completed": true,
+            "tool_context": "Search_Result:\nOriginal Question:\nIf we assume all articles published by Nature in 2020 (articles, only, not book reviews/columns, etc) relied on statistical significance to justify their findings and they on average came to a p-value of 0.04, how many papers would be incorrect as to their claims of statistical significance? Round the value up to the next integer.\n\nQuery:\n[Q1] Nature articles 2020 p-value 0.04\n[Q2] Nature articles 2020 statistical significance threshold\n[Q3] Nature articles 2020 p-value greater than 0.05\n[V1] \"Both Nature\" \"Nature\" \"Round\" 2020\n[V2] \"Apr 26\" \"Nature\" \"Round\" 2020\n[V3] \"Oct 30\" \"Nature\" \"Round\" 2020\n[V4] \"Mar 11\" \"Nature\" \"Round\" 2020\n[V5] \"American Statistical Association\" \"Nature\" \"Round\" 2020\n\nEvidence:\n[E1]\nSource: Statistical significance: p value, 0.05 threshold, and applications to radiomics—reasons for a conservative approach | European Radiology Experimental | Springer Nature Link\nQuery: Q1\nText: On the one side, those who “rise up against statistical significance”, as did Amrhein et al. in Nature [1]; on the other side, those who recommend “do not abandon significance”, as did Ioannidis in JAMA [2]. These are two opposite viewpoints around a long-standing topic: the misuse of p value and the claim of statistical significance or non-significance. The p value is probably the most ubiquitous and, at the same ti ...\n[E2]\nSource: (PDF) p-value based statistical significance tests: Concepts, misuses, critiques, solutions and beyond\nQuery: Q1\nText: Although many cancer studies claim to have achieved a significance of 0.05, many results are not · replicable. Both Nature and Science have devoted discussions on how to understand p-value and how to define\n[E3]\nSource: The “P”-Value: The Primary Alphabet of Research Revisited - PMC\nQuery: Q1\nText: Apr 26, 2023 · Each research roves around the P value. A value less than 0.05 is considered to be statistically significant.\n[E4]\nSource: Redefine statistical significance | Nature Human Behaviour\nQuery: Q2\nText: We propose to change the default P-value threshold for statistical significance from 0.05 to 0.005 for claims of new discoveries.\n[E5]\nSource: Significance, P values and t-tests | Nature Methods\nQuery: Q3\nText: Oct 30, 2013 · The P value reported by tests is a probabilistic significance, not a biological one.\n[E6]\nSource: Statistical significance: p value, 0.05 threshold, and applications to ...\nQuery: Q3\nText: Mar 11, 2020 · In this article, we discuss the value of p value and explain why it should not be abandoned nor should the conventional threshold of 0.05 be modified.\n[E7]\nSource: (PDF) Statistical significance: p value, 0.05 threshold, and ...\nQuery: Q3\nText: Here, we summarise the unresolved debate about p value and its dichotomisation. We present the statement of the American Statistical Association against the misuse of statistical significance as ...\n[E8]\nSource: Use of the p-values as a size-dependent function to address ...\nQuery: Q3\nText: Oct 22, 2021 · This value is then compared with the threshold 0.05 to decide whether or not the null hypothesis is rejected. When working with datasets with ...\n\nCandidate Answer:\n[C1] answer=Both Nature; type=title; evidence=E2\n[C2] answer=Apr 26; type=title; evidence=E3\n[C3] answer=Oct 30; type=title; evidence=E5",
+            "prompt_tokens": 1137,
+            "completion_tokens": 3851,
+            "total_tokens": 4988,
+            "tool_calls": [],
+            "tool_results": [],
+            "trajectory": []
+          }
+        ],
+        "compressed_answer": "0",
+        "compressed_reasoning": "The problem asks how many papers published by *Nature* in 2020 would be **incorrect** in their claims of statistical significance, given that the **average p-value** across all such papers was **0.04**.\n---\n### Key Clarifications from the Problem\n- **Statistical Significance Threshold**: In standard statistical practice, a p-value **less than 0.05** is typically considered statistically significant.\n- **Given Data**: The **average p-value** across all *Nature* articles in 2020 (that used statistical significance) was **0.04**.\n- **Goal**: Determine how many of these papers would be **incorrect** in claiming statistical significance.\n---\n### Understanding \"Incorrect\" Claims\nA paper is **incorrect** in claiming statistical significance if its **actual p-value is ≥ 0.05** (i.e., it does **not** meet the threshold for statistical significance).\nHowever, the problem states that the **average p-value** is **0.04**, which is **less than 0.05**. This implies that **most** (or all) of the papers have p-values **below 0.05**, and therefore **correctly** claim statistical significance.\nWhile it's theoretically possible for **some** papers to have p-values **≥ 0.05**, the **average** being **0.04** strongly suggests that **very few** (if any) papers fall into the incorrect category.\nIn fact, for the average to be **0.04**, the number of papers with p-values **≥ 0.05** must be **very small**, and even if they exist, the **total number of such papers** would be **less than 1** (i.e., 0).\nThis is because the **average p-value** is a weighted average of all p-values. If even **one** paper had a p-value **≥ 0.05**, the average would be **slightly higher** than 0.04, unless the rest of the papers had **very low** p-values to compensate.\nGiven the context and the precision of the problem, it is **reasonable to conclude** that **no** papers were **incorrect** in their claims of statistical significance.\n---\n### Final Answer\n$$\n\\boxed{0}\n$$\nThis is the number of papers that would be **incorrect** in their claims of statistical significance, **rounded up to the next integer** (which in this case is just 0).",
+        "confidence_score": 0.33,
+        "active": true
+      },
+      {
+        "agent_id": "gemma",
+        "model_name": "gemma3:4b",
+        "runs": [
+          {
+            "agent_id": "gemma",
+            "model_name": "gemma3:4b",
+            "run_index": 1,
+            "raw_reply": "REASONING =\nstep 1. The user asks for a calculation: how many papers published by Nature in 2020 would be incorrect regarding their claim of statistical significance, given an average p-value of 0.04.\nstep 2. To perform this calculation, two critical pieces of information are needed: (1) The total number of articles published by Nature in 2020 (excluding reviews/columns), and (2) The specific criteria used to define an \"incorrect claim of statistical significance\" in this context, although the standard threshold of $p \\ge 0.05$ is generally assumed.\nstep 3. Reviewing the provided evidence [E1] through [E8], none of the sources provide the total count of articles published by Nature in 2020.\nstep 4. Since the fundamental input variable—the total number of articles (N)—is missing, and the calculation is indeterminate even if N were known (as only the average p-value is provided, not the distribution), the evidence is insufficient to answer the question.\nstep 5. A search query is required to find the total number of articles published by Nature in 2020.\nFINAL_ANSWER = Request another search query for the total number of articles published by Nature in 2020.",
+            "reasoning": "",
+            "final_answer": "",
+            "parse_completed": false,
+            "tool_context": "Search_Result:\nOriginal Question:\nIf we assume all articles published by Nature in 2020 (articles, only, not book reviews/columns, etc) relied on statistical significance to justify their findings and they on average came to a p-value of 0.04, how many papers would be incorrect as to their claims of statistical significance? Round the value up to the next integer.\n\nQuery:\n[Q1] Nature articles 2020 p-value 0.04\n[Q2] Nature articles 2020 statistical significance threshold\n[Q3] Nature articles 2020 p-value greater than 0.05\n[V1] \"Both Nature\" \"Nature\" \"Round\" 2020\n[V2] \"Apr 26\" \"Nature\" \"Round\" 2020\n[V3] \"Oct 30\" \"Nature\" \"Round\" 2020\n[V4] \"Mar 11\" \"Nature\" \"Round\" 2020\n[V5] \"American Statistical Association\" \"Nature\" \"Round\" 2020\n\nEvidence:\n[E1]\nSource: Statistical significance: p value, 0.05 threshold, and applications to radiomics—reasons for a conservative approach | European Radiology Experimental | Springer Nature Link\nQuery: Q1\nText: On the one side, those who “rise up against statistical significance”, as did Amrhein et al. in Nature [1]; on the other side, those who recommend “do not abandon significance”, as did Ioannidis in JAMA [2]. These are two opposite viewpoints around a long-standing topic: the misuse of p value and the claim of statistical significance or non-significance. The p value is probably the most ubiquitous and, at the same ti ...\n[E2]\nSource: (PDF) p-value based statistical significance tests: Concepts, misuses, critiques, solutions and beyond\nQuery: Q1\nText: Although many cancer studies claim to have achieved a significance of 0.05, many results are not · replicable. Both Nature and Science have devoted discussions on how to understand p-value and how to define\n[E3]\nSource: The “P”-Value: The Primary Alphabet of Research Revisited - PMC\nQuery: Q1\nText: Apr 26, 2023 · Each research roves around the P value. A value less than 0.05 is considered to be statistically significant.\n[E4]\nSource: Redefine statistical significance | Nature Human Behaviour\nQuery: Q2\nText: We propose to change the default P-value threshold for statistical significance from 0.05 to 0.005 for claims of new discoveries.\n[E5]\nSource: Significance, P values and t-tests | Nature Methods\nQuery: Q3\nText: Oct 30, 2013 · The P value reported by tests is a probabilistic significance, not a biological one.\n[E6]\nSource: Statistical significance: p value, 0.05 threshold, and applications to ...\nQuery: Q3\nText: Mar 11, 2020 · In this article, we discuss the value of p value and explain why it should not be abandoned nor should the conventional threshold of 0.05 be modified.\n[E7]\nSource: (PDF) Statistical significance: p value, 0.05 threshold, and ...\nQuery: Q3\nText: Here, we summarise the unresolved debate about p value and its dichotomisation. We present the statement of the American Statistical Association against the misuse of statistical significance as ...\n[E8]\nSource: Use of the p-values as a size-dependent function to address ...\nQuery: Q3\nText: Oct 22, 2021 · This value is then compared with the threshold 0.05 to decide whether or not the null hypothesis is rejected. When working with datasets with ...\n\nCandidate Answer:\n[C1] answer=Both Nature; type=title; evidence=E2\n[C2] answer=Apr 26; type=title; evidence=E3\n[C3] answer=Oct 30; type=title; evidence=E5",
+            "prompt_tokens": 1203,
+            "completion_tokens": 1168,
+            "total_tokens": 2371,
+            "tool_calls": [],
+            "tool_results": [],
+            "trajectory": []
+          }
+        ],
+        "compressed_answer": "",
+        "compressed_reasoning": "",
+        "confidence_score": 0.0,
+        "active": false
+      }
+    ],
+    "judge_results": [],
+    "agent_scores": [
+      {
+        "agent_id": "nemotron",
+        "model_name": "nemotron-mini:4b",
+        "temperature": 0.5,
+        "confidence_score": 0.0,
+        "judge_scores": [],
+        "avg_judge_score": 0.0,
+        "penalty_score": -1.0,
+        "penalty_reasons": [
+          "inactive_or_no_answer"
+        ],
+        "total_score": -Infinity
+      },
+      {
+        "agent_id": "minicpm",
+        "model_name": "minicpm3:4b",
+        "temperature": 0.5,
+        "confidence_score": 0.0,
+        "judge_scores": [],
+        "avg_judge_score": 0.0,
+        "penalty_score": -1.0,
+        "penalty_reasons": [
+          "inactive_or_no_answer"
+        ],
+        "total_score": -Infinity
+      },
+      {
+        "agent_id": "qwen",
+        "model_name": "qwen3:4b",
+        "temperature": 0.5,
+        "confidence_score": 0.33,
+        "judge_scores": [],
+        "avg_judge_score": 0.0,
+        "penalty_score": 0.0,
+        "penalty_reasons": [],
+        "total_score": 0.33
+      },
+      {
+        "agent_id": "gemma",
+        "model_name": "gemma3:4b",
+        "temperature": 0.5,
+        "confidence_score": 0.0,
+        "judge_scores": [],
+        "avg_judge_score": 0.0,
+        "penalty_score": -1.0,
+        "penalty_reasons": [
+          "inactive_or_no_answer"
+        ],
+        "total_score": -Infinity
+      }
+    ],
+    "metadata": {
+      "stage1_runs_per_agent": 1,
+      "response_time_seconds": 110.23049689999993,
+      "response_time_ms": 110230.497,
+      "token_usage": {
+        "stage1": {
+          "prompt_tokens": 4823,
+          "completion_tokens": 5843,
+          "total_tokens": 10666
+        },
+        "stage2": {
+          "prompt_tokens": 0,
+          "completion_tokens": 0,
+          "total_tokens": 0
+        },
+        "total": {
+          "prompt_tokens": 4823,
+          "completion_tokens": 5843,
+          "total_tokens": 10666
+        }
+      },
+      "max_stage1_workers": 4,
+      "max_stage2_workers": 1,
+      "stage2_max_tokens": 512,
+      "enable_stage1_tool_use": false,
+      "enable_compact_search_evidence": false,
+      "enable_signal_search_queries": true,
+      "max_stage1_tool_turns": 2,
+      "enable_stage1_early_stop": false,
+      "previous_best_agent_id": "qwen",
+      "stage1_early_stop_max_retries": 1,
+      "stage1_attempts": 1,
+      "stage1_early_stop": false,
+      "stage1_early_stop_reason": "",
+      "stage2_skipped": false,
+      "cross_agent_consensus_used": false,
+      "cross_agent_consensus_supporting_agents": [],
+      "cross_agent_consensus_answer": "",
+      "active_agent_count": 1,
+      "search_used": true,
+      "attachment_used": false,
+      "solver_used": false,
+      "routing": {
+        "use_calculator": false,
+        "use_search": true,
+        "use_deterministic_solver": true,
+        "use_python_solver": true,
+        "use_attachment": false,
+        "calculator_expression": null,
+        "task_type": "hybrid_search_and_solver",
+        "trigger_terms": [
+          "book",
+          "published",
+          "year",
+          "average",
+          "how many"
+        ],
+        "tool_policy": {
+          "prefer": [
+            "search",
+            "deterministic_solver",
+            "python_solver"
+          ],
+          "optional": [],
+          "avoid": []
+        },
+        "routing_reasons": [
+          "question contains factual lookup signals: book, published, year",
+          "question contains deterministic computation/data-processing signals: average, how many",
+          "stage1 round0 system contract enables early evidence gathering"
+        ],
+        "routing_source": "system_routing_contract"
+      },
+      "tool_usage": [
+        {
+          "ok": true,
+          "tool_name": "search",
+          "output_text": "Original Question:\nIf we assume all articles published by Nature in 2020 (articles, only, not book reviews/columns, etc) relied on statistical significance to justify their findings and they on average came to a p-value of 0.04, how many papers would be incorrect as to their claims of statistical significance? Round the value up to the next integer.\n\nQuery:\n[Q1] Nature articles 2020 p-value 0.04\n[Q2] Nature articles 2020 statistical significance threshold\n[Q3] Nature articles 2020 p-value greater than 0.05\n[V1] \"Both Nature\" \"Nature\" \"Round\" 2020\n[V2] \"Apr 26\" \"Nature\" \"Round\" 2020\n[V3] \"Oct 30\" \"Nature\" \"Round\" 2020\n[V4] \"Mar 11\" \"Nature\" \"Round\" 2020\n[V5] \"American Statistical Association\" \"Nature\" \"Round\" 2020\n\nEvidence:\n[E1]\nSource: Statistical significance: p value, 0.05 threshold, and applications to radiomics—reasons for a conservative approach | European Radiology Experimental | Springer Nature Link\nQuery: Q1\nText: On the one side, those who “rise up against statistical significance”, as did Amrhein et al. in Nature [1]; on the other side, those who recommend “do not abandon significance”, as did Ioannidis in JAMA [2]. These are two opposite viewpoints around a long-standing topic: the misuse of p value and the claim of statistical significance or non-significance. The p value is probably the most ubiquitous and, at the same ti ...\n[E2]\nSource: (PDF) p-value based statistical significance tests: Concepts, misuses, critiques, solutions and beyond\nQuery: Q1\nText: Although many cancer studies claim to have achieved a significance of 0.05, many results are not · replicable. Both Nature and Science have devoted discussions on how to understand p-value and how to define\n[E3]\nSource: The “P”-Value: The Primary Alphabet of Research Revisited - PMC\nQuery: Q1\nText: Apr 26, 2023 · Each research roves around the P value. A value less than 0.05 is considered to be statistically significant.\n[E4]\nSource: Redefine statistical significance | Nature Human Behaviour\nQuery: Q2\nText: We propose to change the default P-value threshold for statistical significance from 0.05 to 0.005 for claims of new discoveries.\n[E5]\nSource: Significance, P values and t-tests | Nature Methods\nQuery: Q3\nText: Oct 30, 2013 · The P value reported by tests is a probabilistic significance, not a biological one.\n[E6]\nSource: Statistical significance: p value, 0.05 threshold, and applications to ...\nQuery: Q3\nText: Mar 11, 2020 · In this article, we discuss the value of p value and explain why it should not be abandoned nor should the conventional threshold of 0.05 be modified.\n[E7]\nSource: (PDF) Statistical significance: p value, 0.05 threshold, and ...\nQuery: Q3\nText: Here, we summarise the unresolved debate about p value and its dichotomisation. We present the statement of the American Statistical Association against the misuse of statistical significance as ...\n[E8]\nSource: Use of the p-values as a size-dependent function to address ...\nQuery: Q3\nText: Oct 22, 2021 · This value is then compared with the threshold 0.05 to decide whether or not the null hypothesis is rejected. When working with datasets with ...\n\nCandidate Answer:\n[C1] answer=Both Nature; type=title; evidence=E2\n[C2] answer=Apr 26; type=title; evidence=E3\n[C3] answer=Oct 30; type=title; evidence=E5",
+          "raw_result": {
+            "question": "If we assume all articles published by Nature in 2020 (articles, only, not book reviews/columns, etc) relied on statistical significance to justify their findings and they on average came to a p-value of 0.04, how many papers would be incorrect as to their claims of statistical significance? Round the value up to the next integer.",
+            "queries": [
+              {
+                "query_id": "Q1",
+                "query": "Nature articles 2020 p-value 0.04",
+                "purpose": "core_question",
+                "priority": 99,
+                "source_hints": [],
+                "expected_answer_type": "entity",
+                "requires_full_page": true
+              },
+              {
+                "query_id": "Q2",
+                "query": "Nature articles 2020 statistical significance threshold",
+                "purpose": "quoted_or_entity_focus",
+                "priority": 98,
+                "source_hints": [],
+                "expected_answer_type": "entity",
+                "requires_full_page": true
+              },
+              {
+                "query_id": "Q3",
+                "query": "Nature articles 2020 p-value greater than 0.05",
+                "purpose": "source_or_keyword_focus",
+                "priority": 97,
+                "source_hints": [],
+                "expected_answer_type": "entity",
+                "requires_full_page": true
+              },
+              {
+                "query_id": "V1",
+                "query": "\"Both Nature\" \"Nature\" \"Round\" 2020",
+                "purpose": "candidate_verification",
+                "priority": 69,
+                "source_hints": [],
+                "expected_answer_type": "title",
+                "requires_full_page": true
+              },
+              {
+                "query_id": "V2",
+                "query": "\"Apr 26\" \"Nature\" \"Round\" 2020",
+                "purpose": "candidate_verification",
+                "priority": 68,
+                "source_hints": [],
+                "expected_answer_type": "title",
+                "requires_full_page": true
+              },
+              {
+                "query_id": "V3",
+                "query": "\"Oct 30\" \"Nature\" \"Round\" 2020",
+                "purpose": "candidate_verification",
+                "priority": 67,
+                "source_hints": [],
+                "expected_answer_type": "title",
+                "requires_full_page": true
+              },
+              {
+                "query_id": "V4",
+                "query": "\"Mar 11\" \"Nature\" \"Round\" 2020",
+                "purpose": "candidate_verification",
+                "priority": 66,
+                "source_hints": [],
+                "expected_answer_type": "title",
+                "requires_full_page": true
+              },
+              {
+                "query_id": "V5",
+                "query": "\"American Statistical Association\" \"Nature\" \"Round\" 2020",
+                "purpose": "candidate_verification",
+                "priority": 65,
+                "source_hints": [],
+                "expected_answer_type": "title",
+                "requires_full_page": true
+              }
+            ],
+            "sources": [
+              {
+                "source_id": "S1",
+                "query_id": "Q1",
+                "title": "Statistical significance: p value, 0.05 threshold, and applications to radiomics—reasons for a conservative approach | European Radiology Experimental | Springer Nature Link",
+                "url": "https://link.springer.com/article/10.1186/s41747-020-0145-y",
+                "domain": "link.springer.com",
+                "snippet": "On the one side, those who “rise up against statistical significance”, as did Amrhein et al. in Nature [1]; on the other side, those who recommend “do not abandon significance”, as did Ioannidis in JAMA [2]. These are two opposite viewpoints around a long-standing topic: the misuse of p value and the claim of statistical significance or non-significance. The p value is probably the most ubiquitous and, at the same time, misunderstood index in all of biomedical research. Hundreds of articles were published on this topic since at least the 1940s [3], with proposals of alternatives to the classic p value with its historical 0.05 threshold.",
+                "raw_content": "On the one side, those who “rise up against statistical significance”, as did Amrhein et al. in Nature [1]; on the other side, those who recommend “do not abandon significance”, as did Ioannidis in JAMA [2]. These are two opposite viewpoints around a long-standing topic: the misuse of p value and the claim of statistical significance or non-significance. The p value is probably the most ubiquitous and, at the same time, misunderstood index in all of biomedical research. Hundreds of articles were published on this topic since at least the 1940s [3], with proposals of alternatives to the classic p value with its historical 0.05 threshold.",
+                "rank": 1,
+                "rerank_score": 10.9,
+                "fetched": true,
+                "blocked": false,
+                "block_reason": ""
+              },
+              {
+                "source_id": "S2",
+                "query_id": "Q1",
+                "title": "The clinician’s guide to p values, confidence intervals, and magnitude of effects | Eye",
+                "url": "https://www.nature.com/articles/s41433-021-01863-w",
+                "domain": "www.nature.com",
+                "snippet": "A p-value represents the probability ... being compared. For example, a p-value of 0.04 would indicate that the difference between the groups compared would have a 4% chance of occurring by random chance....",
+                "raw_content": "A p-value represents the probability ... being compared. For example, a p-value of 0.04 would indicate that the difference between the groups compared would have a 4% chance of occurring by random chance....",
+                "rank": 2,
+                "rerank_score": 5.2,
+                "fetched": true,
+                "blocked": false,
+                "block_reason": ""
+              },
+              {
+                "source_id": "S3",
+                "query_id": "Q1",
+                "title": "P-value and effect-size in clinical and experimental studies - PMC",
+                "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC8256876/",
+                "domain": "pmc.ncbi.nlm.nih.gov",
+                "snippet": "For example, if the cutoff point chosen is p < 0.05, p = 0.04, it is overvalued in detriment to p = 0.06. In tests comparing groups, the p-value is ...",
+                "raw_content": "For example, if the cutoff point chosen is p < 0.05, p = 0.04, it is overvalued in detriment to p = 0.06. In tests comparing groups, the p-value is ...",
+                "rank": 3,
+                "rerank_score": 5.1,
+                "fetched": true,
+                "blocked": false,
+                "block_reason": ""
+              },
+              {
+                "source_id": "S4",
+                "query_id": "Q1",
+                "title": "(PDF) p-value based statistical significance tests: Concepts, misuses, critiques, solutions and beyond",
+                "url": "https://www.researchgate.net/publication/360775123_p-value_based_statistical_significance_tests_Concepts_misuses_critiques_solutions_and_beyond",
+                "domain": "www.researchgate.net",
+                "snippet": "Although many cancer studies claim to have achieved a significance of 0.05, many results are not · replicable. Both Nature and Science have devoted discussions on how to understand p-value and how to define",
+                "raw_content": "Although many cancer studies claim to have achieved a significance of 0.05, many results are not · replicable. Both Nature and Science have devoted discussions on how to understand p-value and how to define",
+                "rank": 4,
+                "rerank_score": 4.85,
+                "fetched": true,
+                "blocked": false,
+                "block_reason": ""
+              },
+              {
+                "source_id": "S5",
+                "query_id": "Q1",
+                "title": "The “P”-Value: The Primary Alphabet of Research Revisited - PMC",
+                "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC10284198/",
+                "domain": "pmc.ncbi.nlm.nih.gov",
+                "snippet": "Apr 26, 2023 · Each research roves around the P value. A value less than 0.05 is considered to be statistically significant.",
+                "raw_content": "Apr 26, 2023 · Each research roves around the P value. A value less than 0.05 is considered to be statistically significant.",
+                "rank": 5,
+                "rerank_score": 4.7,
+                "fetched": true,
+                "blocked": false,
+                "block_reason": ""
+              },
+              {
+                "source_id": "S7",
+                "query_id": "Q2",
+                "title": "Redefine statistical significance | Nature Human Behaviour",
+                "url": "https://www.nature.com/articles/s41562-017-0189-z",
+                "domain": "www.nature.com",
+                "snippet": "We propose to change the default P-value threshold for statistical significance from 0.05 to 0.005 for claims of new discoveries.",
+                "raw_content": "We propose to change the default P-value threshold for statistical significance from 0.05 to 0.005 for claims of new discoveries.",
+                "rank": 2,
+                "rerank_score": 15.9,
+                "fetched": true,
+                "blocked": false,
+                "block_reason": ""
+              },
+              {
+                "source_id": "S8",
+                "query_id": "Q2",
+                "title": "PDF Redefine statistical significance - Harvard University",
+                "url": "https://imai.fas.harvard.edu/research/files/significance.pdf",
+                "domain": "imai.fas.harvard.edu",
+                "snippet": "The appropriate threshold for statistical significance should be different for different research communities. We agree that the significance threshold selected for claiming a new discovery should depend on the prior odds that the null hypothesis is true, the number of hypotheses tested, the study design, the relative cost of type I versus",
+                "raw_content": "The appropriate threshold for statistical significance should be different for different research communities. We agree that the significance threshold selected for claiming a new discovery should depend on the prior odds that the null hypothesis is true, the number of hypotheses tested, the study design, the relative cost of type I versus",
+                "rank": 3,
+                "rerank_score": 12.45,
+                "fetched": true,
+                "blocked": false,
+                "block_reason": ""
+              },
+              {
+                "source_id": "S9",
+                "query_id": "Q2",
+                "title": "Statistics for Biologists - Nature",
+                "url": "https://www.nature.com/collections/qghhqm/content/practical-guides",
+                "domain": "www.nature.com",
+                "snippet": "This collection highlights important statistical issues that biologists should be aware of and provides practical advice to help them improve the rigor of their ...",
+                "raw_content": "This collection highlights important statistical issues that biologists should be aware of and provides practical advice to help them improve the rigor of their ...",
+                "rank": 4,
+                "rerank_score": 5.6,
+                "fetched": true,
+                "blocked": false,
+                "block_reason": ""
+              },
+              {
+                "source_id": "S10",
+                "query_id": "Q2",
+                "title": "Statistical testing for baseline differences between randomised ...",
+                "url": "https://www.nature.com/articles/s41393-018-0203-y",
+                "domain": "www.nature.com",
+                "snippet": "Oct 4, 2018 · Spinal Cord encourages authors to refrain from statistically testing for possible baseline imbalance in randomised studies.",
+                "raw_content": "Oct 4, 2018 · Spinal Cord encourages authors to refrain from statistically testing for possible baseline imbalance in randomised studies.",
+                "rank": 5,
+                "rerank_score": 3.95,
+                "fetched": true,
+                "blocked": false,
+                "block_reason": ""
+              },
+              {
+                "source_id": "S11",
+                "query_id": "Q3",
+                "title": "Significance, P values and t-tests | Nature Methods",
+                "url": "https://www.nature.com/articles/nmeth.2698",
+                "domain": "www.nature.com",
+                "snippet": "Oct 30, 2013 · The P value reported by tests is a probabilistic significance, not a biological one.",
+                "raw_content": "Oct 30, 2013 · The P value reported by tests is a probabilistic significance, not a biological one.",
+                "rank": 1,
+                "rerank_score": 9.85,
+                "fetched": true,
+                "blocked": false,
+                "block_reason": ""
+              },
+              {
+                "source_id": "S12",
+                "query_id": "Q3",
+                "title": "Statistical significance: p value, 0.05 threshold, and applications to ...",
+                "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC7064671/",
+                "domain": "pmc.ncbi.nlm.nih.gov",
+                "snippet": "Mar 11, 2020 · In this article, we discuss the value of p value and explain why it should not be abandoned nor should the conventional threshold of 0.05 be modified.",
+                "raw_content": "Mar 11, 2020 · In this article, we discuss the value of p value and explain why it should not be abandoned nor should the conventional threshold of 0.05 be modified.",
+                "rank": 2,
+                "rerank_score": 7.55,
+                "fetched": true,
+                "blocked": false,
+                "block_reason": ""
+              },
+              {
+                "source_id": "S13",
+                "query_id": "Q3",
+                "title": "Use of the p-values as a size-dependent function to address ...",
+                "url": "https://www.nature.com/articles/s41598-021-00199-5",
+                "domain": "www.nature.com",
+                "snippet": "Oct 22, 2021 · This value is then compared with the threshold 0.05 to decide whether or not the null hypothesis is rejected. When working with datasets with ...",
+                "raw_content": "Oct 22, 2021 · This value is then compared with the threshold 0.05 to decide whether or not the null hypothesis is rejected. When working with datasets with ...",
+                "rank": 3,
+                "rerank_score": 5.1,
+                "fetched": true,
+                "blocked": false,
+                "block_reason": ""
+              },
+              {
+                "source_id": "S15",
+                "query_id": "Q3",
+                "title": "(PDF) Statistical significance: p value, 0.05 threshold, and ...",
+                "url": "https://www.researchgate.net/publication/339844197_Statistical_significance_p_value_005_threshold_and_applications_to_radiomics-reasons_for_a_conservative_approach",
+                "domain": "www.researchgate.net",
+                "snippet": "Here, we summarise the unresolved debate about p value and its dichotomisation. We present the statement of the American Statistical Association against the misuse of statistical significance as ...",
+                "raw_content": "Here, we summarise the unresolved debate about p value and its dichotomisation. We present the statement of the American Statistical Association against the misuse of statistical significance as ...",
+                "rank": 5,
+                "rerank_score": 3.55,
+                "fetched": true,
+                "blocked": false,
+                "block_reason": ""
+              },
+              {
+                "source_id": "VS1_1",
+                "query_id": "V1",
+                "title": "Local & subnational advocacy for nature: March 2020 update",
+                "url": "https://citieswithnature.org/local-subnational-advocacy-for-nature-march-2020-update/",
+                "domain": "citieswithnature.org",
+                "snippet": "Mar 26, 2020 · ... both nature and culture in sustainable urbanization.” For more ... The OEWG 2 meeting completed the first round of negotiations on the zero draft.",
+                "raw_content": "Mar 26, 2020 · ... both nature and culture in sustainable urbanization.” For more ... The OEWG 2 meeting completed the first round of negotiations on the zero draft.",
+                "rank": 1,
+                "rerank_score": 13.5,
+                "fetched": true,
+                "blocked": false,
+                "block_reason": ""
+              },
+              {
+                "source_id": "VS1_3",
+                "query_id": "V1",
+                "title": "Nature is calling – a week of climate and biodiversity on EU agenda",
+                "url": "https://www.eeas.europa.eu/eeas/nature-calling-%E2%80%93-week-climate-and-biodiversity-eu-agenda_und_en",
+                "domain": "www.eeas.europa.eu",
+                "snippet": "Both nature and biodiversity are essential for life on Earth. We must protect nature to tackle climate change, prevent biodiversity loss and protect people ...",
+                "raw_content": "Both nature and biodiversity are essential for life on Earth. We must protect nature to tackle climate change, prevent biodiversity loss and protect people ...",
+                "rank": 3,
+                "rerank_score": 4.85,
+                "fetched": true,
+                "blocked": false,
+                "block_reason": ""
+              },
+              {
+                "source_id": "VS2_1",
+                "query_id": "V2",
+                "title": "Fast-rising research institutions 2020 - Nature",
+                "url": "https://www.nature.com/articles/d41586-020-01232-9",
+                "domain": "www.nature.com",
+                "snippet": "Apr 29, 2020 · Nature Index 15 APR 26 · Why AI can't be trusted to write scientific ... An essential round-up of science news, opinion and analysis ...",
+                "raw_content": "Apr 29, 2020 · Nature Index 15 APR 26 · Why AI can't be trusted to write scientific ... An essential round-up of science news, opinion and analysis ...",
+                "rank": 1,
+                "rerank_score": 15.0,
+                "fetched": true,
+                "blocked": false,
+                "block_reason": ""
+              },
+              {
+                "source_id": "VS2_2",
+                "query_id": "V2",
+                "title": "Rising stars in Earth and environmental sciences 2020 - Nature",
+                "url": "https://www.nature.com/articles/d41586-020-01237-4",
+                "domain": "www.nature.com",
+                "snippet": "Apr 29, 2020 · Nature Index 23 APR 26. A guide to the Nature Index. Nature Index 20 ... An essential round-up of science news, opinion and analysis ...",
+                "raw_content": "Apr 29, 2020 · Nature Index 23 APR 26. A guide to the Nature Index. Nature Index 20 ... An essential round-up of science news, opinion and analysis ...",
+                "rank": 2,
+                "rerank_score": 14.55,
+                "fetched": true,
+                "blocked": false,
+                "block_reason": ""
+              },
+              {
+                "source_id": "VS3_1",
+                "query_id": "V3",
+                "title": "Victrola Museum's virtual Halloween program on Oct. 30, 2020",
+                "url": "https://news.delaware.gov/2020/10/20/victrola-museums-virtual-halloween-program/",
+                "domain": "news.delaware.gov",
+                "snippet": "Oct 20, 2020 · DNREC's DuPont Nature Center to Reopen April 1. Date Posted ... round of illegal tariffs. Date Posted: March 5, 2026. Official Seal of ...",
+                "raw_content": "Oct 20, 2020 · DNREC's DuPont Nature Center to Reopen April 1. Date Posted ... round of illegal tariffs. Date Posted: March 5, 2026. Official Seal of ...",
+                "rank": 1,
+                "rerank_score": 14.95,
+                "fetched": true,
+                "blocked": false,
+                "block_reason": ""
+              },
+              {
+                "source_id": "VS3_3",
+                "query_id": "V3",
+                "title": "Aging and the clock: Perspective from flies to humans - PubMed - NIH",
+                "url": "https://pubmed.ncbi.nlm.nih.gov/30269400/",
+                "domain": "pubmed.ncbi.nlm.nih.gov",
+                "snippet": "Epub 2018 Oct 30. Authors. Aliza K De Nobrega , Lisa C Lyons. Affiliation. 1 ... The technological nature of modern society with round-the-clock work ...",
+                "raw_content": "Epub 2018 Oct 30. Authors. Aliza K De Nobrega , Lisa C Lyons. Affiliation. 1 ... The technological nature of modern society with round-the-clock work ...",
+                "rank": 3,
+                "rerank_score": 6.0,
+                "fetched": true,
+                "blocked": false,
+                "block_reason": ""
+              },
+              {
+                "source_id": "VS4_3",
+                "query_id": "V4",
+                "title": "Impact of indoor residual spraying with pirimiphos-methyl (Actellic 300CS ...",
+                "url": "https://pubmed.ncbi.nlm.nih.gov/32161302/",
+                "domain": "pubmed.ncbi.nlm.nih.gov",
+                "snippet": "We evaluated the impact of a single round of IRS with the organophosphate, ... Sci Rep. 2020 Mar 11;10(1):4518. doi: 10.1038/s41598-020-61350-2. Authors.",
+                "raw_content": "We evaluated the impact of a single round of IRS with the organophosphate, ... Sci Rep. 2020 Mar 11;10(1):4518. doi: 10.1038/s41598-020-61350-2. Authors.",
+                "rank": 3,
+                "rerank_score": 7.3,
+                "fetched": true,
+                "blocked": false,
+                "block_reason": ""
+              },
+              {
+                "source_id": "VS5_1",
+                "query_id": "V5",
+                "title": "[PDF] The American Statistical Association (ASA) is pleased to respond to ...",
+                "url": "https://www.amstat.org/docs/default-source/amstat-documents/pol-omb2020censusmarch15.pdf",
+                "domain": "www.amstat.org",
+                "snippet": "... nature of data quality issues that would result from the introduction of the ... round of data collection in a longitudinal survey (e.g., the base year ...",
+                "raw_content": "... nature of data quality issues that would result from the introduction of the ... round of data collection in a longitudinal survey (e.g., the base year ...",
+                "rank": 1,
+                "rerank_score": 16.0,
+                "fetched": true,
+                "blocked": false,
+                "block_reason": ""
+              },
+              {
+                "source_id": "VS5_2",
+                "query_id": "V5",
+                "title": "Candidates for 2020 Board of Directors",
+                "url": "https://www.icsa.org/candidates-for-2020-board-of-directors/",
+                "domain": "www.icsa.org",
+                "snippet": "Jun 11, 2019 · ... American Statistical Association, Biometrics, Biostatistics, and ... Nature Communication, Radiology, EMBO Molecular Medicine, and Neuro-Oncology.",
+                "raw_content": "Jun 11, 2019 · ... American Statistical Association, Biometrics, Biostatistics, and ... Nature Communication, Radiology, EMBO Molecular Medicine, and Neuro-Oncology.",
+                "rank": 2,
+                "rerank_score": 10.65,
+                "fetched": true,
+                "blocked": false,
+                "block_reason": ""
+              },
+              {
+                "source_id": "VS5_3",
+                "query_id": "V5",
+                "title": "Why do we read many articles with bad statistics? : what does the new ...",
+                "url": "https://ekja.org/journal/view.php?number=8147",
+                "domain": "ekja.org",
+                "snippet": "Mar 30, 2016 · Many researchers are confused by the new statement on p-values recently released by the American Statistical Association (ASA) [1]. ... Nature ...",
+                "raw_content": "Mar 30, 2016 · Many researchers are confused by the new statement on p-values recently released by the American Statistical Association (ASA) [1]. ... Nature ...",
+                "rank": 3,
+                "rerank_score": 5.7,
+                "fetched": true,
+                "blocked": false,
+                "block_reason": ""
+              }
+            ],
+            "evidence_items": [
+              {
+                "evidence_id": "E1",
+                "source_id": "S1",
+                "query_id": "Q1",
+                "text": "On the one side, those who “rise up against statistical significance”, as did Amrhein et al. in Nature [1]; on the other side, those who recommend “do not abandon significance”, as did Ioannidis in JAMA [2]. These are two opposite viewpoints around a long-standing topic: the misuse of p value and the claim of statistical significance or non-significance. The p value is probably the most ubiquitous and, at the same ti ...",
+                "title": "Statistical significance: p value, 0.05 threshold, and applications to radiomics—reasons for a conservative approach | European Radiology Experimental | Springer Nature Link",
+                "url": "https://link.springer.com/article/10.1186/s41747-020-0145-y",
+                "relevance_score": 23.25,
+                "matched_terms": [
+                  "all",
+                  "articles",
+                  "nature",
+                  "not",
+                  "published",
+                  "round",
+                  "significance",
+                  "statistical",
+                  "value"
+                ],
+                "extracted_answer": ""
+              },
+              {
+                "evidence_id": "E2",
+                "source_id": "S4",
+                "query_id": "Q1",
+                "text": "Although many cancer studies claim to have achieved a significance of 0.05, many results are not · replicable. Both Nature and Science have devoted discussions on how to understand p-value and how to define",
+                "title": "(PDF) p-value based statistical significance tests: Concepts, misuses, critiques, solutions and beyond",
+                "url": "https://www.researchgate.net/publication/360775123_p-value_based_statistical_significance_tests_Concepts_misuses_critiques_solutions_and_beyond",
+                "relevance_score": 15.235,
+                "matched_terms": [
+                  "many",
+                  "nature",
+                  "not",
+                  "significance",
+                  "value"
+                ],
+                "extracted_answer": ""
+              },
+              {
+                "evidence_id": "E3",
+                "source_id": "S5",
+                "query_id": "Q1",
+                "text": "Apr 26, 2023 · Each research roves around the P value. A value less than 0.05 is considered to be statistically significant.",
+                "title": "The “P”-Value: The Primary Alphabet of Research Revisited - PMC",
+                "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC10284198/",
+                "relevance_score": 13.72,
+                "matched_terms": [
+                  "all",
+                  "round",
+                  "statistical",
+                  "value"
+                ],
+                "extracted_answer": ""
+              },
+              {
+                "evidence_id": "E4",
+                "source_id": "S7",
+                "query_id": "Q2",
+                "text": "We propose to change the default P-value threshold for statistical significance from 0.05 to 0.005 for claims of new discoveries.",
+                "title": "Redefine statistical significance | Nature Human Behaviour",
+                "url": "https://www.nature.com/articles/s41562-017-0189-z",
+                "relevance_score": 13.25,
+                "matched_terms": [
+                  "claims",
+                  "significance",
+                  "statistical",
+                  "value"
+                ],
+                "extracted_answer": ""
+              },
+              {
+                "evidence_id": "E5",
+                "source_id": "S11",
+                "query_id": "Q3",
+                "text": "Oct 30, 2013 · The P value reported by tests is a probabilistic significance, not a biological one.",
+                "title": "Significance, P values and t-tests | Nature Methods",
+                "url": "https://www.nature.com/articles/nmeth.2698",
+                "relevance_score": 11.75,
+                "matched_terms": [
+                  "not",
+                  "significance",
+                  "value"
+                ],
+                "extracted_answer": ""
+              },
+              {
+                "evidence_id": "E6",
+                "source_id": "S12",
+                "query_id": "Q3",
+                "text": "Mar 11, 2020 · In this article, we discuss the value of p value and explain why it should not be abandoned nor should the conventional threshold of 0.05 be modified.",
+                "title": "Statistical significance: p value, 0.05 threshold, and applications to ...",
+                "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC7064671/",
+                "relevance_score": 11.75,
+                "matched_terms": [
+                  "2020",
+                  "not",
+                  "value"
+                ],
+                "extracted_answer": ""
+              },
+              {
+                "evidence_id": "E7",
+                "source_id": "S15",
+                "query_id": "Q3",
+                "text": "Here, we summarise the unresolved debate about p value and its dichotomisation. We present the statement of the American Statistical Association against the misuse of statistical significance as ...",
+                "title": "(PDF) Statistical significance: p value, 0.05 threshold, and ...",
+                "url": "https://www.researchgate.net/publication/339844197_Statistical_significance_p_value_005_threshold_and_applications_to_radiomics-reasons_for_a_conservative_approach",
+                "relevance_score": 10.855,
+                "matched_terms": [
+                  "significance",
+                  "statistical",
+                  "value"
+                ],
+                "extracted_answer": ""
+              },
+              {
+                "evidence_id": "E8",
+                "source_id": "S13",
+                "query_id": "Q3",
+                "text": "Oct 22, 2021 · This value is then compared with the threshold 0.05 to decide whether or not the null hypothesis is rejected. When working with datasets with ...",
+                "title": "Use of the p-values as a size-dependent function to address ...",
+                "url": "https://www.nature.com/articles/s41598-021-00199-5",
+                "relevance_score": 9.75,
+                "matched_terms": [
+                  "not",
+                  "value"
+                ],
+                "extracted_answer": ""
+              },
+              {
+                "evidence_id": "V1",
+                "source_id": "VS5_3",
+                "query_id": "V5",
+                "text": "Mar 30, 2016 · Many researchers are confused by the new statement on p-values recently released by the American Statistical Association (ASA) [1]. ... Nature ...",
+                "title": "Why do we read many articles with bad statistics? : what does the new ...",
+                "url": "https://ekja.org/journal/view.php?number=8147",
+                "relevance_score": 13.75,
+                "matched_terms": [
+                  "many",
+                  "nature",
+                  "statistical",
+                  "value"
+                ],
+                "extracted_answer": ""
+              },
+              {
+                "evidence_id": "V2",
+                "source_id": "VS1_1",
+                "query_id": "V1",
+                "text": "Mar 26, 2020 · ... both nature and culture in sustainable urbanization.” For more ... The OEWG 2 meeting completed the first round of negotiations on the zero draft.",
+                "title": "Local & subnational advocacy for nature: March 2020 update",
+                "url": "https://citieswithnature.org/local-subnational-advocacy-for-nature-march-2020-update/",
+                "relevance_score": 11.75,
+                "matched_terms": [
+                  "2020",
+                  "nature",
+                  "round"
+                ],
+                "extracted_answer": ""
+              },
+              {
+                "evidence_id": "V3",
+                "source_id": "VS2_1",
+                "query_id": "V2",
+                "text": "Apr 29, 2020 · Nature Index 15 APR 26 · Why AI can't be trusted to write scientific ... An essential round-up of science news, opinion and analysis ...",
+                "title": "Fast-rising research institutions 2020 - Nature",
+                "url": "https://www.nature.com/articles/d41586-020-01232-9",
+                "relevance_score": 11.75,
+                "matched_terms": [
+                  "2020",
+                  "nature",
+                  "round"
+                ],
+                "extracted_answer": ""
+              },
+              {
+                "evidence_id": "V4",
+                "source_id": "VS2_2",
+                "query_id": "V2",
+                "text": "Apr 29, 2020 · Nature Index 23 APR 26. A guide to the Nature Index. Nature Index 20 ... An essential round-up of science news, opinion and analysis ...",
+                "title": "Rising stars in Earth and environmental sciences 2020 - Nature",
+                "url": "https://www.nature.com/articles/d41586-020-01237-4",
+                "relevance_score": 11.75,
+                "matched_terms": [
+                  "2020",
+                  "nature",
+                  "round"
+                ],
+                "extracted_answer": ""
+              },
+              {
+                "evidence_id": "V5",
+                "source_id": "VS3_1",
+                "query_id": "V3",
+                "text": "Oct 20, 2020 · DNREC's DuPont Nature Center to Reopen April 1. Date Posted ... round of illegal tariffs. Date Posted: March 5, 2026. Official Seal of ...",
+                "title": "Victrola Museum's virtual Halloween program on Oct. 30, 2020",
+                "url": "https://news.delaware.gov/2020/10/20/victrola-museums-virtual-halloween-program/",
+                "relevance_score": 11.75,
+                "matched_terms": [
+                  "2020",
+                  "nature",
+                  "round"
+                ],
+                "extracted_answer": ""
+              },
+              {
+                "evidence_id": "V6",
+                "source_id": "VS5_2",
+                "query_id": "V5",
+                "text": "Jun 11, 2019 · ... American Statistical Association, Biometrics, Biostatistics, and ... Nature Communication, Radiology, EMBO Molecular Medicine, and Neuro-Oncology.",
+                "title": "Candidates for 2020 Board of Directors",
+                "url": "https://www.icsa.org/candidates-for-2020-board-of-directors/",
+                "relevance_score": 9.75,
+                "matched_terms": [
+                  "nature",
+                  "statistical"
+                ],
+                "extracted_answer": ""
+              },
+              {
+                "evidence_id": "V7",
+                "source_id": "VS5_1",
+                "query_id": "V5",
+                "text": "... nature of data quality issues that would result from the introduction of the ... round of data collection in a longitudinal survey (e.g., the base year ...",
+                "title": "[PDF] The American Statistical Association (ASA) is pleased to respond to ...",
+                "url": "https://www.amstat.org/docs/default-source/amstat-documents/pol-omb2020censusmarch15.pdf",
+                "relevance_score": 9.0,
+                "matched_terms": [
+                  "nature",
+                  "round"
+                ],
+                "extracted_answer": ""
+              },
+              {
+                "evidence_id": "V8",
+                "source_id": "VS3_3",
+                "query_id": "V3",
+                "text": "Epub 2018 Oct 30. Authors. Aliza K De Nobrega , Lisa C Lyons. Affiliation. 1 ... The technological nature of modern society with round-the-clock work ...",
+                "title": "Aging and the clock: Perspective from flies to humans - PubMed - NIH",
+                "url": "https://pubmed.ncbi.nlm.nih.gov/30269400/",
+                "relevance_score": 8.25,
+                "matched_terms": [
+                  "nature",
+                  "round"
+                ],
+                "extracted_answer": ""
+              },
+              {
+                "evidence_id": "V9",
+                "source_id": "VS4_3",
+                "query_id": "V4",
+                "text": "We evaluated the impact of a single round of IRS with the organophosphate, ... Sci Rep. 2020 Mar 11;10(1):4518. doi: 10.1038/s41598-020-61350-2. Authors.",
+                "title": "Impact of indoor residual spraying with pirimiphos-methyl (Actellic 300CS ...",
+                "url": "https://pubmed.ncbi.nlm.nih.gov/32161302/",
+                "relevance_score": 8.25,
+                "matched_terms": [
+                  "2020",
+                  "round"
+                ],
+                "extracted_answer": ""
+              },
+              {
+                "evidence_id": "V10",
+                "source_id": "VS1_3",
+                "query_id": "V1",
+                "text": "Both nature and biodiversity are essential for life on Earth. We must protect nature to tackle climate change, prevent biodiversity loss and protect people ...",
+                "title": "Nature is calling – a week of climate and biodiversity on EU agenda",
+                "url": "https://www.eeas.europa.eu/eeas/nature-calling-%E2%80%93-week-climate-and-biodiversity-eu-agenda_und_en",
+                "relevance_score": 3.985,
+                "matched_terms": [
+                  "nature"
+                ],
+                "extracted_answer": ""
+              }
+            ],
+            "candidates": [
+              {
+                "answer": "Both Nature",
+                "answer_type": "title",
+                "support_count": 1,
+                "verification_score": 16.235,
+                "evidence_ids": [
+                  "E2"
+                ],
+                "source_ids": [
+                  "S4"
+                ],
+                "verified": true
+              },
+              {
+                "answer": "Apr 26",
+                "answer_type": "title",
+                "support_count": 1,
+                "verification_score": 14.72,
+                "evidence_ids": [
+                  "E3"
+                ],
+                "source_ids": [
+                  "S5"
+                ],
+                "verified": true
+              },
+              {
+                "answer": "Oct 30",
+                "answer_type": "title",
+                "support_count": 1,
+                "verification_score": 12.75,
+                "evidence_ids": [
+                  "E5"
+                ],
+                "source_ids": [
+                  "S11"
+                ],
+                "verified": true
+              },
+              {
+                "answer": "Mar 11",
+                "answer_type": "title",
+                "support_count": 1,
+                "verification_score": 12.75,
+                "evidence_ids": [
+                  "E6"
+                ],
+                "source_ids": [
+                  "S12"
+                ],
+                "verified": true
+              },
+              {
+                "answer": "American Statistical Association",
+                "answer_type": "title",
+                "support_count": 1,
+                "verification_score": 11.855,
+                "evidence_ids": [
+                  "E7"
+                ],
+                "source_ids": [
+                  "S15"
+                ],
+                "verified": true
+              },
+              {
+                "answer": "Oct 22",
+                "answer_type": "title",
+                "support_count": 1,
+                "verification_score": 10.75,
+                "evidence_ids": [
+                  "E8"
+                ],
+                "source_ids": [
+                  "S13"
+                ],
+                "verified": true
+              }
+            ],
+            "summary": "Original Question:\nIf we assume all articles published by Nature in 2020 (articles, only, not book reviews/columns, etc) relied on statistical significance to justify their findings and they on average came to a p-value of 0.04, how many papers would be incorrect as to their claims of statistical significance? Round the value up to the next integer.\n\nQuery:\n[Q1] Nature articles 2020 p-value 0.04\n[Q2] Nature articles 2020 statistical significance threshold\n[Q3] Nature articles 2020 p-value greater than 0.05\n[V1] \"Both Nature\" \"Nature\" \"Round\" 2020\n[V2] \"Apr 26\" \"Nature\" \"Round\" 2020\n[V3] \"Oct 30\" \"Nature\" \"Round\" 2020\n[V4] \"Mar 11\" \"Nature\" \"Round\" 2020\n[V5] \"American Statistical Association\" \"Nature\" \"Round\" 2020\n\nEvidence:\n[E1]\nSource: Statistical significance: p value, 0.05 threshold, and applications to radiomics—reasons for a conservative approach | European Radiology Experimental | Springer Nature Link\nQuery: Q1\nText: On the one side, those who “rise up against statistical significance”, as did Amrhein et al. in Nature [1]; on the other side, those who recommend “do not abandon significance”, as did Ioannidis in JAMA [2]. These are two opposite viewpoints around a long-standing topic: the misuse of p value and the claim of statistical significance or non-significance. The p value is probably the most ubiquitous and, at the same ti ...\n[E2]\nSource: (PDF) p-value based statistical significance tests: Concepts, misuses, critiques, solutions and beyond\nQuery: Q1\nText: Although many cancer studies claim to have achieved a significance of 0.05, many results are not · replicable. Both Nature and Science have devoted discussions on how to understand p-value and how to define\n[E3]\nSource: The “P”-Value: The Primary Alphabet of Research Revisited - PMC\nQuery: Q1\nText: Apr 26, 2023 · Each research roves around the P value. A value less than 0.05 is considered to be statistically significant.\n[E4]\nSource: Redefine statistical significance | Nature Human Behaviour\nQuery: Q2\nText: We propose to change the default P-value threshold for statistical significance from 0.05 to 0.005 for claims of new discoveries.\n[E5]\nSource: Significance, P values and t-tests | Nature Methods\nQuery: Q3\nText: Oct 30, 2013 · The P value reported by tests is a probabilistic significance, not a biological one.\n[E6]\nSource: Statistical significance: p value, 0.05 threshold, and applications to ...\nQuery: Q3\nText: Mar 11, 2020 · In this article, we discuss the value of p value and explain why it should not be abandoned nor should the conventional threshold of 0.05 be modified.\n[E7]\nSource: (PDF) Statistical significance: p value, 0.05 threshold, and ...\nQuery: Q3\nText: Here, we summarise the unresolved debate about p value and its dichotomisation. We present the statement of the American Statistical Association against the misuse of statistical significance as ...\n[E8]\nSource: Use of the p-values as a size-dependent function to address ...\nQuery: Q3\nText: Oct 22, 2021 · This value is then compared with the threshold 0.05 to decide whether or not the null hypothesis is rejected. When working with datasets with ...\n\nCandidate Answer:\n[C1] answer=Both Nature; type=title; evidence=E2\n[C2] answer=Apr 26; type=title; evidence=E3\n[C3] answer=Oct 30; type=title; evidence=E5",
+            "verified_candidates": [
+              {
+                "candidate_id": "C2",
+                "answer": "Apr 26",
+                "answer_type": "title",
+                "support_count": 3,
+                "refute_count": 0,
+                "neutral_count": 10,
+                "confidence": 1.0,
+                "evidence_ids": [
+                  "E3"
+                ],
+                "support_fact_ids": [
+                  "F17",
+                  "F24",
+                  "F25"
+                ],
+                "refute_fact_ids": [],
+                "risk_flags": []
+              },
+              {
+                "candidate_id": "C5",
+                "answer": "American Statistical Association",
+                "answer_type": "title",
+                "support_count": 3,
+                "refute_count": 0,
+                "neutral_count": 11,
+                "confidence": 1.0,
+                "evidence_ids": [
+                  "E7"
+                ],
+                "support_fact_ids": [
+                  "F62",
+                  "F63",
+                  "F68"
+                ],
+                "refute_fact_ids": [],
+                "risk_flags": []
+              },
+              {
+                "candidate_id": "C4",
+                "answer": "Mar 11",
+                "answer_type": "title",
+                "support_count": 2,
+                "refute_count": 0,
+                "neutral_count": 12,
+                "confidence": 1.0,
+                "evidence_ids": [
+                  "E6"
+                ],
+                "support_fact_ids": [
+                  "F47",
+                  "F55"
+                ],
+                "refute_fact_ids": [],
+                "risk_flags": []
+              },
+              {
+                "candidate_id": "C1",
+                "answer": "Both Nature",
+                "answer_type": "title",
+                "support_count": 2,
+                "refute_count": 1,
+                "neutral_count": 11,
+                "confidence": 0.7,
+                "evidence_ids": [
+                  "E2"
+                ],
+                "support_fact_ids": [
+                  "F9",
+                  "F14"
+                ],
+                "refute_fact_ids": [
+                  "F2"
+                ],
+                "risk_flags": []
+              },
+              {
+                "candidate_id": "C6",
+                "answer": "Oct 22",
+                "answer_type": "title",
+                "support_count": 1,
+                "refute_count": 0,
+                "neutral_count": 13,
+                "confidence": 0.2,
+                "evidence_ids": [
+                  "E8"
+                ],
+                "support_fact_ids": [
+                  "F77"
+                ],
+                "refute_fact_ids": [],
+                "risk_flags": [
+                  "no_verification_support"
+                ]
+              },
+              {
+                "candidate_id": "C3",
+                "answer": "Oct 30",
+                "answer_type": "title",
+                "support_count": 1,
+                "refute_count": 1,
+                "neutral_count": 12,
+                "confidence": 0.2,
+                "evidence_ids": [
+                  "E5"
+                ],
+                "support_fact_ids": [
+                  "F41"
+                ],
+                "refute_fact_ids": [
+                  "F32"
+                ],
+                "risk_flags": []
+              }
+            ],
+            "fact_cards": [
+              {
+                "fact_id": "F1",
+                "claim": "On the one side, those who “rise up against statistical significance”, as did Amrhein et al.",
+                "relation": "neutral",
+                "candidate_id": "C1",
+                "source_id": "S1",
+                "evidence_id": "E1",
+                "confidence": 0.5,
+                "constraint_matches": [
+                  "nature",
+                  "not",
+                  "round",
+                  "significance",
+                  "statistical",
+                  "value"
+                ]
+              },
+              {
+                "fact_id": "F2",
+                "claim": "Although many cancer studies claim to have achieved a significance of 0.05, many results are not · replicable.",
+                "relation": "refute",
+                "candidate_id": "C1",
+                "source_id": "S4",
+                "evidence_id": "E2",
+                "confidence": 1.0,
+                "constraint_matches": [
+                  "many",
+                  "nature",
+                  "not",
+                  "significance",
+                  "value"
+                ]
+              },
+              {
+                "fact_id": "F3",
+                "claim": "Apr 26, 2023 · Each research roves around the P value.",
+                "relation": "neutral",
+                "candidate_id": "C1",
+                "source_id": "S5",
+                "evidence_id": "E3",
+                "confidence": 0.5,
+                "constraint_matches": [
+                  "all",
+                  "round",
+                  "statistical",
+                  "value"
+                ]
+              },
+              {
+                "fact_id": "F4",
+                "claim": "We propose to change the default P-value threshold for statistical significance from 0.05 to 0.005 for claims of new discoveries.",
+                "relation": "neutral",
+                "candidate_id": "C1",
+                "source_id": "S7",
+                "evidence_id": "E4",
+                "confidence": 0.5,
+                "constraint_matches": [
+                  "claims",
+                  "significance",
+                  "statistical",
+                  "value"
+                ]
+              },
+              {
+                "fact_id": "F5",
+                "claim": "Oct 30, 2013 · The P value reported by tests is a probabilistic significance, not a biological one.",
+                "relation": "neutral",
+                "candidate_id": "C1",
+                "source_id": "S11",
+                "evidence_id": "E5",
+                "confidence": 0.438,
+                "constraint_matches": [
+                  "not",
+                  "significance",
+                  "value"
+                ]
+              },
+              {
+                "fact_id": "F6",
+                "claim": "Mar 11, 2020 · In this article, we discuss the value of p value and explain why it should not be abandoned nor should the conventional threshold of 0.05 be modified.",
+                "relation": "neutral",
+                "candidate_id": "C1",
+                "source_id": "S12",
+                "evidence_id": "E6",
+                "confidence": 0.438,
+                "constraint_matches": [
+                  "2020",
+                  "not",
+                  "value"
+                ]
+              },
+              {
+                "fact_id": "F7",
+                "claim": "Here, we summarise the unresolved debate about p value and its dichotomisation.",
+                "relation": "neutral",
+                "candidate_id": "C1",
+                "source_id": "S15",
+                "evidence_id": "E7",
+                "confidence": 0.438,
+                "constraint_matches": [
+                  "significance",
+                  "statistical",
+                  "value"
+                ]
+              },
+              {
+                "fact_id": "F8",
+                "claim": "Mar 30, 2016 · Many researchers are confused by the new statement on p-values recently released by the American Statistical Association (ASA) [1].",
+                "relation": "neutral",
+                "candidate_id": "C1",
+                "source_id": "VS5_3",
+                "evidence_id": "V1",
+                "confidence": 0.5,
+                "constraint_matches": [
+                  "many",
+                  "nature",
+                  "statistical",
+                  "value"
+                ]
+              },
+              {
+                "fact_id": "F9",
+                "claim": "Mar 26, 2020 · ... both nature and culture in sustainable urbanization.” For more ...",
+                "relation": "support",
+                "candidate_id": "C1",
+                "source_id": "VS1_1",
+                "evidence_id": "V2",
+                "confidence": 1.0,
+                "constraint_matches": [
+                  "2020",
+                  "nature",
+                  "round"
+                ]
+              },
+              {
+                "fact_id": "F10",
+                "claim": "Apr 29, 2020 · Nature Index 15 APR 26 · Why AI can't be trusted to write scientific ...",
+                "relation": "neutral",
+                "candidate_id": "C1",
+                "source_id": "VS2_1",
+                "evidence_id": "V3",
+                "confidence": 0.438,
+                "constraint_matches": [
+                  "2020",
+                  "nature",
+                  "round"
+                ]
+              },
+              {
+                "fact_id": "F11",
+                "claim": "Apr 29, 2020 · Nature Index 23 APR 26. A guide to the Nature Index.",
+                "relation": "neutral",
+                "candidate_id": "C1",
+                "source_id": "VS2_2",
+                "evidence_id": "V4",
+                "confidence": 0.438,
+                "constraint_matches": [
+                  "2020",
+                  "nature",
+                  "round"
+                ]
+              },
+              {
+                "fact_id": "F12",
+                "claim": "Oct 20, 2020 · DNREC's DuPont Nature Center to Reopen April 1.",
+                "relation": "neutral",
+                "candidate_id": "C1",
+                "source_id": "VS3_1",
+                "evidence_id": "V5",
+                "confidence": 0.438,
+                "constraint_matches": [
+                  "2020",
+                  "nature",
+                  "round"
+                ]
+              },
+              {
+                "fact_id": "F13",
+                "claim": "... nature of data quality issues that would result from the introduction of the ...",
+                "relation": "neutral",
+                "candidate_id": "C1",
+                "source_id": "VS5_1",
+                "evidence_id": "V7",
+                "confidence": 0.438,
+                "constraint_matches": [
+                  "nature",
+                  "round",
+                  "would"
+                ]
+              },
+              {
+                "fact_id": "F14",
+                "claim": "Both nature and biodiversity are essential for life on Earth.",
+                "relation": "support",
+                "candidate_id": "C1",
+                "source_id": "VS1_3",
+                "evidence_id": "V10",
+                "confidence": 0.797,
+                "constraint_matches": [
+                  "nature"
+                ]
+              },
+              {
+                "fact_id": "F15",
+                "claim": "On the one side, those who “rise up against statistical significance”, as did Amrhein et al.",
+                "relation": "neutral",
+                "candidate_id": "C2",
+                "source_id": "S1",
+                "evidence_id": "E1",
+                "confidence": 0.5,
+                "constraint_matches": [
+                  "nature",
+                  "not",
+                  "round",
+                  "significance",
+                  "statistical",
+                  "value"
+                ]
+              },
+              {
+                "fact_id": "F16",
+                "claim": "Although many cancer studies claim to have achieved a significance of 0.05, many results are not · replicable.",
+                "relation": "neutral",
+                "candidate_id": "C2",
+                "source_id": "S4",
+                "evidence_id": "E2",
+                "confidence": 0.5,
+                "constraint_matches": [
+                  "many",
+                  "nature",
+                  "not",
+                  "significance",
+                  "value"
+                ]
+              },
+              {
+                "fact_id": "F17",
+                "claim": "Apr 26, 2023 · Each research roves around the P value.",
+                "relation": "support",
+                "candidate_id": "C2",
+                "source_id": "S5",
+                "evidence_id": "E3",
+                "confidence": 1.0,
+                "constraint_matches": [
+                  "all",
+                  "round",
+                  "statistical",
+                  "value"
+                ]
+              },
+              {
+                "fact_id": "F18",
+                "claim": "We propose to change the default P-value threshold for statistical significance from 0.05 to 0.005 for claims of new discoveries.",
+                "relation": "neutral",
+                "candidate_id": "C2",
+                "source_id": "S7",
+                "evidence_id": "E4",
+                "confidence": 0.5,
+                "constraint_matches": [
+                  "claims",
+                  "significance",
+                  "statistical",
+                  "value"
+                ]
+              },
+              {
+                "fact_id": "F19",
+                "claim": "Oct 30, 2013 · The P value reported by tests is a probabilistic significance, not a biological one.",
+                "relation": "neutral",
+                "candidate_id": "C2",
+                "source_id": "S11",
+                "evidence_id": "E5",
+                "confidence": 0.438,
+                "constraint_matches": [
+                  "not",
+                  "significance",
+                  "value"
+                ]
+              },
+              {
+                "fact_id": "F20",
+                "claim": "Mar 11, 2020 · In this article, we discuss the value of p value and explain why it should not be abandoned nor should the conventional threshold of 0.05 be modified.",
+                "relation": "neutral",
+                "candidate_id": "C2",
+                "source_id": "S12",
+                "evidence_id": "E6",
+                "confidence": 0.438,
+                "constraint_matches": [
+                  "2020",
+                  "not",
+                  "value"
+                ]
+              },
+              {
+                "fact_id": "F21",
+                "claim": "Here, we summarise the unresolved debate about p value and its dichotomisation.",
+                "relation": "neutral",
+                "candidate_id": "C2",
+                "source_id": "S15",
+                "evidence_id": "E7",
+                "confidence": 0.438,
+                "constraint_matches": [
+                  "significance",
+                  "statistical",
+                  "value"
+                ]
+              },
+              {
+                "fact_id": "F22",
+                "claim": "Mar 30, 2016 · Many researchers are confused by the new statement on p-values recently released by the American Statistical Association (ASA) [1].",
+                "relation": "neutral",
+                "candidate_id": "C2",
+                "source_id": "VS5_3",
+                "evidence_id": "V1",
+                "confidence": 0.5,
+                "constraint_matches": [
+                  "many",
+                  "nature",
+                  "statistical",
+                  "value"
+                ]
+              },
+              {
+                "fact_id": "F23",
+                "claim": "Mar 26, 2020 · ... both nature and culture in sustainable urbanization.” For more ...",
+                "relation": "neutral",
+                "candidate_id": "C2",
+                "source_id": "VS1_1",
+                "evidence_id": "V2",
+                "confidence": 0.438,
+                "constraint_matches": [
+                  "2020",
+                  "nature",
+                  "round"
+                ]
+              },
+              {
+                "fact_id": "F24",
+                "claim": "Apr 29, 2020 · Nature Index 15 APR 26 · Why AI can't be trusted to write scientific ...",
+                "relation": "support",
+                "candidate_id": "C2",
+                "source_id": "VS2_1",
+                "evidence_id": "V3",
+                "confidence": 0.992,
+                "constraint_matches": [
+                  "2020",
+                  "nature",
+                  "round"
+                ]
+              },
+              {
+                "fact_id": "F25",
+                "claim": "Apr 29, 2020 · Nature Index 23 APR 26. A guide to the Nature Index.",
+                "relation": "support",
+                "candidate_id": "C2",
+                "source_id": "VS2_2",
+                "evidence_id": "V4",
+                "confidence": 0.992,
+                "constraint_matches": [
+                  "2020",
+                  "nature",
+                  "round"
+                ]
+              },
+              {
+                "fact_id": "F26",
+                "claim": "Oct 20, 2020 · DNREC's DuPont Nature Center to Reopen April 1.",
+                "relation": "neutral",
+                "candidate_id": "C2",
+                "source_id": "VS3_1",
+                "evidence_id": "V5",
+                "confidence": 0.438,
+                "constraint_matches": [
+                  "2020",
+                  "nature",
+                  "round"
+                ]
+              },
+              {
+                "fact_id": "F27",
+                "claim": "... nature of data quality issues that would result from the introduction of the ...",
+                "relation": "neutral",
+                "candidate_id": "C2",
+                "source_id": "VS5_1",
+                "evidence_id": "V7",
+                "confidence": 0.438,
+                "constraint_matches": [
+                  "nature",
+                  "round",
+                  "would"
+                ]
+              },
+              {
+                "fact_id": "F28",
+                "claim": "On the one side, those who “rise up against statistical significance”, as did Amrhein et al.",
+                "relation": "neutral",
+                "candidate_id": "C3",
+                "source_id": "S1",
+                "evidence_id": "E1",
+                "confidence": 0.5,
+                "constraint_matches": [
+                  "nature",
+                  "not",
+                  "round",
+                  "significance",
+                  "statistical",
+                  "value"
+                ]
+              },
+              {
+                "fact_id": "F29",
+                "claim": "Although many cancer studies claim to have achieved a significance of 0.05, many results are not · replicable.",
+                "relation": "neutral",
+                "candidate_id": "C3",
+                "source_id": "S4",
+                "evidence_id": "E2",
+                "confidence": 0.5,
+                "constraint_matches": [
+                  "many",
+                  "nature",
+                  "not",
+                  "significance",
+                  "value"
+                ]
+              },
+              {
+                "fact_id": "F30",
+                "claim": "Apr 26, 2023 · Each research roves around the P value.",
+                "relation": "neutral",
+                "candidate_id": "C3",
+                "source_id": "S5",
+                "evidence_id": "E3",
+                "confidence": 0.5,
+                "constraint_matches": [
+                  "all",
+                  "round",
+                  "statistical",
+                  "value"
+                ]
+              },
+              {
+                "fact_id": "F31",
+                "claim": "We propose to change the default P-value threshold for statistical significance from 0.05 to 0.005 for claims of new discoveries.",
+                "relation": "neutral",
+                "candidate_id": "C3",
+                "source_id": "S7",
+                "evidence_id": "E4",
+                "confidence": 0.5,
+                "constraint_matches": [
+                  "claims",
+                  "significance",
+                  "statistical",
+                  "value"
+                ]
+              },
+              {
+                "fact_id": "F32",
+                "claim": "Oct 30, 2013 · The P value reported by tests is a probabilistic significance, not a biological one.",
+                "relation": "refute",
+                "candidate_id": "C3",
+                "source_id": "S11",
+                "evidence_id": "E5",
+                "confidence": 0.942,
+                "constraint_matches": [
+                  "not",
+                  "significance",
+                  "value"
+                ]
+              },
+              {
+                "fact_id": "F33",
+                "claim": "Mar 11, 2020 · In this article, we discuss the value of p value and explain why it should not be abandoned nor should the conventional threshold of 0.05 be modified.",
+                "relation": "neutral",
+                "candidate_id": "C3",
+                "source_id": "S12",
+                "evidence_id": "E6",
+                "confidence": 0.438,
+                "constraint_matches": [
+                  "2020",
+                  "not",
+                  "value"
+                ]
+              },
+              {
+                "fact_id": "F34",
+                "claim": "Here, we summarise the unresolved debate about p value and its dichotomisation.",
+                "relation": "neutral",
+                "candidate_id": "C3",
+                "source_id": "S15",
+                "evidence_id": "E7",
+                "confidence": 0.438,
+                "constraint_matches": [
+                  "significance",
+                  "statistical",
+                  "value"
+                ]
+              },
+              {
+                "fact_id": "F35",
+                "claim": "Mar 30, 2016 · Many researchers are confused by the new statement on p-values recently released by the American Statistical Association (ASA) [1].",
+                "relation": "neutral",
+                "candidate_id": "C3",
+                "source_id": "VS5_3",
+                "evidence_id": "V1",
+                "confidence": 0.5,
+                "constraint_matches": [
+                  "many",
+                  "nature",
+                  "statistical",
+                  "value"
+                ]
+              },
+              {
+                "fact_id": "F36",
+                "claim": "Mar 26, 2020 · ... both nature and culture in sustainable urbanization.” For more ...",
+                "relation": "neutral",
+                "candidate_id": "C3",
+                "source_id": "VS1_1",
+                "evidence_id": "V2",
+                "confidence": 0.438,
+                "constraint_matches": [
+                  "2020",
+                  "nature",
+                  "round"
+                ]
+              },
+              {
+                "fact_id": "F37",
+                "claim": "Apr 29, 2020 · Nature Index 15 APR 26 · Why AI can't be trusted to write scientific ...",
+                "relation": "neutral",
+                "candidate_id": "C3",
+                "source_id": "VS2_1",
+                "evidence_id": "V3",
+                "confidence": 0.438,
+                "constraint_matches": [
+                  "2020",
+                  "nature",
+                  "round"
+                ]
+              },
+              {
+                "fact_id": "F38",
+                "claim": "Apr 29, 2020 · Nature Index 23 APR 26. A guide to the Nature Index.",
+                "relation": "neutral",
+                "candidate_id": "C3",
+                "source_id": "VS2_2",
+                "evidence_id": "V4",
+                "confidence": 0.438,
+                "constraint_matches": [
+                  "2020",
+                  "nature",
+                  "round"
+                ]
+              },
+              {
+                "fact_id": "F39",
+                "claim": "Oct 20, 2020 · DNREC's DuPont Nature Center to Reopen April 1.",
+                "relation": "neutral",
+                "candidate_id": "C3",
+                "source_id": "VS3_1",
+                "evidence_id": "V5",
+                "confidence": 0.438,
+                "constraint_matches": [
+                  "2020",
+                  "nature",
+                  "round"
+                ]
+              },
+              {
+                "fact_id": "F40",
+                "claim": "... nature of data quality issues that would result from the introduction of the ...",
+                "relation": "neutral",
+                "candidate_id": "C3",
+                "source_id": "VS5_1",
+                "evidence_id": "V7",
+                "confidence": 0.438,
+                "constraint_matches": [
+                  "nature",
+                  "round",
+                  "would"
+                ]
+              },
+              {
+                "fact_id": "F41",
+                "claim": "Epub 2018 Oct 30. Authors. Aliza K De Nobrega , Lisa C Lyons.",
+                "relation": "support",
+                "candidate_id": "C3",
+                "source_id": "VS3_3",
+                "evidence_id": "V8",
+                "confidence": 0.935,
+                "constraint_matches": [
+                  "nature",
+                  "round"
+                ]
+              },
+              {
+                "fact_id": "F42",
+                "claim": "On the one side, those who “rise up against statistical significance”, as did Amrhein et al.",
+                "relation": "neutral",
+                "candidate_id": "C4",
+                "source_id": "S1",
+                "evidence_id": "E1",
+                "confidence": 0.5,
+                "constraint_matches": [
+                  "nature",
+                  "not",
+                  "round",
+                  "significance",
+                  "statistical",
+                  "value"
+                ]
+              },
+              {
+                "fact_id": "F43",
+                "claim": "Although many cancer studies claim to have achieved a significance of 0.05, many results are not · replicable.",
+                "relation": "neutral",
+                "candidate_id": "C4",
+                "source_id": "S4",
+                "evidence_id": "E2",
+                "confidence": 0.5,
+                "constraint_matches": [
+                  "many",
+                  "nature",
+                  "not",
+                  "significance",
+                  "value"
+                ]
+              },
+              {
+                "fact_id": "F44",
+                "claim": "Apr 26, 2023 · Each research roves around the P value.",
+                "relation": "neutral",
+                "candidate_id": "C4",
+                "source_id": "S5",
+                "evidence_id": "E3",
+                "confidence": 0.5,
+                "constraint_matches": [
+                  "all",
+                  "round",
+                  "statistical",
+                  "value"
+                ]
+              },
+              {
+                "fact_id": "F45",
+                "claim": "We propose to change the default P-value threshold for statistical significance from 0.05 to 0.005 for claims of new discoveries.",
+                "relation": "neutral",
+                "candidate_id": "C4",
+                "source_id": "S7",
+                "evidence_id": "E4",
+                "confidence": 0.5,
+                "constraint_matches": [
+                  "claims",
+                  "significance",
+                  "statistical",
+                  "value"
+                ]
+              },
+              {
+                "fact_id": "F46",
+                "claim": "Oct 30, 2013 · The P value reported by tests is a probabilistic significance, not a biological one.",
+                "relation": "neutral",
+                "candidate_id": "C4",
+                "source_id": "S11",
+                "evidence_id": "E5",
+                "confidence": 0.438,
+                "constraint_matches": [
+                  "not",
+                  "significance",
+                  "value"
+                ]
+              },
+              {
+                "fact_id": "F47",
+                "claim": "Mar 11, 2020 · In this article, we discuss the value of p value and explain why it should not be abandoned nor should the conventional threshold of 0.05 be modified.",
+                "relation": "support",
+                "candidate_id": "C4",
+                "source_id": "S12",
+                "evidence_id": "E6",
+                "confidence": 1.0,
+                "constraint_matches": [
+                  "2020",
+                  "not",
+                  "value"
+                ]
+              },
+              {
+                "fact_id": "F48",
+                "claim": "Here, we summarise the unresolved debate about p value and its dichotomisation.",
+                "relation": "neutral",
+                "candidate_id": "C4",
+                "source_id": "S15",
+                "evidence_id": "E7",
+                "confidence": 0.438,
+                "constraint_matches": [
+                  "significance",
+                  "statistical",
+                  "value"
+                ]
+              },
+              {
+                "fact_id": "F49",
+                "claim": "Mar 30, 2016 · Many researchers are confused by the new statement on p-values recently released by the American Statistical Association (ASA) [1].",
+                "relation": "neutral",
+                "candidate_id": "C4",
+                "source_id": "VS5_3",
+                "evidence_id": "V1",
+                "confidence": 0.5,
+                "constraint_matches": [
+                  "many",
+                  "nature",
+                  "statistical",
+                  "value"
+                ]
+              },
+              {
+                "fact_id": "F50",
+                "claim": "Mar 26, 2020 · ... both nature and culture in sustainable urbanization.” For more ...",
+                "relation": "neutral",
+                "candidate_id": "C4",
+                "source_id": "VS1_1",
+                "evidence_id": "V2",
+                "confidence": 0.438,
+                "constraint_matches": [
+                  "2020",
+                  "nature",
+                  "round"
+                ]
+              },
+              {
+                "fact_id": "F51",
+                "claim": "Apr 29, 2020 · Nature Index 15 APR 26 · Why AI can't be trusted to write scientific ...",
+                "relation": "neutral",
+                "candidate_id": "C4",
+                "source_id": "VS2_1",
+                "evidence_id": "V3",
+                "confidence": 0.438,
+                "constraint_matches": [
+                  "2020",
+                  "nature",
+                  "round"
+                ]
+              },
+              {
+                "fact_id": "F52",
+                "claim": "Apr 29, 2020 · Nature Index 23 APR 26. A guide to the Nature Index.",
+                "relation": "neutral",
+                "candidate_id": "C4",
+                "source_id": "VS2_2",
+                "evidence_id": "V4",
+                "confidence": 0.438,
+                "constraint_matches": [
+                  "2020",
+                  "nature",
+                  "round"
+                ]
+              },
+              {
+                "fact_id": "F53",
+                "claim": "Oct 20, 2020 · DNREC's DuPont Nature Center to Reopen April 1.",
+                "relation": "neutral",
+                "candidate_id": "C4",
+                "source_id": "VS3_1",
+                "evidence_id": "V5",
+                "confidence": 0.438,
+                "constraint_matches": [
+                  "2020",
+                  "nature",
+                  "round"
+                ]
+              },
+              {
+                "fact_id": "F54",
+                "claim": "... nature of data quality issues that would result from the introduction of the ...",
+                "relation": "neutral",
+                "candidate_id": "C4",
+                "source_id": "VS5_1",
+                "evidence_id": "V7",
+                "confidence": 0.438,
+                "constraint_matches": [
+                  "nature",
+                  "round",
+                  "would"
+                ]
+              },
+              {
+                "fact_id": "F55",
+                "claim": "We evaluated the impact of a single round of IRS with the organophosphate, ...",
+                "relation": "support",
+                "candidate_id": "C4",
+                "source_id": "VS4_3",
+                "evidence_id": "V9",
+                "confidence": 0.935,
+                "constraint_matches": [
+                  "2020",
+                  "round"
+                ]
+              },
+              {
+                "fact_id": "F56",
+                "claim": "On the one side, those who “rise up against statistical significance”, as did Amrhein et al.",
+                "relation": "neutral",
+                "candidate_id": "C5",
+                "source_id": "S1",
+                "evidence_id": "E1",
+                "confidence": 0.5,
+                "constraint_matches": [
+                  "nature",
+                  "not",
+                  "round",
+                  "significance",
+                  "statistical",
+                  "value"
+                ]
+              },
+              {
+                "fact_id": "F57",
+                "claim": "Although many cancer studies claim to have achieved a significance of 0.05, many results are not · replicable.",
+                "relation": "neutral",
+                "candidate_id": "C5",
+                "source_id": "S4",
+                "evidence_id": "E2",
+                "confidence": 0.5,
+                "constraint_matches": [
+                  "many",
+                  "nature",
+                  "not",
+                  "significance",
+                  "value"
+                ]
+              },
+              {
+                "fact_id": "F58",
+                "claim": "Apr 26, 2023 · Each research roves around the P value.",
+                "relation": "neutral",
+                "candidate_id": "C5",
+                "source_id": "S5",
+                "evidence_id": "E3",
+                "confidence": 0.5,
+                "constraint_matches": [
+                  "all",
+                  "round",
+                  "statistical",
+                  "value"
+                ]
+              },
+              {
+                "fact_id": "F59",
+                "claim": "We propose to change the default P-value threshold for statistical significance from 0.05 to 0.005 for claims of new discoveries.",
+                "relation": "neutral",
+                "candidate_id": "C5",
+                "source_id": "S7",
+                "evidence_id": "E4",
+                "confidence": 0.5,
+                "constraint_matches": [
+                  "claims",
+                  "significance",
+                  "statistical",
+                  "value"
+                ]
+              },
+              {
+                "fact_id": "F60",
+                "claim": "Oct 30, 2013 · The P value reported by tests is a probabilistic significance, not a biological one.",
+                "relation": "neutral",
+                "candidate_id": "C5",
+                "source_id": "S11",
+                "evidence_id": "E5",
+                "confidence": 0.438,
+                "constraint_matches": [
+                  "not",
+                  "significance",
+                  "value"
+                ]
+              },
+              {
+                "fact_id": "F61",
+                "claim": "Mar 11, 2020 · In this article, we discuss the value of p value and explain why it should not be abandoned nor should the conventional threshold of 0.05 be modified.",
+                "relation": "neutral",
+                "candidate_id": "C5",
+                "source_id": "S12",
+                "evidence_id": "E6",
+                "confidence": 0.438,
+                "constraint_matches": [
+                  "2020",
+                  "not",
+                  "value"
+                ]
+              },
+              {
+                "fact_id": "F62",
+                "claim": "Here, we summarise the unresolved debate about p value and its dichotomisation.",
+                "relation": "support",
+                "candidate_id": "C5",
+                "source_id": "S15",
+                "evidence_id": "E7",
+                "confidence": 0.972,
+                "constraint_matches": [
+                  "significance",
+                  "statistical",
+                  "value"
+                ]
+              },
+              {
+                "fact_id": "F63",
+                "claim": "Mar 30, 2016 · Many researchers are confused by the new statement on p-values recently released by the American Statistical Association (ASA) [1].",
+                "relation": "support",
+                "candidate_id": "C5",
+                "source_id": "VS5_3",
+                "evidence_id": "V1",
+                "confidence": 1.0,
+                "constraint_matches": [
+                  "many",
+                  "nature",
+                  "statistical",
+                  "value"
+                ]
+              },
+              {
+                "fact_id": "F64",
+                "claim": "Mar 26, 2020 · ... both nature and culture in sustainable urbanization.” For more ...",
+                "relation": "neutral",
+                "candidate_id": "C5",
+                "source_id": "VS1_1",
+                "evidence_id": "V2",
+                "confidence": 0.438,
+                "constraint_matches": [
+                  "2020",
+                  "nature",
+                  "round"
+                ]
+              },
+              {
+                "fact_id": "F65",
+                "claim": "Apr 29, 2020 · Nature Index 15 APR 26 · Why AI can't be trusted to write scientific ...",
+                "relation": "neutral",
+                "candidate_id": "C5",
+                "source_id": "VS2_1",
+                "evidence_id": "V3",
+                "confidence": 0.438,
+                "constraint_matches": [
+                  "2020",
+                  "nature",
+                  "round"
+                ]
+              },
+              {
+                "fact_id": "F66",
+                "claim": "Apr 29, 2020 · Nature Index 23 APR 26. A guide to the Nature Index.",
+                "relation": "neutral",
+                "candidate_id": "C5",
+                "source_id": "VS2_2",
+                "evidence_id": "V4",
+                "confidence": 0.438,
+                "constraint_matches": [
+                  "2020",
+                  "nature",
+                  "round"
+                ]
+              },
+              {
+                "fact_id": "F67",
+                "claim": "Oct 20, 2020 · DNREC's DuPont Nature Center to Reopen April 1.",
+                "relation": "neutral",
+                "candidate_id": "C5",
+                "source_id": "VS3_1",
+                "evidence_id": "V5",
+                "confidence": 0.438,
+                "constraint_matches": [
+                  "2020",
+                  "nature",
+                  "round"
+                ]
+              },
+              {
+                "fact_id": "F68",
+                "claim": "Jun 11, 2019 · ... American Statistical Association, Biometrics, Biostatistics, and ...",
+                "relation": "support",
+                "candidate_id": "C5",
+                "source_id": "VS5_2",
+                "evidence_id": "V6",
+                "confidence": 0.955,
+                "constraint_matches": [
+                  "nature",
+                  "statistical"
+                ]
+              },
+              {
+                "fact_id": "F69",
+                "claim": "... nature of data quality issues that would result from the introduction of the ...",
+                "relation": "neutral",
+                "candidate_id": "C5",
+                "source_id": "VS5_1",
+                "evidence_id": "V7",
+                "confidence": 0.438,
+                "constraint_matches": [
+                  "nature",
+                  "round",
+                  "would"
+                ]
+              },
+              {
+                "fact_id": "F70",
+                "claim": "On the one side, those who “rise up against statistical significance”, as did Amrhein et al.",
+                "relation": "neutral",
+                "candidate_id": "C6",
+                "source_id": "S1",
+                "evidence_id": "E1",
+                "confidence": 0.5,
+                "constraint_matches": [
+                  "nature",
+                  "not",
+                  "round",
+                  "significance",
+                  "statistical",
+                  "value"
+                ]
+              },
+              {
+                "fact_id": "F71",
+                "claim": "Although many cancer studies claim to have achieved a significance of 0.05, many results are not · replicable.",
+                "relation": "neutral",
+                "candidate_id": "C6",
+                "source_id": "S4",
+                "evidence_id": "E2",
+                "confidence": 0.5,
+                "constraint_matches": [
+                  "many",
+                  "nature",
+                  "not",
+                  "significance",
+                  "value"
+                ]
+              },
+              {
+                "fact_id": "F72",
+                "claim": "Apr 26, 2023 · Each research roves around the P value.",
+                "relation": "neutral",
+                "candidate_id": "C6",
+                "source_id": "S5",
+                "evidence_id": "E3",
+                "confidence": 0.5,
+                "constraint_matches": [
+                  "all",
+                  "round",
+                  "statistical",
+                  "value"
+                ]
+              },
+              {
+                "fact_id": "F73",
+                "claim": "We propose to change the default P-value threshold for statistical significance from 0.05 to 0.005 for claims of new discoveries.",
+                "relation": "neutral",
+                "candidate_id": "C6",
+                "source_id": "S7",
+                "evidence_id": "E4",
+                "confidence": 0.5,
+                "constraint_matches": [
+                  "claims",
+                  "significance",
+                  "statistical",
+                  "value"
+                ]
+              },
+              {
+                "fact_id": "F74",
+                "claim": "Oct 30, 2013 · The P value reported by tests is a probabilistic significance, not a biological one.",
+                "relation": "neutral",
+                "candidate_id": "C6",
+                "source_id": "S11",
+                "evidence_id": "E5",
+                "confidence": 0.438,
+                "constraint_matches": [
+                  "not",
+                  "significance",
+                  "value"
+                ]
+              },
+              {
+                "fact_id": "F75",
+                "claim": "Mar 11, 2020 · In this article, we discuss the value of p value and explain why it should not be abandoned nor should the conventional threshold of 0.05 be modified.",
+                "relation": "neutral",
+                "candidate_id": "C6",
+                "source_id": "S12",
+                "evidence_id": "E6",
+                "confidence": 0.438,
+                "constraint_matches": [
+                  "2020",
+                  "not",
+                  "value"
+                ]
+              },
+              {
+                "fact_id": "F76",
+                "claim": "Here, we summarise the unresolved debate about p value and its dichotomisation.",
+                "relation": "neutral",
+                "candidate_id": "C6",
+                "source_id": "S15",
+                "evidence_id": "E7",
+                "confidence": 0.438,
+                "constraint_matches": [
+                  "significance",
+                  "statistical",
+                  "value"
+                ]
+              },
+              {
+                "fact_id": "F77",
+                "claim": "Oct 22, 2021 · This value is then compared with the threshold 0.05 to decide whether or not the null hypothesis is rejected.",
+                "relation": "support",
+                "candidate_id": "C6",
+                "source_id": "S13",
+                "evidence_id": "E8",
+                "confidence": 0.885,
+                "constraint_matches": [
+                  "not",
+                  "value"
+                ]
+              },
+              {
+                "fact_id": "F78",
+                "claim": "Mar 30, 2016 · Many researchers are confused by the new statement on p-values recently released by the American Statistical Association (ASA) [1].",
+                "relation": "neutral",
+                "candidate_id": "C6",
+                "source_id": "VS5_3",
+                "evidence_id": "V1",
+                "confidence": 0.5,
+                "constraint_matches": [
+                  "many",
+                  "nature",
+                  "statistical",
+                  "value"
+                ]
+              },
+              {
+                "fact_id": "F79",
+                "claim": "Mar 26, 2020 · ... both nature and culture in sustainable urbanization.” For more ...",
+                "relation": "neutral",
+                "candidate_id": "C6",
+                "source_id": "VS1_1",
+                "evidence_id": "V2",
+                "confidence": 0.438,
+                "constraint_matches": [
+                  "2020",
+                  "nature",
+                  "round"
+                ]
+              },
+              {
+                "fact_id": "F80",
+                "claim": "Apr 29, 2020 · Nature Index 15 APR 26 · Why AI can't be trusted to write scientific ...",
+                "relation": "neutral",
+                "candidate_id": "C6",
+                "source_id": "VS2_1",
+                "evidence_id": "V3",
+                "confidence": 0.438,
+                "constraint_matches": [
+                  "2020",
+                  "nature",
+                  "round"
+                ]
+              },
+              {
+                "fact_id": "F81",
+                "claim": "Apr 29, 2020 · Nature Index 23 APR 26. A guide to the Nature Index.",
+                "relation": "neutral",
+                "candidate_id": "C6",
+                "source_id": "VS2_2",
+                "evidence_id": "V4",
+                "confidence": 0.438,
+                "constraint_matches": [
+                  "2020",
+                  "nature",
+                  "round"
+                ]
+              },
+              {
+                "fact_id": "F82",
+                "claim": "Oct 20, 2020 · DNREC's DuPont Nature Center to Reopen April 1.",
+                "relation": "neutral",
+                "candidate_id": "C6",
+                "source_id": "VS3_1",
+                "evidence_id": "V5",
+                "confidence": 0.438,
+                "constraint_matches": [
+                  "2020",
+                  "nature",
+                  "round"
+                ]
+              },
+              {
+                "fact_id": "F83",
+                "claim": "... nature of data quality issues that would result from the introduction of the ...",
+                "relation": "neutral",
+                "candidate_id": "C6",
+                "source_id": "VS5_1",
+                "evidence_id": "V7",
+                "confidence": 0.438,
+                "constraint_matches": [
+                  "nature",
+                  "round",
+                  "would"
+                ]
+              }
+            ],
+            "agent_packet": {
+              "question": "If we assume all articles published by Nature in 2020 (articles, only, not book reviews/columns, etc) relied on statistical significance to justify their findings and they on average came to a p-value of 0.04, how many papers would be incorrect as to their claims of statistical significance? Round the value up to the next integer.",
+              "answer_type": "title",
+              "candidates": [
+                {
+                  "candidate_id": "C2",
+                  "answer": "Apr 26",
+                  "answer_type": "title",
+                  "support_count": 3,
+                  "refute_count": 0,
+                  "neutral_count": 10,
+                  "confidence": 1.0,
+                  "evidence_ids": [
+                    "E3"
+                  ],
+                  "support_fact_ids": [
+                    "F17",
+                    "F24",
+                    "F25"
+                  ],
+                  "refute_fact_ids": [],
+                  "risk_flags": []
+                },
+                {
+                  "candidate_id": "C5",
+                  "answer": "American Statistical Association",
+                  "answer_type": "title",
+                  "support_count": 3,
+                  "refute_count": 0,
+                  "neutral_count": 11,
+                  "confidence": 1.0,
+                  "evidence_ids": [
+                    "E7"
+                  ],
+                  "support_fact_ids": [
+                    "F62",
+                    "F63",
+                    "F68"
+                  ],
+                  "refute_fact_ids": [],
+                  "risk_flags": []
+                },
+                {
+                  "candidate_id": "C4",
+                  "answer": "Mar 11",
+                  "answer_type": "title",
+                  "support_count": 2,
+                  "refute_count": 0,
+                  "neutral_count": 12,
+                  "confidence": 1.0,
+                  "evidence_ids": [
+                    "E6"
+                  ],
+                  "support_fact_ids": [
+                    "F47",
+                    "F55"
+                  ],
+                  "refute_fact_ids": [],
+                  "risk_flags": []
+                }
+              ],
+              "facts": [
+                {
+                  "fact_id": "F17",
+                  "claim": "Apr 26, 2023 · Each research roves around the P value.",
+                  "relation": "support",
+                  "candidate_id": "C2",
+                  "source_id": "S5",
+                  "evidence_id": "E3",
+                  "confidence": 1.0,
+                  "constraint_matches": [
+                    "all",
+                    "round",
+                    "statistical",
+                    "value"
+                  ]
+                },
+                {
+                  "fact_id": "F24",
+                  "claim": "Apr 29, 2020 · Nature Index 15 APR 26 · Why AI can't be trusted to write scientific ...",
+                  "relation": "support",
+                  "candidate_id": "C2",
+                  "source_id": "VS2_1",
+                  "evidence_id": "V3",
+                  "confidence": 0.992,
+                  "constraint_matches": [
+                    "2020",
+                    "nature",
+                    "round"
+                  ]
+                },
+                {
+                  "fact_id": "F63",
+                  "claim": "Mar 30, 2016 · Many researchers are confused by the new statement on p-values recently released by the American Statistical Association (ASA) [1].",
+                  "relation": "support",
+                  "candidate_id": "C5",
+                  "source_id": "VS5_3",
+                  "evidence_id": "V1",
+                  "confidence": 1.0,
+                  "constraint_matches": [
+                    "many",
+                    "nature",
+                    "statistical",
+                    "value"
+                  ]
+                },
+                {
+                  "fact_id": "F62",
+                  "claim": "Here, we summarise the unresolved debate about p value and its dichotomisation.",
+                  "relation": "support",
+                  "candidate_id": "C5",
+                  "source_id": "S15",
+                  "evidence_id": "E7",
+                  "confidence": 0.972,
+                  "constraint_matches": [
+                    "significance",
+                    "statistical",
+                    "value"
+                  ]
+                },
+                {
+                  "fact_id": "F47",
+                  "claim": "Mar 11, 2020 · In this article, we discuss the value of p value and explain why it should not be abandoned nor should the conventional threshold of 0.05 be modified.",
+                  "relation": "support",
+                  "candidate_id": "C4",
+                  "source_id": "S12",
+                  "evidence_id": "E6",
+                  "confidence": 1.0,
+                  "constraint_matches": [
+                    "2020",
+                    "not",
+                    "value"
+                  ]
+                },
+                {
+                  "fact_id": "F55",
+                  "claim": "We evaluated the impact of a single round of IRS with the organophosphate, ...",
+                  "relation": "support",
+                  "candidate_id": "C4",
+                  "source_id": "VS4_3",
+                  "evidence_id": "V9",
+                  "confidence": 0.935,
+                  "constraint_matches": [
+                    "2020",
+                    "round"
+                  ]
+                }
+              ],
+              "missing_info": [],
+              "risk_flags": []
+            },
+            "question_analysis": {
+              "answer_type": "title",
+              "target_terms": [
+                "Nature",
+                "Round"
+              ],
+              "constraints": [
+                "2020"
+              ],
+              "source_hints": [],
+              "banned_answer_terms": [
+                "2020",
+                "paper",
+                "article",
+                "book",
+                "Nature",
+                "Round"
+              ],
+              "requires_verification": true,
+              "needs_calculation": true,
+              "needs_multi_hop": false
+            },
+            "candidate_diagnostics": {
+              "answer_type": "title",
+              "raw_candidate_count": 6,
+              "filtered_candidate_count": 6,
+              "verified_candidate_count": 6,
+              "top_candidate": "Apr 26",
+              "top_candidate_confidence": 1.0,
+              "top_candidate_support": 3,
+              "top_candidate_refute": 0,
+              "rejected_candidates": []
+            },
+            "tool_usage": [
+              {
+                "ok": true,
+                "tool_name": "search",
+                "output_text": "{'results': [{'title': 'Statistical significance: p value, 0.05 threshold, and applications to radiomics—reasons for a conservative approach | European Radiology Experimental | Springer Nature Link', 'url': 'https://link.springer.com/article/10.1186/s41747-020-0145-y', 'content': 'On the one side, those who “rise up against statistical significance”, as did Amrhein et al. in Nature [1]; on the other side, those who recommend “do not abandon significance”, as did Ioannidis in JAMA [2]. These are two opposite viewpoints around a long-standing topic: the misuse of p value and the claim of statistical significance or non-significance. The p value is probably the most ubiquitous and, at the same time, misunderstood index in all of biomedical research. Hundreds of articles were published on this topic since at least the 1940s [3], with proposals of alternatives to the classic p value with its historical 0.05 threshold.', 'raw_content': 'On the one side, those who “rise up against statistical significance”, as did Amrhein et al. in Nature [1]; on the other side, those who recommend “do not abandon significance”, as did Ioannidis in JAMA [2]. These are two opposite viewpoints around a long-standing topic: the misuse of p value and the claim of statistical significance or non-significance. The p value is probably the most ubiquitous and, at the same time, misunderstood index in all of biomedical research. Hundreds of articles were published on this topic since at least the 1940s [3], with proposals of alternatives to the classic p value with its historical 0.05 threshold.', 'rerank_score': 10.9}, {'title': 'The clinician’s guide to p values, confidence intervals, and magnitude of effects | Eye', 'url': 'https://www.nature.com/articles/s41433-021-01863-w', 'content': 'A p-value represents the probability ... being compared. For example, a p-value of 0.04 would indicate that the difference between the groups compared would have a 4% chance of occurring by random chance....', 'raw_content': 'A p-value represents the probability ... being compared. For example, a p-value of 0.04 would indicate that the difference between the groups compared would have a 4% chance of occurring by random chance....', 'rerank_score': 5.2}, {'title': 'P-value and effect-size in clinical and experimental studies - PMC', 'url': 'https://pmc.ncbi.nlm.nih.gov/articles/PMC8256876/', 'content': 'For example, if the cutoff point chosen is p < 0.05, p = 0.04, it is overvalued in detriment to p = 0.06. In tests comparing groups, the p-value is ...', 'raw_content': 'For example, if the cutoff point chosen is p < 0.05, p = 0.04, it is overvalued in detriment to p = 0.06. In tests comparing groups, the p-value is ...', 'rerank_score': 5.1}, {'title': '(PDF) p-value based statistical significance tests: Concepts, misuses, critiques, solutions and beyond', 'url': 'https://www.researchgate.net/publication/360775123_p-value_based_statistical_significance_tests_Concepts_misuses_critiques_solutions_and_beyond', 'content': 'Although many cancer studies claim to have achieved a significance of 0.05, many results are not · replicable. Both Nature and Science have devoted discussions on how to understand p-value and how to define', 'raw_content': 'Although many cancer studies claim to have achieved a significance of 0.05, many results are not · replicable. Both Nature and Science have devoted discussions on how to understand p-value and how to define', 'rerank_score': 4.85}, {'title': 'The “P”-Value: The Primary Alphabet of Research Revisited - PMC', 'url': 'https://pmc.ncbi.nlm.nih.gov/articles/PMC10284198/', 'content': 'Apr 26, 2023 · Each research roves around the P value. A value less than 0.05 is considered to be statistically significant.', 'raw_content': 'Apr 26, 2023 · Each research roves around the P value. A value less than 0.05 is considered to be statistically significant.', 'rerank_score': 4.7}], 'backend': 'searxng', 'answer': None, 'notices': []}",
+                "raw_result": {
+                  "results": [
+                    {
+                      "title": "Statistical significance: p value, 0.05 threshold, and applications to radiomics—reasons for a conservative approach | European Radiology Experimental | Springer Nature Link",
+                      "url": "https://link.springer.com/article/10.1186/s41747-020-0145-y",
+                      "content": "On the one side, those who “rise up against statistical significance”, as did Amrhein et al. in Nature [1]; on the other side, those who recommend “do not abandon significance”, as did Ioannidis in JAMA [2]. These are two opposite viewpoints around a long-standing topic: the misuse of p value and the claim of statistical significance or non-significance. The p value is probably the most ubiquitous and, at the same time, misunderstood index in all of biomedical research. Hundreds of articles were published on this topic since at least the 1940s [3], with proposals of alternatives to the classic p value with its historical 0.05 threshold.",
+                      "raw_content": "On the one side, those who “rise up against statistical significance”, as did Amrhein et al. in Nature [1]; on the other side, those who recommend “do not abandon significance”, as did Ioannidis in JAMA [2]. These are two opposite viewpoints around a long-standing topic: the misuse of p value and the claim of statistical significance or non-significance. The p value is probably the most ubiquitous and, at the same time, misunderstood index in all of biomedical research. Hundreds of articles were published on this topic since at least the 1940s [3], with proposals of alternatives to the classic p value with its historical 0.05 threshold.",
+                      "rerank_score": 10.9
+                    },
+                    {
+                      "title": "The clinician’s guide to p values, confidence intervals, and magnitude of effects | Eye",
+                      "url": "https://www.nature.com/articles/s41433-021-01863-w",
+                      "content": "A p-value represents the probability ... being compared. For example, a p-value of 0.04 would indicate that the difference between the groups compared would have a 4% chance of occurring by random chance....",
+                      "raw_content": "A p-value represents the probability ... being compared. For example, a p-value of 0.04 would indicate that the difference between the groups compared would have a 4% chance of occurring by random chance....",
+                      "rerank_score": 5.2
+                    },
+                    {
+                      "title": "P-value and effect-size in clinical and experimental studies - PMC",
+                      "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC8256876/",
+                      "content": "For example, if the cutoff point chosen is p < 0.05, p = 0.04, it is overvalued in detriment to p = 0.06. In tests comparing groups, the p-value is ...",
+                      "raw_content": "For example, if the cutoff point chosen is p < 0.05, p = 0.04, it is overvalued in detriment to p = 0.06. In tests comparing groups, the p-value is ...",
+                      "rerank_score": 5.1
+                    },
+                    {
+                      "title": "(PDF) p-value based statistical significance tests: Concepts, misuses, critiques, solutions and beyond",
+                      "url": "https://www.researchgate.net/publication/360775123_p-value_based_statistical_significance_tests_Concepts_misuses_critiques_solutions_and_beyond",
+                      "content": "Although many cancer studies claim to have achieved a significance of 0.05, many results are not · replicable. Both Nature and Science have devoted discussions on how to understand p-value and how to define",
+                      "raw_content": "Although many cancer studies claim to have achieved a significance of 0.05, many results are not · replicable. Both Nature and Science have devoted discussions on how to understand p-value and how to define",
+                      "rerank_score": 4.85
+                    },
+                    {
+                      "title": "The “P”-Value: The Primary Alphabet of Research Revisited - PMC",
+                      "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC10284198/",
+                      "content": "Apr 26, 2023 · Each research roves around the P value. A value less than 0.05 is considered to be statistically significant.",
+                      "raw_content": "Apr 26, 2023 · Each research roves around the P value. A value less than 0.05 is considered to be statistically significant.",
+                      "rerank_score": 4.7
+                    }
+                  ],
+                  "backend": "searxng",
+                  "answer": null,
+                  "notices": []
+                },
+                "error": null
+              },
+              {
+                "ok": true,
+                "tool_name": "search",
+                "output_text": "{'results': [{'title': 'Scientists rise up against statistical significance - Nature', 'url': 'https://www.nature.com/articles/d41586-019-00857-9', 'content': 'Mar 20, 2019 · Valentin Amrhein, Sander Greenland, Blake McShane and more than 800 signatories call for an end to hyped claims and the dismissal of possibly crucial effects.Missing: 2020 threshold', 'raw_content': 'Mar 20, 2019 · Valentin Amrhein, Sander Greenland, Blake McShane and more than 800 signatories call for an end to hyped claims and the dismissal of possibly crucial effects.Missing: 2020 threshold', 'rerank_score': 18.7}, {'title': 'Redefine statistical significance | Nature Human Behaviour', 'url': 'https://www.nature.com/articles/s41562-017-0189-z', 'content': 'We propose to change the default P-value threshold for statistical significance from 0.05 to 0.005 for claims of new discoveries.', 'raw_content': 'We propose to change the default P-value threshold for statistical significance from 0.05 to 0.005 for claims of new discoveries.', 'rerank_score': 15.9}, {'title': 'PDF Redefine statistical significance - Harvard University', 'url': 'https://imai.fas.harvard.edu/research/files/significance.pdf', 'content': 'The appropriate threshold for statistical significance should be different for different research communities. We agree that the significance threshold selected for claiming a new discovery should depend on the prior odds that the null hypothesis is true, the number of hypotheses tested, the study design, the relative cost of type I versus', 'raw_content': 'The appropriate threshold for statistical significance should be different for different research communities. We agree that the significance threshold selected for claiming a new discovery should depend on the prior odds that the null hypothesis is true, the number of hypotheses tested, the study design, the relative cost of type I versus', 'rerank_score': 12.45}, {'title': 'Statistics for Biologists - Nature', 'url': 'https://www.nature.com/collections/qghhqm/content/practical-guides', 'content': 'This collection highlights important statistical issues that biologists should be aware of and provides practical advice to help them improve the rigor of their ...', 'raw_content': 'This collection highlights important statistical issues that biologists should be aware of and provides practical advice to help them improve the rigor of their ...', 'rerank_score': 5.6}, {'title': 'Statistical testing for baseline differences between randomised ...', 'url': 'https://www.nature.com/articles/s41393-018-0203-y', 'content': 'Oct 4, 2018 · Spinal Cord encourages authors to refrain from statistically testing for possible baseline imbalance in randomised studies.', 'raw_content': 'Oct 4, 2018 · Spinal Cord encourages authors to refrain from statistically testing for possible baseline imbalance in randomised studies.', 'rerank_score': 3.95}], 'backend': 'searxng', 'answer': None, 'notices': []}",
+                "raw_result": {
+                  "results": [
+                    {
+                      "title": "Scientists rise up against statistical significance - Nature",
+                      "url": "https://www.nature.com/articles/d41586-019-00857-9",
+                      "content": "Mar 20, 2019 · Valentin Amrhein, Sander Greenland, Blake McShane and more than 800 signatories call for an end to hyped claims and the dismissal of possibly crucial effects.Missing: 2020 threshold",
+                      "raw_content": "Mar 20, 2019 · Valentin Amrhein, Sander Greenland, Blake McShane and more than 800 signatories call for an end to hyped claims and the dismissal of possibly crucial effects.Missing: 2020 threshold",
+                      "rerank_score": 18.7
+                    },
+                    {
+                      "title": "Redefine statistical significance | Nature Human Behaviour",
+                      "url": "https://www.nature.com/articles/s41562-017-0189-z",
+                      "content": "We propose to change the default P-value threshold for statistical significance from 0.05 to 0.005 for claims of new discoveries.",
+                      "raw_content": "We propose to change the default P-value threshold for statistical significance from 0.05 to 0.005 for claims of new discoveries.",
+                      "rerank_score": 15.9
+                    },
+                    {
+                      "title": "PDF Redefine statistical significance - Harvard University",
+                      "url": "https://imai.fas.harvard.edu/research/files/significance.pdf",
+                      "content": "The appropriate threshold for statistical significance should be different for different research communities. We agree that the significance threshold selected for claiming a new discovery should depend on the prior odds that the null hypothesis is true, the number of hypotheses tested, the study design, the relative cost of type I versus",
+                      "raw_content": "The appropriate threshold for statistical significance should be different for different research communities. We agree that the significance threshold selected for claiming a new discovery should depend on the prior odds that the null hypothesis is true, the number of hypotheses tested, the study design, the relative cost of type I versus",
+                      "rerank_score": 12.45
+                    },
+                    {
+                      "title": "Statistics for Biologists - Nature",
+                      "url": "https://www.nature.com/collections/qghhqm/content/practical-guides",
+                      "content": "This collection highlights important statistical issues that biologists should be aware of and provides practical advice to help them improve the rigor of their ...",
+                      "raw_content": "This collection highlights important statistical issues that biologists should be aware of and provides practical advice to help them improve the rigor of their ...",
+                      "rerank_score": 5.6
+                    },
+                    {
+                      "title": "Statistical testing for baseline differences between randomised ...",
+                      "url": "https://www.nature.com/articles/s41393-018-0203-y",
+                      "content": "Oct 4, 2018 · Spinal Cord encourages authors to refrain from statistically testing for possible baseline imbalance in randomised studies.",
+                      "raw_content": "Oct 4, 2018 · Spinal Cord encourages authors to refrain from statistically testing for possible baseline imbalance in randomised studies.",
+                      "rerank_score": 3.95
+                    }
+                  ],
+                  "backend": "searxng",
+                  "answer": null,
+                  "notices": []
+                },
+                "error": null
+              },
+              {
+                "ok": true,
+                "tool_name": "search",
+                "output_text": "{'results': [{'title': 'Significance, P values and t-tests | Nature Methods', 'url': 'https://www.nature.com/articles/nmeth.2698', 'content': 'Oct 30, 2013 · The P value reported by tests is a probabilistic significance, not a biological one.', 'raw_content': 'Oct 30, 2013 · The P value reported by tests is a probabilistic significance, not a biological one.', 'rerank_score': 9.85}, {'title': 'Statistical significance: p value, 0.05 threshold, and applications to ...', 'url': 'https://pmc.ncbi.nlm.nih.gov/articles/PMC7064671/', 'content': 'Mar 11, 2020 · In this article, we discuss the value of p value and explain why it should not be abandoned nor should the conventional threshold of 0.05 be modified.', 'raw_content': 'Mar 11, 2020 · In this article, we discuss the value of p value and explain why it should not be abandoned nor should the conventional threshold of 0.05 be modified.', 'rerank_score': 7.55}, {'title': 'Use of the p-values as a size-dependent function to address ...', 'url': 'https://www.nature.com/articles/s41598-021-00199-5', 'content': 'Oct 22, 2021 · This value is then compared with the threshold 0.05 to decide whether or not the null hypothesis is rejected. When working with datasets with ...', 'raw_content': 'Oct 22, 2021 · This value is then compared with the threshold 0.05 to decide whether or not the null hypothesis is rejected. When working with datasets with ...', 'rerank_score': 5.1}, {'title': 'Statistical significance: p value, 0.05 threshold, and applications to ...', 'url': 'https://link.springer.com/article/10.1186/s41747-020-0145-y', 'content': 'Here, we summarise the unresolved debate about p value and its dichotomisation. We present the statement of the American Statistical Association against the misuse of statistical significance as well as the proposals to abandon the use of p value and to reduce the significance threshold from 0.05 to 0.005. We highlight reasons for a conservative approach, as clinical research needs dichotomic ...', 'raw_content': 'Here, we summarise the unresolved debate about p value and its dichotomisation. We present the statement of the American Statistical Association against the misuse of statistical significance as well as the proposals to abandon the use of p value and to reduce the significance threshold from 0.05 to 0.005. We highlight reasons for a conservative approach, as clinical research needs dichotomic ...', 'rerank_score': 3.7}, {'title': '(PDF) Statistical significance: p value, 0.05 threshold, and ...', 'url': 'https://www.researchgate.net/publication/339844197_Statistical_significance_p_value_005_threshold_and_applications_to_radiomics-reasons_for_a_conservative_approach', 'content': 'Here, we summarise the unresolved debate about p value and its dichotomisation. We present the statement of the American Statistical Association against the misuse of statistical significance as ...', 'raw_content': 'Here, we summarise the unresolved debate about p value and its dichotomisation. We present the statement of the American Statistical Association against the misuse of statistical significance as ...', 'rerank_score': 3.55}], 'backend': 'searxng', 'answer': None, 'notices': []}",
+                "raw_result": {
+                  "results": [
+                    {
+                      "title": "Significance, P values and t-tests | Nature Methods",
+                      "url": "https://www.nature.com/articles/nmeth.2698",
+                      "content": "Oct 30, 2013 · The P value reported by tests is a probabilistic significance, not a biological one.",
+                      "raw_content": "Oct 30, 2013 · The P value reported by tests is a probabilistic significance, not a biological one.",
+                      "rerank_score": 9.85
+                    },
+                    {
+                      "title": "Statistical significance: p value, 0.05 threshold, and applications to ...",
+                      "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC7064671/",
+                      "content": "Mar 11, 2020 · In this article, we discuss the value of p value and explain why it should not be abandoned nor should the conventional threshold of 0.05 be modified.",
+                      "raw_content": "Mar 11, 2020 · In this article, we discuss the value of p value and explain why it should not be abandoned nor should the conventional threshold of 0.05 be modified.",
+                      "rerank_score": 7.55
+                    },
+                    {
+                      "title": "Use of the p-values as a size-dependent function to address ...",
+                      "url": "https://www.nature.com/articles/s41598-021-00199-5",
+                      "content": "Oct 22, 2021 · This value is then compared with the threshold 0.05 to decide whether or not the null hypothesis is rejected. When working with datasets with ...",
+                      "raw_content": "Oct 22, 2021 · This value is then compared with the threshold 0.05 to decide whether or not the null hypothesis is rejected. When working with datasets with ...",
+                      "rerank_score": 5.1
+                    },
+                    {
+                      "title": "Statistical significance: p value, 0.05 threshold, and applications to ...",
+                      "url": "https://link.springer.com/article/10.1186/s41747-020-0145-y",
+                      "content": "Here, we summarise the unresolved debate about p value and its dichotomisation. We present the statement of the American Statistical Association against the misuse of statistical significance as well as the proposals to abandon the use of p value and to reduce the significance threshold from 0.05 to 0.005. We highlight reasons for a conservative approach, as clinical research needs dichotomic ...",
+                      "raw_content": "Here, we summarise the unresolved debate about p value and its dichotomisation. We present the statement of the American Statistical Association against the misuse of statistical significance as well as the proposals to abandon the use of p value and to reduce the significance threshold from 0.05 to 0.005. We highlight reasons for a conservative approach, as clinical research needs dichotomic ...",
+                      "rerank_score": 3.7
+                    },
+                    {
+                      "title": "(PDF) Statistical significance: p value, 0.05 threshold, and ...",
+                      "url": "https://www.researchgate.net/publication/339844197_Statistical_significance_p_value_005_threshold_and_applications_to_radiomics-reasons_for_a_conservative_approach",
+                      "content": "Here, we summarise the unresolved debate about p value and its dichotomisation. We present the statement of the American Statistical Association against the misuse of statistical significance as ...",
+                      "raw_content": "Here, we summarise the unresolved debate about p value and its dichotomisation. We present the statement of the American Statistical Association against the misuse of statistical significance as ...",
+                      "rerank_score": 3.55
+                    }
+                  ],
+                  "backend": "searxng",
+                  "answer": null,
+                  "notices": []
+                },
+                "error": null
+              },
+              {
+                "ok": true,
+                "tool_name": "search",
+                "output_text": "{'results': [{'title': 'Local & subnational advocacy for nature: March 2020 update', 'url': 'https://citieswithnature.org/local-subnational-advocacy-for-nature-march-2020-update/', 'content': 'Mar 26, 2020 · ... both nature and culture in sustainable urbanization.” For more ... The OEWG 2 meeting completed the first round of negotiations on the zero draft.', 'raw_content': 'Mar 26, 2020 · ... both nature and culture in sustainable urbanization.” For more ... The OEWG 2 meeting completed the first round of negotiations on the zero draft.', 'rerank_score': 13.5}, {'title': '3rd day of City Nature Challenge 2020: Luxembourg. At 12:38 2864 ...', 'url': 'https://www.facebook.com/naturmuseelux/posts/3rd-day-of-city-nature-challenge-2020-luxembourg-at-1238-2864-observations-of-73/10163366302145641/', 'content': 'Apr 26, 2020 · Folk rallied round, there ... In the sunlight or rain, the time interacting with both nature and the crazy/wonderful iNaturalist community.', 'raw_content': 'Apr 26, 2020 · Folk rallied round, there ... In the sunlight or rain, the time interacting with both nature and the crazy/wonderful iNaturalist community.', 'rerank_score': 12.4}, {'title': 'Nature is calling – a week of climate and biodiversity on EU agenda', 'url': 'https://www.eeas.europa.eu/eeas/nature-calling-%E2%80%93-week-climate-and-biodiversity-eu-agenda_und_en', 'content': 'Both nature and biodiversity are essential for life on Earth. We must protect nature to tackle climate change, prevent biodiversity loss and protect people ...', 'raw_content': 'Both nature and biodiversity are essential for life on Earth. We must protect nature to tackle climate change, prevent biodiversity loss and protect people ...', 'rerank_score': 4.85}], 'backend': 'searxng', 'answer': None, 'notices': []}",
+                "raw_result": {
+                  "results": [
+                    {
+                      "title": "Local & subnational advocacy for nature: March 2020 update",
+                      "url": "https://citieswithnature.org/local-subnational-advocacy-for-nature-march-2020-update/",
+                      "content": "Mar 26, 2020 · ... both nature and culture in sustainable urbanization.” For more ... The OEWG 2 meeting completed the first round of negotiations on the zero draft.",
+                      "raw_content": "Mar 26, 2020 · ... both nature and culture in sustainable urbanization.” For more ... The OEWG 2 meeting completed the first round of negotiations on the zero draft.",
+                      "rerank_score": 13.5
+                    },
+                    {
+                      "title": "3rd day of City Nature Challenge 2020: Luxembourg. At 12:38 2864 ...",
+                      "url": "https://www.facebook.com/naturmuseelux/posts/3rd-day-of-city-nature-challenge-2020-luxembourg-at-1238-2864-observations-of-73/10163366302145641/",
+                      "content": "Apr 26, 2020 · Folk rallied round, there ... In the sunlight or rain, the time interacting with both nature and the crazy/wonderful iNaturalist community.",
+                      "raw_content": "Apr 26, 2020 · Folk rallied round, there ... In the sunlight or rain, the time interacting with both nature and the crazy/wonderful iNaturalist community.",
+                      "rerank_score": 12.4
+                    },
+                    {
+                      "title": "Nature is calling – a week of climate and biodiversity on EU agenda",
+                      "url": "https://www.eeas.europa.eu/eeas/nature-calling-%E2%80%93-week-climate-and-biodiversity-eu-agenda_und_en",
+                      "content": "Both nature and biodiversity are essential for life on Earth. We must protect nature to tackle climate change, prevent biodiversity loss and protect people ...",
+                      "raw_content": "Both nature and biodiversity are essential for life on Earth. We must protect nature to tackle climate change, prevent biodiversity loss and protect people ...",
+                      "rerank_score": 4.85
+                    }
+                  ],
+                  "backend": "searxng",
+                  "answer": null,
+                  "notices": []
+                },
+                "error": null
+              },
+              {
+                "ok": true,
+                "tool_name": "search",
+                "output_text": "{'results': [{'title': 'Fast-rising research institutions 2020 - Nature', 'url': 'https://www.nature.com/articles/d41586-020-01232-9', 'content': \"Apr 29, 2020 · Nature Index 15 APR 26 · Why AI can't be trusted to write scientific ... An essential round-up of science news, opinion and analysis ...\", 'raw_content': \"Apr 29, 2020 · Nature Index 15 APR 26 · Why AI can't be trusted to write scientific ... An essential round-up of science news, opinion and analysis ...\", 'rerank_score': 15.0}, {'title': 'Rising stars in Earth and environmental sciences 2020 - Nature', 'url': 'https://www.nature.com/articles/d41586-020-01237-4', 'content': 'Apr 29, 2020 · Nature Index 23 APR 26. A guide to the Nature Index. Nature Index 20 ... An essential round-up of science news, opinion and analysis ...', 'raw_content': 'Apr 29, 2020 · Nature Index 23 APR 26. A guide to the Nature Index. Nature Index 20 ... An essential round-up of science news, opinion and analysis ...', 'rerank_score': 14.55}, {'title': \"It's #CityNatureChallenge weekend! From Apr. 24-27, people from 700+ ...\", 'url': 'https://www.facebook.com/SunderlandUKOfficial/posts/its-citynaturechallenge-weekend-from-apr-24-27-people-from-700-cities-around-the/1412558334236067/', 'content': 'Apr 23, 2026 · org/projects/city-nature-challenge-2020-washington- dc-metro-area ... Virtual Program Wed., Apr. 26, 7-8pm #632850-H Please contact the ...', 'raw_content': 'Apr 23, 2026 · org/projects/city-nature-challenge-2020-washington- dc-metro-area ... Virtual Program Wed., Apr. 26, 7-8pm #632850-H Please contact the ...', 'rerank_score': 11.25}], 'backend': 'searxng', 'answer': None, 'notices': []}",
+                "raw_result": {
+                  "results": [
+                    {
+                      "title": "Fast-rising research institutions 2020 - Nature",
+                      "url": "https://www.nature.com/articles/d41586-020-01232-9",
+                      "content": "Apr 29, 2020 · Nature Index 15 APR 26 · Why AI can't be trusted to write scientific ... An essential round-up of science news, opinion and analysis ...",
+                      "raw_content": "Apr 29, 2020 · Nature Index 15 APR 26 · Why AI can't be trusted to write scientific ... An essential round-up of science news, opinion and analysis ...",
+                      "rerank_score": 15.0
+                    },
+                    {
+                      "title": "Rising stars in Earth and environmental sciences 2020 - Nature",
+                      "url": "https://www.nature.com/articles/d41586-020-01237-4",
+                      "content": "Apr 29, 2020 · Nature Index 23 APR 26. A guide to the Nature Index. Nature Index 20 ... An essential round-up of science news, opinion and analysis ...",
+                      "raw_content": "Apr 29, 2020 · Nature Index 23 APR 26. A guide to the Nature Index. Nature Index 20 ... An essential round-up of science news, opinion and analysis ...",
+                      "rerank_score": 14.55
+                    },
+                    {
+                      "title": "It's #CityNatureChallenge weekend! From Apr. 24-27, people from 700+ ...",
+                      "url": "https://www.facebook.com/SunderlandUKOfficial/posts/its-citynaturechallenge-weekend-from-apr-24-27-people-from-700-cities-around-the/1412558334236067/",
+                      "content": "Apr 23, 2026 · org/projects/city-nature-challenge-2020-washington- dc-metro-area ... Virtual Program Wed., Apr. 26, 7-8pm #632850-H Please contact the ...",
+                      "raw_content": "Apr 23, 2026 · org/projects/city-nature-challenge-2020-washington- dc-metro-area ... Virtual Program Wed., Apr. 26, 7-8pm #632850-H Please contact the ...",
+                      "rerank_score": 11.25
+                    }
+                  ],
+                  "backend": "searxng",
+                  "answer": null,
+                  "notices": []
+                },
+                "error": null
+              },
+              {
+                "ok": true,
+                "tool_name": "search",
+                "output_text": "{'results': [{'title': \"Victrola Museum's virtual Halloween program on Oct. 30, 2020\", 'url': 'https://news.delaware.gov/2020/10/20/victrola-museums-virtual-halloween-program/', 'content': \"Oct 20, 2020 · DNREC's DuPont Nature Center to Reopen April 1. Date Posted ... round of illegal tariffs. Date Posted: March 5, 2026. Official Seal of ...\", 'raw_content': \"Oct 20, 2020 · DNREC's DuPont Nature Center to Reopen April 1. Date Posted ... round of illegal tariffs. Date Posted: March 5, 2026. Official Seal of ...\", 'rerank_score': 14.95}, {'title': 'This Review explores the circular seabird economy around islands ...', 'url': 'https://www.facebook.com/NatureReviews/posts/nature-reviews-biodiversity-this-review-explores-the-circular-seabird-economy-ar/1387925186701831/', 'content': \"Oct 30, 2025 · Nature Reviews's post. Nature Reviews. Oct 30, 2025\\U000f078b\\U000f17e0. \\U000f312b. Nature Reviews Biodiversity: This Review explores the circular seabird economy ...\", 'raw_content': \"Oct 30, 2025 · Nature Reviews's post. Nature Reviews. Oct 30, 2025\\U000f078b\\U000f17e0. \\U000f312b. Nature Reviews Biodiversity: This Review explores the circular seabird economy ...\", 'rerank_score': 6.1}, {'title': 'Aging and the clock: Perspective from flies to humans - PubMed - NIH', 'url': 'https://pubmed.ncbi.nlm.nih.gov/30269400/', 'content': 'Epub 2018 Oct 30. Authors. Aliza K De Nobrega , Lisa C Lyons. Affiliation. 1 ... The technological nature of modern society with round-the-clock work ...', 'raw_content': 'Epub 2018 Oct 30. Authors. Aliza K De Nobrega , Lisa C Lyons. Affiliation. 1 ... The technological nature of modern society with round-the-clock work ...', 'rerank_score': 6.0}], 'backend': 'searxng', 'answer': None, 'notices': []}",
+                "raw_result": {
+                  "results": [
+                    {
+                      "title": "Victrola Museum's virtual Halloween program on Oct. 30, 2020",
+                      "url": "https://news.delaware.gov/2020/10/20/victrola-museums-virtual-halloween-program/",
+                      "content": "Oct 20, 2020 · DNREC's DuPont Nature Center to Reopen April 1. Date Posted ... round of illegal tariffs. Date Posted: March 5, 2026. Official Seal of ...",
+                      "raw_content": "Oct 20, 2020 · DNREC's DuPont Nature Center to Reopen April 1. Date Posted ... round of illegal tariffs. Date Posted: March 5, 2026. Official Seal of ...",
+                      "rerank_score": 14.95
+                    },
+                    {
+                      "title": "This Review explores the circular seabird economy around islands ...",
+                      "url": "https://www.facebook.com/NatureReviews/posts/nature-reviews-biodiversity-this-review-explores-the-circular-seabird-economy-ar/1387925186701831/",
+                      "content": "Oct 30, 2025 · Nature Reviews's post. Nature Reviews. Oct 30, 2025󰞋󱟠. 󳄫. Nature Reviews Biodiversity: This Review explores the circular seabird economy ...",
+                      "raw_content": "Oct 30, 2025 · Nature Reviews's post. Nature Reviews. Oct 30, 2025󰞋󱟠. 󳄫. Nature Reviews Biodiversity: This Review explores the circular seabird economy ...",
+                      "rerank_score": 6.1
+                    },
+                    {
+                      "title": "Aging and the clock: Perspective from flies to humans - PubMed - NIH",
+                      "url": "https://pubmed.ncbi.nlm.nih.gov/30269400/",
+                      "content": "Epub 2018 Oct 30. Authors. Aliza K De Nobrega , Lisa C Lyons. Affiliation. 1 ... The technological nature of modern society with round-the-clock work ...",
+                      "raw_content": "Epub 2018 Oct 30. Authors. Aliza K De Nobrega , Lisa C Lyons. Affiliation. 1 ... The technological nature of modern society with round-the-clock work ...",
+                      "rerank_score": 6.0
+                    }
+                  ],
+                  "backend": "searxng",
+                  "answer": null,
+                  "notices": []
+                },
+                "error": null
+              },
+              {
+                "ok": true,
+                "tool_name": "search",
+                "output_text": "{'results': [{'title': 'WholeTrees Nature Play Elements | 2020 Catalog - LinkedIn', 'url': 'https://www.linkedin.com/pulse/wholetrees-nature-play-elements-2020-catalog-amelia-baxter', 'content': 'Mar 11, 2020 · We do this by bringing sustainably sourced round timber to the places we live, work, and play ... WholeTrees Nature Play Elements | 2020 Catalog.', 'raw_content': 'Mar 11, 2020 · We do this by bringing sustainably sourced round timber to the places we live, work, and play ... WholeTrees Nature Play Elements | 2020 Catalog.', 'rerank_score': 13.4}, {'title': 'The Biodiversity - Since 2020, the Nature for Life Hub has been a ...', 'url': 'https://www.facebook.com/UNDPbiofin/photos/since-2020-the-nature-for-life-hub-has-been-a-global-stage-for-nature-based-solu/1243872191227518/', 'content': 'Since 2020, the Nature for Life Hub has been a global stage for nature ... Mar 11 · \\U000f07e0. Photos. Since 2020, the Nature for ... round resources necessary to turn the ...', 'raw_content': 'Since 2020, the Nature for Life Hub has been a global stage for nature ... Mar 11 · \\U000f07e0. Photos. Since 2020, the Nature for ... round resources necessary to turn the ...', 'rerank_score': 12.45}, {'title': 'Impact of indoor residual spraying with pirimiphos-methyl (Actellic 300CS ...', 'url': 'https://pubmed.ncbi.nlm.nih.gov/32161302/', 'content': 'We evaluated the impact of a single round of IRS with the organophosphate, ... Sci Rep. 2020 Mar 11;10(1):4518. doi: 10.1038/s41598-020-61350-2. Authors.', 'raw_content': 'We evaluated the impact of a single round of IRS with the organophosphate, ... Sci Rep. 2020 Mar 11;10(1):4518. doi: 10.1038/s41598-020-61350-2. Authors.', 'rerank_score': 7.3}], 'backend': 'searxng', 'answer': None, 'notices': []}",
+                "raw_result": {
+                  "results": [
+                    {
+                      "title": "WholeTrees Nature Play Elements | 2020 Catalog - LinkedIn",
+                      "url": "https://www.linkedin.com/pulse/wholetrees-nature-play-elements-2020-catalog-amelia-baxter",
+                      "content": "Mar 11, 2020 · We do this by bringing sustainably sourced round timber to the places we live, work, and play ... WholeTrees Nature Play Elements | 2020 Catalog.",
+                      "raw_content": "Mar 11, 2020 · We do this by bringing sustainably sourced round timber to the places we live, work, and play ... WholeTrees Nature Play Elements | 2020 Catalog.",
+                      "rerank_score": 13.4
+                    },
+                    {
+                      "title": "The Biodiversity - Since 2020, the Nature for Life Hub has been a ...",
+                      "url": "https://www.facebook.com/UNDPbiofin/photos/since-2020-the-nature-for-life-hub-has-been-a-global-stage-for-nature-based-solu/1243872191227518/",
+                      "content": "Since 2020, the Nature for Life Hub has been a global stage for nature ... Mar 11 · 󰟠. Photos. Since 2020, the Nature for ... round resources necessary to turn the ...",
+                      "raw_content": "Since 2020, the Nature for Life Hub has been a global stage for nature ... Mar 11 · 󰟠. Photos. Since 2020, the Nature for ... round resources necessary to turn the ...",
+                      "rerank_score": 12.45
+                    },
+                    {
+                      "title": "Impact of indoor residual spraying with pirimiphos-methyl (Actellic 300CS ...",
+                      "url": "https://pubmed.ncbi.nlm.nih.gov/32161302/",
+                      "content": "We evaluated the impact of a single round of IRS with the organophosphate, ... Sci Rep. 2020 Mar 11;10(1):4518. doi: 10.1038/s41598-020-61350-2. Authors.",
+                      "raw_content": "We evaluated the impact of a single round of IRS with the organophosphate, ... Sci Rep. 2020 Mar 11;10(1):4518. doi: 10.1038/s41598-020-61350-2. Authors.",
+                      "rerank_score": 7.3
+                    }
+                  ],
+                  "backend": "searxng",
+                  "answer": null,
+                  "notices": []
+                },
+                "error": null
+              },
+              {
+                "ok": true,
+                "tool_name": "search",
+                "output_text": "{'results': [{'title': '[PDF] The American Statistical Association (ASA) is pleased to respond to ...', 'url': 'https://www.amstat.org/docs/default-source/amstat-documents/pol-omb2020censusmarch15.pdf', 'content': '... nature of data quality issues that would result from the introduction of the ... round of data collection in a longitudinal survey (e.g., the base year ...', 'raw_content': '... nature of data quality issues that would result from the introduction of the ... round of data collection in a longitudinal survey (e.g., the base year ...', 'rerank_score': 16.0}, {'title': 'Candidates for 2020 Board of Directors', 'url': 'https://www.icsa.org/candidates-for-2020-board-of-directors/', 'content': 'Jun 11, 2019 · ... American Statistical Association, Biometrics, Biostatistics, and ... Nature Communication, Radiology, EMBO Molecular Medicine, and Neuro-Oncology.', 'raw_content': 'Jun 11, 2019 · ... American Statistical Association, Biometrics, Biostatistics, and ... Nature Communication, Radiology, EMBO Molecular Medicine, and Neuro-Oncology.', 'rerank_score': 10.65}, {'title': 'Why do we read many articles with bad statistics? : what does the new ...', 'url': 'https://ekja.org/journal/view.php?number=8147', 'content': 'Mar 30, 2016 · Many researchers are confused by the new statement on p-values recently released by the American Statistical Association (ASA) [1]. ... Nature ...', 'raw_content': 'Mar 30, 2016 · Many researchers are confused by the new statement on p-values recently released by the American Statistical Association (ASA) [1]. ... Nature ...', 'rerank_score': 5.7}], 'backend': 'searxng', 'answer': None, 'notices': []}",
+                "raw_result": {
+                  "results": [
+                    {
+                      "title": "[PDF] The American Statistical Association (ASA) is pleased to respond to ...",
+                      "url": "https://www.amstat.org/docs/default-source/amstat-documents/pol-omb2020censusmarch15.pdf",
+                      "content": "... nature of data quality issues that would result from the introduction of the ... round of data collection in a longitudinal survey (e.g., the base year ...",
+                      "raw_content": "... nature of data quality issues that would result from the introduction of the ... round of data collection in a longitudinal survey (e.g., the base year ...",
+                      "rerank_score": 16.0
+                    },
+                    {
+                      "title": "Candidates for 2020 Board of Directors",
+                      "url": "https://www.icsa.org/candidates-for-2020-board-of-directors/",
+                      "content": "Jun 11, 2019 · ... American Statistical Association, Biometrics, Biostatistics, and ... Nature Communication, Radiology, EMBO Molecular Medicine, and Neuro-Oncology.",
+                      "raw_content": "Jun 11, 2019 · ... American Statistical Association, Biometrics, Biostatistics, and ... Nature Communication, Radiology, EMBO Molecular Medicine, and Neuro-Oncology.",
+                      "rerank_score": 10.65
+                    },
+                    {
+                      "title": "Why do we read many articles with bad statistics? : what does the new ...",
+                      "url": "https://ekja.org/journal/view.php?number=8147",
+                      "content": "Mar 30, 2016 · Many researchers are confused by the new statement on p-values recently released by the American Statistical Association (ASA) [1]. ... Nature ...",
+                      "raw_content": "Mar 30, 2016 · Many researchers are confused by the new statement on p-values recently released by the American Statistical Association (ASA) [1]. ... Nature ...",
+                      "rerank_score": 5.7
+                    }
+                  ],
+                  "backend": "searxng",
+                  "answer": null,
+                  "notices": []
+                },
+                "error": null
+              }
+            ],
+            "blocked_sources": [
+              {
+                "source_id": "S6",
+                "query_id": "Q2",
+                "title": "Scientists rise up against statistical significance - Nature",
+                "url": "https://www.nature.com/articles/d41586-019-00857-9",
+                "domain": "www.nature.com",
+                "snippet": "Mar 20, 2019 · Valentin Amrhein, Sander Greenland, Blake McShane and more than 800 signatories call for an end to hyped claims and the dismissal of possibly crucial effects.Missing: 2020 threshold",
+                "raw_content": "Mar 20, 2019 · Valentin Amrhein, Sander Greenland, Blake McShane and more than 800 signatories call for an end to hyped claims and the dismissal of possibly crucial effects.Missing: 2020 threshold",
+                "rank": 1,
+                "rerank_score": 18.7,
+                "fetched": true,
+                "blocked": true,
+                "block_reason": "no_result_or_login_page"
+              },
+              {
+                "source_id": "S14",
+                "query_id": "Q3",
+                "title": "Statistical significance: p value, 0.05 threshold, and applications to ...",
+                "url": "https://link.springer.com/article/10.1186/s41747-020-0145-y",
+                "domain": "link.springer.com",
+                "snippet": "Here, we summarise the unresolved debate about p value and its dichotomisation. We present the statement of the American Statistical Association against the misuse of statistical significance as well as the proposals to abandon the use of p value and to reduce the significance threshold from 0.05 to 0.005. We highlight reasons for a conservative approach, as clinical research needs dichotomic ...",
+                "raw_content": "Here, we summarise the unresolved debate about p value and its dichotomisation. We present the statement of the American Statistical Association against the misuse of statistical significance as well as the proposals to abandon the use of p value and to reduce the significance threshold from 0.05 to 0.005. We highlight reasons for a conservative approach, as clinical research needs dichotomic ...",
+                "rank": 4,
+                "rerank_score": 3.7,
+                "fetched": true,
+                "blocked": true,
+                "block_reason": "duplicate_url"
+              },
+              {
+                "source_id": "VS1_2",
+                "query_id": "V1",
+                "title": "3rd day of City Nature Challenge 2020: Luxembourg. At 12:38 2864 ...",
+                "url": "https://www.facebook.com/naturmuseelux/posts/3rd-day-of-city-nature-challenge-2020-luxembourg-at-1238-2864-observations-of-73/10163366302145641/",
+                "domain": "www.facebook.com",
+                "snippet": "Apr 26, 2020 · Folk rallied round, there ... In the sunlight or rain, the time interacting with both nature and the crazy/wonderful iNaturalist community.",
+                "raw_content": "Apr 26, 2020 · Folk rallied round, there ... In the sunlight or rain, the time interacting with both nature and the crazy/wonderful iNaturalist community.",
+                "rank": 2,
+                "rerank_score": 12.4,
+                "fetched": true,
+                "blocked": true,
+                "block_reason": "low_trust_domain"
+              },
+              {
+                "source_id": "VS2_3",
+                "query_id": "V2",
+                "title": "It's #CityNatureChallenge weekend! From Apr. 24-27, people from 700+ ...",
+                "url": "https://www.facebook.com/SunderlandUKOfficial/posts/its-citynaturechallenge-weekend-from-apr-24-27-people-from-700-cities-around-the/1412558334236067/",
+                "domain": "www.facebook.com",
+                "snippet": "Apr 23, 2026 · org/projects/city-nature-challenge-2020-washington- dc-metro-area ... Virtual Program Wed., Apr. 26, 7-8pm #632850-H Please contact the ...",
+                "raw_content": "Apr 23, 2026 · org/projects/city-nature-challenge-2020-washington- dc-metro-area ... Virtual Program Wed., Apr. 26, 7-8pm #632850-H Please contact the ...",
+                "rank": 3,
+                "rerank_score": 11.25,
+                "fetched": true,
+                "blocked": true,
+                "block_reason": "low_trust_domain"
+              },
+              {
+                "source_id": "VS3_2",
+                "query_id": "V3",
+                "title": "This Review explores the circular seabird economy around islands ...",
+                "url": "https://www.facebook.com/NatureReviews/posts/nature-reviews-biodiversity-this-review-explores-the-circular-seabird-economy-ar/1387925186701831/",
+                "domain": "www.facebook.com",
+                "snippet": "Oct 30, 2025 · Nature Reviews's post. Nature Reviews. Oct 30, 2025󰞋󱟠. 󳄫. Nature Reviews Biodiversity: This Review explores the circular seabird economy ...",
+                "raw_content": "Oct 30, 2025 · Nature Reviews's post. Nature Reviews. Oct 30, 2025󰞋󱟠. 󳄫. Nature Reviews Biodiversity: This Review explores the circular seabird economy ...",
+                "rank": 2,
+                "rerank_score": 6.1,
+                "fetched": true,
+                "blocked": true,
+                "block_reason": "low_trust_domain"
+              },
+              {
+                "source_id": "VS4_1",
+                "query_id": "V4",
+                "title": "WholeTrees Nature Play Elements | 2020 Catalog - LinkedIn",
+                "url": "https://www.linkedin.com/pulse/wholetrees-nature-play-elements-2020-catalog-amelia-baxter",
+                "domain": "www.linkedin.com",
+                "snippet": "Mar 11, 2020 · We do this by bringing sustainably sourced round timber to the places we live, work, and play ... WholeTrees Nature Play Elements | 2020 Catalog.",
+                "raw_content": "Mar 11, 2020 · We do this by bringing sustainably sourced round timber to the places we live, work, and play ... WholeTrees Nature Play Elements | 2020 Catalog.",
+                "rank": 1,
+                "rerank_score": 13.4,
+                "fetched": true,
+                "blocked": true,
+                "block_reason": "low_trust_domain"
+              },
+              {
+                "source_id": "VS4_2",
+                "query_id": "V4",
+                "title": "The Biodiversity - Since 2020, the Nature for Life Hub has been a ...",
+                "url": "https://www.facebook.com/UNDPbiofin/photos/since-2020-the-nature-for-life-hub-has-been-a-global-stage-for-nature-based-solu/1243872191227518/",
+                "domain": "www.facebook.com",
+                "snippet": "Since 2020, the Nature for Life Hub has been a global stage for nature ... Mar 11 · 󰟠. Photos. Since 2020, the Nature for ... round resources necessary to turn the ...",
+                "raw_content": "Since 2020, the Nature for Life Hub has been a global stage for nature ... Mar 11 · 󰟠. Photos. Since 2020, the Nature for ... round resources necessary to turn the ...",
+                "rank": 2,
+                "rerank_score": 12.45,
+                "fetched": true,
+                "blocked": true,
+                "block_reason": "low_trust_domain"
+              }
+            ]
+          },
+          "error": null
+        },
+        {
+          "ok": false,
+          "tool_name": "deterministic_solver",
+          "output_text": "",
+          "raw_result": {
+            "used_deterministic_solver": false,
+            "task_type": "not_ready",
+            "answer": null,
+            "answer_text": "",
+            "confidence": 0.0,
+            "evidence": {},
+            "evidence_source": "none",
+            "readiness": {
+              "is_deterministic_task": true,
+              "is_closed_world": false,
+              "has_complete_data": false,
+              "evidence_source": "none",
+              "reason": "question appears to require external factual evidence and no verified search evidence is available"
+            },
+            "error": "question appears to require external factual evidence and no verified search evidence is available"
+          },
+          "error": "question appears to require external factual evidence and no verified search evidence is available"
+        }
+      ],
+      "penalty_results": [
+        {
+          "agent_id": "nemotron",
+          "penalty": -1.0,
+          "reasons": [
+            "inactive_or_no_answer"
+          ]
+        },
+        {
+          "agent_id": "minicpm",
+          "penalty": -1.0,
+          "reasons": [
+            "inactive_or_no_answer"
+          ]
+        },
+        {
+          "agent_id": "qwen",
+          "penalty": 0.0,
+          "reasons": []
+        },
+        {
+          "agent_id": "gemma",
+          "penalty": -1.0,
+          "reasons": [
+            "inactive_or_no_answer"
+          ]
+        }
+      ]
+    }
+  }
+}
