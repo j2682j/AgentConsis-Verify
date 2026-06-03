@@ -43,8 +43,10 @@ python run_gaia.py --level 2 --max-samples 1 --enable-stage1-tool-use --log-name
 - Added optional Stage 1 tool-use trajectory.
 - Added Stage 2 pairwise judge scoring over reasoning steps.
 - Added rule-based answer validation and penalty calculation.
-- Added default signal-based search query planning with model-generated queries,
-  spaCy NER hard constraints, and token-probability ranking.
+- Added evidence-oriented search flow with embedding-delta query salience,
+  SEER-style source cleaning, full-page fetch, and default next-hop retrieval.
+- Decoupled `SearchTool` into a backend adapter; filtering, fetching, and
+  evidence construction now live under `search_result_builder`.
 
 ## Key Features
 
@@ -55,8 +57,10 @@ python run_gaia.py --level 2 --max-samples 1 --enable-stage1-tool-use --log-name
 - **Cross-agent Stage 2 judging**: agents judge other agents' reasoning steps.
 - **Step-level scoring**: judge score is computed over explicit reasoning steps.
 - **Rule-based penalties**: malformed answers, tool-call-as-answer, refusal-like answers, and tool failures can reduce score.
-- **Signal-based search planning**: ranks model-generated search queries
-  using spaCy NER entities and low-probability token signals.
+- **Evidence-oriented search planning**: generates search queries from
+  embedding-delta salient spans and optionally performs next-hop retrieval.
+- **Decoupled search adapter**: `SearchTool` only calls search backends and
+  returns normalized raw results; evidence construction is handled separately.
 - **GAIA-oriented evaluation**: includes dataset loading, attachment preparation, batch running, per-task export, Markdown reporting, and accuracy statistics.
 
 ## Overview
@@ -152,18 +156,19 @@ Install the project dependencies according to your local environment.
 This project expects local model serving through an OpenAI-compatible endpoint,
 such as Ollama-compatible APIs.
 
-Dependencies for signal-based search query planning:
+Dependencies for embedding-delta search query planning:
 
 ```bash
-pip install spacy transformers torch
-python -m spacy download en_core_web_md
+pip install transformers torch
 ```
 
-The signal planner also uses a HuggingFace causal LM for token probability
-analysis. The current default is:
+The query planner uses a HuggingFace encoder / embedding model for
+representation sensitivity analysis. Each candidate token is removed from the
+question, the query embedding is recomputed, and the embedding delta is used as
+the salience signal. The current default is:
 
 ```text
-Qwen/Qwen3-4B
+BAAI/bge-m3
 ```
 
 This model is loaded when search evidence needs query planning.
@@ -207,15 +212,17 @@ Optional search settings:
 ```env
 SEARCH_BACKEND=searxng
 SEARXNG_URL=http://localhost:8080
+SEARCH_SALIENCE_HF_MODEL=BAAI/bge-m3
 TAVILY_API_KEY=
 SERPAPI_API_KEY=
 PERPLEXITY_API_KEY=
 ```
 
 Supported search backends include `hybrid`, `advanced`, `searxng`, `tavily`,
-`serpapi`, `duckduckgo`, and `perplexity`. The search tool can return structured
-results and, when precision is needed, conditionally fetch full page content for
-evidence extraction.
+`serpapi`, `duckduckgo`, and `perplexity`. `SearchTool` only returns normalized
+raw search results. Source filtering, full-page fetch, helpfulness scoring,
+deduplication, next-hop retrieval, and prompt rendering are controlled by
+`tools/search_result_builder/`.
 
 GAIA dataset access may require:
 
@@ -242,13 +249,13 @@ python run_gaia.py ^
   --log-name gaia_level2_tool_test
 ```
 
-Run one GAIA example with the default signal-based search query planning:
+Run one GAIA example with the default evidence-driven search flow:
 
 ```bash
 python run_gaia.py ^
   --level 2 ^
   --max-samples 1 ^
-  --log-name gaia_level2_signal_query_test
+  --log-name gaia_level2_evidence_search_test
 ```
 
 Run the full GAIA Level 1 validation split:
@@ -284,6 +291,7 @@ Important options:
 | `--stage2-max-tokens` | Maximum tokens for Stage 2 judge responses. |
 | `--enable-stage1-tool-use` | Enable tool trajectory during Stage 1. |
 | `--max-stage1-tool-turns` | Maximum tool-use turns per Stage 1 run. |
+| `--enable-evidence-driven-search` / `--no-enable-evidence-driven-search` | Enable or disable search_result_builder next-hop retrieval. Enabled by default. |
 | `--enable-stage1-early-stop` | Enable early stopping during Stage 1. |
 | `--stage1-early-stop-max-retries` | Retry budget for early-stop mode. |
 | `--models` | Comma-separated model list. |
@@ -325,8 +333,7 @@ When Stage 1 tool use is enabled, agents may request a tool through JSON:
   "reasoning_step": "step 1. I need to verify the relevant date.",
   "tool_name": "search",
   "tool_args": {
-    "input": "query text",
-    "mode": "text"
+    "input": "query text"
   }
 }
 ```
@@ -347,7 +354,7 @@ Currently supported Stage 1 tools include:
 
 | Tool | Purpose |
 | --- | --- |
-| `search` | Build evidence-oriented web search context. |
+| `search` | Call a configured web search backend and return normalized raw results. |
 | `python_calculator` | Compute deterministic arithmetic or small calculations. |
 
 Tool calls are cached by normalized tool name and arguments. If two runs ask for
@@ -357,48 +364,62 @@ The shared search flow uses `EvidenceSearcher`:
 
 ```text
 question
--> query planning
--> structured search
--> source filtering
--> evidence extraction
--> candidate answer extraction
--> prompt rendering
+-> question analysis
+-> embedding-delta query planning
+-> SearchTool backend call
+-> source hard filter
+-> full-page fetch
+-> helpfulness gate
+-> EfficientRAG labeler fallback / model labeler
+-> SEER n-gram dedup
+-> optional next-hop query
+-> structured evidence rendering
 ```
 
-Query planning always uses the signal-based `SearchQueryPlanner`. It returns
-ordered query candidates plus `precision_needed=True`.
+`SearchTool` is intentionally small. It does not rerank, fetch full pages,
+filter sources, or build evidence. It only returns backend results with this
+shape:
 
-Signal mode uses three query signals:
+```python
+{
+    "results": [
+        {"title": "...", "url": "...", "content": "..."}
+    ],
+    "backend": "searxng",
+    "answer": None,
+    "notices": []
+}
+```
 
-| Signal | Role |
-| --- | --- |
-| Model-generated query | Produces readable, search-engine-ready complete queries. |
-| spaCy NER | Extracts hard constraints such as dates, sources, fields, and compound entities. |
-| Token probability | Finds high-importance low-probability terms for ranking and filtering. |
+`search_result_builder` owns the rest of the search data flow.
 
-The current signal strategy searches complete model-generated queries. spaCy NER
-and token probability are used to rank those queries, not as standalone search
-queries. This avoids overly broad searches such as `Physics`, `Society`, or
-`three`.
-
-The signal planner lives under:
+Query planning uses `SearchQueryPlanner`, backed by
+`MaskSalienceQueryGenerator`. The generator performs representation
+sensitivity analysis:
 
 ```text
-tools/search_result_builder/search_query_generate/
+question
+-> HF tokenizer + encoder model
+-> delete one token/span
+-> recompute sentence embedding
+-> score by embedding delta
+-> ask qwen3:4b for concise query candidates
+-> rank by salient-span coverage
 ```
 
-The main classes are:
+The current search pipeline components are:
 
-| Class | Purpose |
+| Component | Role |
 | --- | --- |
-| `ModelQueryCandidateGenerator` | Uses local `qwen3:4b` to generate complete query candidates. |
-| `NerQueryCandidateGenerator` | Uses `en_core_web_md` spaCy NER and generic compound entity merging. |
-| `TokenProbabilityAnalyzer` | Scores NER terms by low token probability using a HuggingFace causal LM. |
-| `SearchQueryCombiner` | Combines the three signals and selects ranked query candidates. |
-
-Compound NER merging is generic: adjacent spaCy entities are merged only when
-the original text between them contains connective words or punctuation, and the
-merged span is at most 20 characters. The original spaCy entities are preserved.
+| `query/` | Builds first-hop search queries from embedding-delta salient spans. |
+| `source_analyze/seer/source_filter.py` | Removes leaks, duplicates, low-value pages, and question echoes. |
+| `source_analyze/seer/page_content_fetcher.py` | Fetches full pages after source filtering. |
+| `source_analyze/seer/helpfulness_expert.py` | Scores whether evidence helps answer the question. |
+| `next_hop_query/rag_labeler.py` | Labels chunks as useful/useless. Currently uses deterministic fallback until the trained labeler is connected. |
+| `source_analyze/seer/ngram_deduplicate.py` | Deduplicates useful evidence chunks. |
+| `next_hop_query/retrieval_controller.py` | Decides whether next-hop retrieval is needed. |
+| `next_hop_query/next_hop_query_generator.py` | Builds follow-up queries from evidence or question-analysis fallback. |
+| `evidence_renderer.py` | Renders compact structured context for agents. |
 
 The prompt sent to agents is intentionally compact:
 
@@ -414,13 +435,11 @@ Evidence:
 Source: ...
 Query: Q1
 Text: ...
-
-Candidate Answer:
-[C1] answer=...; type=...; evidence=E1
 ```
 
-URLs, filtered sources, relevance scores, and other diagnostics are kept in the
-exported `raw_result` for debugging, but are not included in the agent prompt.
+Candidate-answer extraction is currently not required for the agent prompt:
+agents receive structured evidence directly. Search diagnostics are temporarily
+disabled to keep exported results small while the pipeline is being simplified.
 
 ## Scoring
 
@@ -522,8 +541,12 @@ The Markdown report summarizes:
 | `context/` | Builds prompts and agent context. |
 | `parsers/` | Parses reasoning steps, tool requests, final answers, and judge outputs. |
 | `score/` | Computes confidence, validation, penalties, and final scores. |
-| `tools/` | Provides search, calculation, attachment handling, and tool caching. |
-| `tools/search_result_builder/search_query_generate/` | Generates and ranks signal-based search query candidates. |
+| `tools/` | Provides backend adapters, calculation, attachment handling, and tool caching. |
+| `tools/search_tool.py` | Lightweight web search backend adapter. |
+| `tools/search_result_builder/query/` | Generates and ranks embedding-delta search query candidates. |
+| `tools/search_result_builder/source_analyze/` | Filters sources, fetches pages, scores helpfulness, labels chunks, and deduplicates evidence. |
+| `tools/search_result_builder/next_hop_query/` | Controls evidence sufficiency and builds next-hop queries. |
+| `tools/search_result_builder/evidence_renderer.py` | Renders compact structured evidence context for agents. |
 
 ## Development Notes
 
@@ -539,10 +562,10 @@ Recommended tool-use smoke test:
 python run_gaia.py --level 2 --max-samples 1 --enable-stage1-tool-use --log-name smoke_tool_test
 ```
 
-Recommended signal-search smoke test:
+Recommended evidence-search smoke test:
 
 ```bash
-python run_gaia.py --level 2 --max-samples 1 --log-name smoke_signal_search
+python run_gaia.py --level 2 --max-samples 1 --log-name smoke_evidence_search
 ```
 
 Useful checks:
@@ -556,9 +579,12 @@ python run_gaia.py --help
 - The project is experimental and optimized for iteration, not production serving.
 - Model quality depends strongly on the local SLMs and endpoint configuration.
 - Some GAIA tasks may require richer tool routing, better attachment understanding, or stronger semantic answer equivalence.
-- Web search quality depends on the configured backend.
-- Signal-based search query planning may call `qwen3:4b`,
-  load spaCy, and load `Qwen/Qwen3-4B` for token probability analysis.
+- Web search quality depends on the configured backend and the quality of
+  evidence extracted by `search_result_builder`.
+- Embedding-delta query planning may call `qwen3:4b` and load
+  `SEARCH_SALIENCE_HF_MODEL` such as `BAAI/bge-m3`.
+- EfficientRAG labeler model integration is still pending; the current labeler
+  path uses a deterministic fallback.
 - Token usage is reported only when the model endpoint returns usage metadata.
 
 ## Acknowledgements
