@@ -48,7 +48,7 @@ class DeterministicSolverTool(Tool):
             str(parameters.get("input") or parameters.get("question") or ""),
             attachment_context=parameters.get("attachment_context"),
             table_data=parameters.get("table_data"),
-            best_verified_candidate=parameters.get("best_verified_candidate"),
+            best_candidate=parameters.get("best_candidate"),
         )
         return result.to_dict()
 

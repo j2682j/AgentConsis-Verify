@@ -40,8 +40,7 @@ class EvidenceRunner:
         attachment_evidence_builder: AttachmentEvidenceBuilder | None = None,
         deterministic_solver: DeterministicSolver | None = None,
         compact_search_evidence: bool = False,
-        enable_signal_search_queries: bool = False,
-        enable_probability_candidate_rerank: bool = False,
+        enable_evidence_driven_search: bool = True,
     ) -> None:
         self.question = question
         self.attachment = attachment or {}
@@ -52,8 +51,7 @@ class EvidenceRunner:
         self.attachment_evidence_builder = attachment_evidence_builder or AttachmentEvidenceBuilder()
         self.deterministic_solver = deterministic_solver or DeterministicSolver()
         self.compact_search_evidence = compact_search_evidence
-        self.enable_signal_search_queries = enable_signal_search_queries
-        self.enable_probability_candidate_rerank = enable_probability_candidate_rerank
+        self.enable_evidence_driven_search = enable_evidence_driven_search
 
     def run(self) -> dict[str, Any]:
         """
@@ -228,9 +226,7 @@ class EvidenceRunner:
         try:
             searcher = EvidenceSearcher(
                 tool_manager=self.tool_manager,
-                compact_evidence=self.compact_search_evidence,
-                enable_signal_query_planner=self.enable_signal_search_queries,
-                enable_probability_candidate_rerank=self.enable_probability_candidate_rerank,
+                enable_evidence_driven_search=self.enable_evidence_driven_search,
             )
             output = searcher.search(
                 self.question,

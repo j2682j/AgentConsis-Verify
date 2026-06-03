@@ -53,7 +53,7 @@ class DeterministicSolver:
         *,
         attachment_context: str | None = None,
         table_data: Any = None,
-        best_verified_candidate: dict[str, Any] | None = None,
+        best_candidate: dict[str, Any] | None = None,
     ) -> DeterministicSolverResult:
         """
         ??? deterministic ?????????
@@ -68,7 +68,7 @@ class DeterministicSolver:
             question,
             attachment_context=attachment_context,
             table_data=table_data,
-            best_verified_candidate=best_verified_candidate,
+            best_candidate=best_candidate,
         )
         if not (readiness.is_deterministic_task and readiness.is_closed_world and readiness.has_complete_data):
             return DeterministicSolverResult(
@@ -80,16 +80,16 @@ class DeterministicSolver:
                 error=readiness.reason,
             )
 
-        verified_answer = self._verified_answer(best_verified_candidate)
-        if verified_answer:
+        candidate_answer = self._candidate_answer(best_candidate)
+        if candidate_answer:
             return DeterministicSolverResult(
                 used_deterministic_solver=True,
-                task_type="search_verified_answer",
-                answer=verified_answer,
-                answer_text=verified_answer,
+                task_type="search_candidate_answer",
+                answer=candidate_answer,
+                answer_text=candidate_answer,
                 confidence=0.9,
-                evidence={"best_verified_candidate": best_verified_candidate or {}},
-                evidence_source="search_verified",
+                evidence={"best_candidate": best_candidate or {}},
+                evidence_source="search_candidate",
                 readiness=readiness,
             )
 
@@ -111,7 +111,7 @@ class DeterministicSolver:
         *,
         attachment_context: str | None,
         table_data: Any,
-        best_verified_candidate: dict[str, Any] | None,
+        best_candidate: dict[str, Any] | None,
     ) -> DeterministicReadiness:
         """
         ????????????
@@ -123,7 +123,7 @@ class DeterministicSolver:
             - ????????????
         """
         text = str(question or "")
-        has_verified = bool(self._verified_answer(best_verified_candidate))
+        has_candidate = bool(self._candidate_answer(best_candidate))
         has_table_data = bool(table_data)
         has_attachment_structured = self._has_structured_attachment(attachment_context)
         has_question_table = "|" in text or ("\n" in text and "," in text)
@@ -147,12 +147,12 @@ class DeterministicSolver:
                 has_unit_conversion,
                 has_table_data,
                 has_attachment_structured,
-                has_verified,
+                has_candidate,
             ]
         )
 
-        if has_verified:
-            return DeterministicReadiness(True, True, True, "search_verified", "search provided a verified candidate")
+        if has_candidate:
+            return DeterministicReadiness(True, True, True, "search_candidate", "search provided a confident candidate")
         if has_table_data:
             return DeterministicReadiness(True, True, True, "attachment", "attachment provided structured table_data")
         if has_attachment_structured:
@@ -163,7 +163,7 @@ class DeterministicSolver:
                 False,
                 False,
                 "none",
-                "question appears to require external factual evidence and no verified search evidence is available",
+                "question appears to require external factual evidence and no confident search candidate is available",
             )
 
         has_complete_question_data = any(
@@ -179,7 +179,7 @@ class DeterministicSolver:
             else "question does not contain complete deterministic input data",
         )
 
-    def _verified_answer(self, best_verified_candidate: dict[str, Any] | None) -> str:
+    def _candidate_answer(self, best_candidate: dict[str, Any] | None) -> str:
         """
         ????????????
         
@@ -189,11 +189,11 @@ class DeterministicSolver:
         Returns:
             - ????????????
         """
-        if not isinstance(best_verified_candidate, dict):
+        if not isinstance(best_candidate, dict):
             return ""
-        answer = str(best_verified_candidate.get("answer", "") or "").strip()
+        answer = str(best_candidate.get("answer", "") or "").strip()
         try:
-            score = float(best_verified_candidate.get("verification_score", 0.0) or 0.0)
+            score = float(best_candidate.get("confidence", 0.0) or 0.0)
         except (TypeError, ValueError):
             score = 0.0
         return answer if answer and score >= 0.7 else ""

@@ -6,35 +6,28 @@ from urllib.parse import urlparse
 
 from utils.network_utils import normalize_text
 
-from .config import (
-    EvidenceOutput,
-    SearchQueryPlan,
-    SearchSourceCandidate,
-)
-from .analysis import QuestionAnalyzer
-from .compression import EvidenceCompressor
-from .extraction import EvidenceExtractor, QuestionTermFilter, TypedCandidateExtractor
-from .filtering import SourceFilter
-from .planning import CandidateVerificationSearcher, SearchQueryPlanner
-from .reranking import ProbabilityCandidateReranker
-from .rendering import AgentEvidenceRenderer, EvidenceRenderer
-from .verification import CandidateVerifier
+from .question_analyzer import QuestionAnalyzer
+from .config import CandidateAnswer, EvidenceOutput, SearchQueryPlan, SearchSourceCandidate
+from .next_hop_query import NextHopQueryGenerator, RetrievalController
+from .query import SearchQueryPlanner
+from .evidence_renderer import EvidenceRenderer
+from .source_analyze import SEERBuilder, SEERBuildResult
 
 
 class EvidenceSearcher:
     """
-    Build evidence-oriented search output from planned queries and structured search.
+    以精簡 search pipeline 建立可傳給 Agent 的 evidence context。
 
     Args:
-        - tool_manager: Object exposing execute_tool(tool_name, parameters, agent_id, stage).
-        - query_planner: Optional SearchQueryPlanner instance.
-        - source_filter: Optional SourceFilter instance.
-        - evidence_extractor: Optional EvidenceExtractor instance.
-        - candidate_extractor: Optional TypedCandidateExtractor instance.
-        - renderer: Optional EvidenceRenderer instance.
+        - tool_manager: 提供 execute_tool(tool_name, parameters, agent_id, stage) 的工具管理器。
+        - query_planner: 第一跳 query generator。
+        - seer_builder: 負責 source filter、full-page fetch、evidence clean 與 candidate extraction。
+        - retrieval_controller: 判斷目前 evidence 是否需要 next-hop retrieval。
+        - next_hop_query_generator: 根據目前 evidence 建立下一跳 query。
+        - renderer: 將 EvidenceOutput 轉成 prompt context 的 renderer。
 
     Returns:
-        - EvidenceSearcher: Search pipeline service that returns EvidenceOutput.
+        - EvidenceSearcher: 精簡後的 search evidence 主控器。
     """
 
     def __init__(
@@ -42,41 +35,24 @@ class EvidenceSearcher:
         *,
         tool_manager: Any,
         query_planner: SearchQueryPlanner | None = None,
-        source_filter: SourceFilter | None = None,
-        evidence_extractor: EvidenceExtractor | None = None,
-        candidate_extractor: TypedCandidateExtractor | None = None,
-        candidate_verifier: CandidateVerifier | None = None,
-        evidence_compressor: EvidenceCompressor | None = None,
+        seer_builder: SEERBuilder | None = None,
+        retrieval_controller: RetrievalController | None = None,
+        next_hop_query_generator: NextHopQueryGenerator | None = None,
         renderer: EvidenceRenderer | None = None,
-        agent_renderer: AgentEvidenceRenderer | None = None,
         question_analyzer: QuestionAnalyzer | None = None,
-        question_term_filter: QuestionTermFilter | None = None,
-        candidate_verification_searcher: CandidateVerificationSearcher | None = None,
-        probability_candidate_reranker: ProbabilityCandidateReranker | None = None,
-        compact_evidence: bool = False,
-        enable_signal_query_planner: bool = False,
-        enable_probability_candidate_rerank: bool = False,
+        enable_evidence_driven_search: bool = True,
+        max_evidence_driven_queries: int = 2,
+        **_: Any,
     ) -> None:
         self.tool_manager = tool_manager
-        self.query_planner = query_planner or SearchQueryPlanner(
-            mode="signal" if enable_signal_query_planner else "legacy"
-        )
-        self.source_filter = source_filter or SourceFilter()
-        self.evidence_extractor = evidence_extractor or EvidenceExtractor()
-        self.candidate_extractor = candidate_extractor or TypedCandidateExtractor()
-        self.candidate_verifier = candidate_verifier or CandidateVerifier()
-        self.evidence_compressor = evidence_compressor or EvidenceCompressor()
+        self.query_planner = query_planner or SearchQueryPlanner()
+        self.seer_builder = seer_builder or SEERBuilder()
+        self.retrieval_controller = retrieval_controller or RetrievalController()
+        self.next_hop_query_generator = next_hop_query_generator or NextHopQueryGenerator()
         self.renderer = renderer or EvidenceRenderer()
-        self.agent_renderer = agent_renderer or AgentEvidenceRenderer()
         self.question_analyzer = question_analyzer or QuestionAnalyzer()
-        self.question_term_filter = question_term_filter or QuestionTermFilter()
-        self.candidate_verification_searcher = candidate_verification_searcher or CandidateVerificationSearcher(
-            tool_manager=tool_manager,
-            domain_parser=self._domain,
-        )
-        self.probability_candidate_reranker = probability_candidate_reranker or ProbabilityCandidateReranker()
-        self.compact_evidence = compact_evidence
-        self.enable_probability_candidate_rerank = enable_probability_candidate_rerank
+        self.enable_evidence_driven_search = enable_evidence_driven_search
+        self.max_evidence_driven_queries = max(0, max_evidence_driven_queries)
 
     def search(
         self,
@@ -89,180 +65,144 @@ class EvidenceSearcher:
         stage: str = "search_evidence",
     ) -> EvidenceOutput:
         """
-        Execute planned search queries and build an EvidenceOutput bundle.
+        執行 query generation、SEER cleaning 與可選 next-hop retrieval。
 
         Args:
-            - question: Original task question.
-            - max_queries: Maximum planned queries to execute.
-            - max_results_per_query: Maximum search results per query.
-            - max_full_page_results: Maximum full pages fetched per query.
-            - agent_id: Trace agent id used by ToolManager.
-            - stage: Trace stage used by ToolManager.
+            - question: 原始任務問題。
+            - max_queries: 第一跳最多執行的 query 數量。
+            - max_results_per_query: 每個 query 最多保留的搜尋結果數。
+            - max_full_page_results: 每個 query 對應的全文抓取上限。
+            - agent_id: ToolManager trace 用 agent id。
+            - stage: ToolManager trace 用 stage。
 
         Returns:
-            - EvidenceOutput: Structured evidence bundle for rendering or scoring.
+            - EvidenceOutput: 結構化 search evidence 結果。
         """
         analysis = self.question_analyzer.analyze(question)
         plan_dict = self.query_planner.plan(question=question, max_queries=max_queries)
-        queries = self._build_query_plans(plan_dict)
-        if not queries:
-            queries = [
-                SearchQueryPlan(
-                    query_id="Q1",
-                    query=question,
-                    purpose="original_question",
-                    priority=100,
-                    requires_full_page=True,
-                )
-            ]
+        initial_queries = self._build_query_plans(plan_dict, fallback_question=question)
 
-        search_runs: list[dict[str, Any]] = []
         tool_usage: list[dict[str, Any]] = []
-        for query_plan in queries:
-            result = self._execute_search(
-                query_plan=query_plan,
-                precision_needed=bool(plan_dict.get("precision_needed")),
-                max_results=max_results_per_query,
-                max_full_page_results=max_full_page_results,
-                agent_id=agent_id,
-                stage=stage,
-            )
-            tool_usage.append(result)
-            search_runs.append(
-                {
-                    "query_id": query_plan.query_id,
-                    "query": query_plan.query,
-                    "result": result,
-                }
-            )
-
-        sources = self._sources_from_runs(search_runs)
-        filtered_sources = self.source_filter.filter_sources(sources)
-        blocked_sources = [source for source in sources if source.blocked]
-        evidence_items = self.evidence_extractor.extract(
-            question=question,
-            sources=filtered_sources,
+        initial_sources = self._search_sources(
+            queries=initial_queries,
+            max_results=max_results_per_query,
+            agent_id=agent_id,
+            stage=stage,
+            source_prefix="S",
+            tool_usage=tool_usage,
         )
-        raw_candidates = self.candidate_extractor.extract_candidates(
+        initial_seer = self._build_seer_result(
             question=question,
+            analysis=analysis,
+            sources=initial_sources,
+            queries=initial_queries,
+            fetch_limit=max(0, max_full_page_results) * max(1, len(initial_queries)),
+            max_pages=max(0, max_full_page_results) * max(1, len(initial_queries)),
+            max_candidates=10,
+        )
+        all_queries = list(initial_queries)
+        all_sources = list(initial_seer.sources)
+        blocked_sources = list(self.seer_builder.last_blocked_sources)
+        evidence_items = list(self.seer_builder.last_evidence_items)
+        candidates = list(self.seer_builder.last_candidates)
+
+        initial_decision = self.retrieval_controller.assess(
             analysis=analysis,
             evidence_items=evidence_items,
-            sources=filtered_sources,
-            max_candidates=5 if self.enable_probability_candidate_rerank else 10,
-        )
-        candidates, rejected_candidates = self.question_term_filter.filter(
-            question=question,
-            analysis=analysis,
-            candidates=raw_candidates,
-        )
-        rerank_diagnostics: dict[str, Any] = {"enabled": False}
-        if self.enable_probability_candidate_rerank:
-            candidates, rerank_diagnostics = self.probability_candidate_reranker.rerank(
-                question=question,
-                candidates=candidates,
-                evidence_items=evidence_items,
-            )
-
-        verification_results, verification_tool_usage = self.candidate_verification_searcher.verify_candidates(
-            question=question,
-            analysis=analysis,
-            candidates=candidates[:5],
-            max_candidates=5,
-            max_results_per_query=3,
-            max_full_page_results=1,
-            agent_id=agent_id,
-            stage=f"{stage}_candidate_verification",
-        )
-        tool_usage.extend(verification_tool_usage)
-
-        verification_sources: list[SearchSourceCandidate] = []
-        verification_queries: list[SearchQueryPlan] = []
-        for verification in verification_results:
-            verification_queries.extend(verification.queries)
-            verification_sources.extend(verification.sources)
-
-        filtered_verification_sources = self.source_filter.filter_sources(verification_sources)
-        blocked_sources.extend(source for source in verification_sources if source.blocked)
-        verification_evidence = self.evidence_extractor.extract(
-            question=question,
-            sources=filtered_verification_sources,
-            max_items=12,
-            max_chars_per_item=360,
-        )
-        for index, item in enumerate(verification_evidence, start=1):
-            item.evidence_id = f"V{index}"
-
-        all_sources = [*filtered_sources, *filtered_verification_sources]
-        all_evidence = [*evidence_items, *verification_evidence]
-        verified_candidates, fact_cards = self.candidate_verifier.verify(
-            question=question,
             candidates=candidates,
-            evidence_items=all_evidence,
-            sources=all_sources,
-            analysis=analysis,
         )
-        answer_type = analysis.answer_type
-        agent_packet = self.evidence_compressor.compress(
-            question=question,
-            answer_type=answer_type,
-            verified_candidates=verified_candidates,
-            fact_cards=fact_cards,
-        )
+        follow_up_queries: list[SearchQueryPlan] = []
+
+        if self.enable_evidence_driven_search and initial_decision.need_next_hop:
+            follow_up_queries = self.next_hop_query_generator.build(
+                question=question,
+                analysis=analysis,
+                initial_queries=initial_queries,
+                evidence_items=evidence_items,
+                candidates=candidates,
+                max_queries=self.max_evidence_driven_queries,
+            )
+            if follow_up_queries:
+                follow_up_sources = self._search_sources(
+                    queries=follow_up_queries,
+                    max_results=max(2, min(max_results_per_query, 3)),
+                    agent_id=agent_id,
+                    stage=f"{stage}_efficient_rag_followup",
+                    source_prefix="HS",
+                    tool_usage=tool_usage,
+                )
+                follow_up_fetch_limit = (
+                    max(1, min(max_full_page_results, 1)) * max(1, len(follow_up_queries))
+                    if max_full_page_results > 0
+                    else 0
+                )
+                follow_up_seer = self._build_seer_result(
+                    question=question,
+                    analysis=analysis,
+                    sources=follow_up_sources,
+                    queries=follow_up_queries,
+                    fetch_limit=follow_up_fetch_limit,
+                    max_pages=follow_up_fetch_limit,
+                    max_evidence_items=12,
+                    max_candidates=10,
+                )
+                all_queries.extend(follow_up_queries)
+                all_sources.extend(follow_up_seer.sources)
+                blocked_sources.extend(self.seer_builder.last_blocked_sources)
+                evidence_items = self._merge_evidence(
+                    evidence_items,
+                    list(self.seer_builder.last_evidence_items),
+                )
+                candidates = self._merge_candidates(
+                    candidates,
+                    list(self.seer_builder.last_candidates),
+                )
 
         output = EvidenceOutput(
             question=question,
-            queries=[*queries, *verification_queries],
+            queries=all_queries,
             sources=all_sources,
-            evidence_items=all_evidence,
-            candidates=candidates,
+            evidence_items=evidence_items,
             summary="",
-            verified_candidates=verified_candidates,
-            fact_cards=fact_cards,
-            agent_packet=agent_packet,
+            candidates=candidates,
             question_analysis=analysis,
-            candidate_diagnostics=self._candidate_diagnostics(
-                analysis=analysis,
-                raw_candidates=raw_candidates,
-                filtered_candidates=candidates,
-                verified_candidates=verified_candidates,
-                rejected_candidates=rejected_candidates,
-                probability_rerank=rerank_diagnostics,
-            ),
+            candidate_diagnostics={},
             tool_usage=tool_usage,
             blocked_sources=blocked_sources,
         )
-        output.summary = (
-            self.agent_renderer.render(agent_packet)
-            if self.compact_evidence
-            else self.renderer.render(output)
-        )
+        output.summary = self.renderer.render(output)
         return output
 
     def render(self, output: EvidenceOutput) -> str:
         """
-        Render an existing EvidenceOutput bundle.
+        將既有 EvidenceOutput 轉成 prompt-ready context。
 
         Args:
-            - output: Evidence-oriented search result bundle.
+            - output: Search evidence 結構化輸出。
 
         Returns:
-            - str: Prompt-ready evidence context.
+            - str: 可傳給 Agent 的 evidence context。
         """
         return self.renderer.render(output)
 
     def to_dict(self, output: EvidenceOutput) -> dict[str, Any]:
         """
-        Convert EvidenceOutput to a JSON-serializable dict.
+        將 EvidenceOutput 轉成 JSON-serializable dict。
 
         Args:
-            - output: Evidence-oriented search result bundle.
+            - output: Search evidence 結構化輸出。
 
         Returns:
-            - dict[str, Any]: JSON-serializable evidence payload.
+            - dict[str, Any]: 可寫入 log 的 dict。
         """
         return asdict(output)
 
-    def _build_query_plans(self, plan_dict: dict[str, Any]) -> list[SearchQueryPlan]:
+    def _build_query_plans(
+        self,
+        plan_dict: dict[str, Any],
+        *,
+        fallback_question: str,
+    ) -> list[SearchQueryPlan]:
         source_hints = list(plan_dict.get("source_hints") or [])
         precision_needed = bool(plan_dict.get("precision_needed"))
         query_values = list(plan_dict.get("queries") or [])
@@ -282,15 +222,52 @@ class EvidenceSearcher:
                     requires_full_page=precision_needed,
                 )
             )
+        if not plans:
+            plans.append(
+                SearchQueryPlan(
+                    query_id="Q1",
+                    query=fallback_question,
+                    purpose="original_question",
+                    priority=100,
+                    expected_answer_type=self._expected_answer_type(fallback_question),
+                    requires_full_page=True,
+                )
+            )
         return plans
+
+    def _search_sources(
+        self,
+        *,
+        queries: list[SearchQueryPlan],
+        max_results: int,
+        agent_id: str,
+        stage: str,
+        source_prefix: str,
+        tool_usage: list[dict[str, Any]],
+    ) -> list[SearchSourceCandidate]:
+        search_runs: list[dict[str, Any]] = []
+        for query_plan in queries:
+            result = self._execute_search(
+                query_plan=query_plan,
+                max_results=max_results,
+                agent_id=agent_id,
+                stage=stage,
+            )
+            tool_usage.append(result)
+            search_runs.append(
+                {
+                    "query_id": query_plan.query_id,
+                    "query": query_plan.query,
+                    "result": result,
+                }
+            )
+        return self._sources_from_runs(search_runs, source_prefix=source_prefix)
 
     def _execute_search(
         self,
         *,
         query_plan: SearchQueryPlan,
-        precision_needed: bool,
         max_results: int,
-        max_full_page_results: int,
         agent_id: str,
         stage: str,
     ) -> dict[str, Any]:
@@ -300,9 +277,7 @@ class EvidenceSearcher:
                 {
                     "input": query_plan.query,
                     "mode": "structured",
-                    "conditional_fetch": precision_needed or query_plan.requires_full_page,
                     "max_results": max_results,
-                    "max_full_page_results": max_full_page_results,
                 },
                 agent_id=agent_id,
                 stage=stage,
@@ -316,7 +291,36 @@ class EvidenceSearcher:
                 "error": str(exc),
             }
 
-    def _sources_from_runs(self, search_runs: list[dict[str, Any]]) -> list[SearchSourceCandidate]:
+    def _build_seer_result(
+        self,
+        *,
+        question: str,
+        analysis: Any,
+        sources: list[SearchSourceCandidate],
+        queries: list[SearchQueryPlan],
+        fetch_limit: int,
+        max_pages: int,
+        max_evidence_items: int = 8,
+        max_candidates: int = 10,
+    ) -> SEERBuildResult:
+        return self.seer_builder.build(
+            question=question,
+            analysis=analysis,
+            sources=sources,
+            query_text_by_id={query.query_id: query.query for query in queries},
+            fetch_limit=fetch_limit,
+            max_pages=max_pages,
+            max_evidence_items=max_evidence_items,
+            max_chars_per_item=420,
+            max_candidates=max_candidates,
+        )
+
+    def _sources_from_runs(
+        self,
+        search_runs: list[dict[str, Any]],
+        *,
+        source_prefix: str = "S",
+    ) -> list[SearchSourceCandidate]:
         sources: list[SearchSourceCandidate] = []
         for run in search_runs:
             query_id = str(run.get("query_id", "") or "")
@@ -335,10 +339,14 @@ class EvidenceSearcher:
                 title = normalize_text(item.get("title", "")) or url
                 snippet = normalize_text(item.get("content", ""))
                 raw_content = normalize_text(item.get("raw_content", ""))
-                source_id = f"S{len(sources) + 1}"
+                fetched = bool(
+                    raw_content
+                    and raw_content != snippet
+                    and len(raw_content) > len(snippet) + 120
+                )
                 sources.append(
                     SearchSourceCandidate(
-                        source_id=source_id,
+                        source_id=f"{source_prefix}{len(sources) + 1}",
                         query_id=query_id,
                         title=title,
                         url=url,
@@ -346,11 +354,46 @@ class EvidenceSearcher:
                         snippet=snippet,
                         raw_content=raw_content,
                         rank=rank,
-                        rerank_score=float(item.get("rerank_score", 0.0) or 0.0),
-                        fetched=bool(raw_content),
+                        fetched=fetched,
                     )
                 )
         return sources
+
+    def _merge_evidence(
+        self,
+        initial: list[Any],
+        follow_up: list[Any],
+    ) -> list[Any]:
+        merged = [*initial, *follow_up]
+        for index, item in enumerate(merged, start=1):
+            item.evidence_id = f"E{index}"
+        return merged
+
+    def _merge_candidates(
+        self,
+        initial: list[CandidateAnswer],
+        follow_up: list[CandidateAnswer],
+    ) -> list[CandidateAnswer]:
+        grouped: dict[str, CandidateAnswer] = {}
+        for candidate in [*initial, *follow_up]:
+            key = normalize_text(candidate.answer).lower()
+            existing = grouped.get(key)
+            if existing is None:
+                grouped[key] = candidate
+                continue
+            existing.support_count += candidate.support_count
+            existing.confidence = max(existing.confidence, candidate.confidence)
+            existing.evidence_ids = sorted(set(existing.evidence_ids + candidate.evidence_ids))
+            existing.source_ids = sorted(set(existing.source_ids + candidate.source_ids))
+        candidates = list(grouped.values())
+        candidates.sort(
+            key=lambda item: (
+                item.support_count,
+                item.confidence,
+            ),
+            reverse=True,
+        )
+        return candidates
 
     def _query_purpose(self, index: int) -> str:
         if index == 1:
@@ -372,46 +415,6 @@ class EvidenceSearcher:
         if any(marker in lowered for marker in ("url", "website")):
             return "website"
         return "entity"
-
-    def _answer_type(self, question: str, candidates: list[Any]) -> str:
-        if candidates:
-            return str(candidates[0].answer_type or "entity")
-        lowered = question.lower()
-        if "who" in lowered:
-            return "person"
-        if "where" in lowered:
-            return "place"
-        if "when" in lowered or "date" in lowered or "year" in lowered:
-            return "date"
-        if "title" in lowered or "book" in lowered or "paper" in lowered:
-            return "title"
-        if any(marker in lowered for marker in ("number", "how many", "amount", "score")):
-            return "number"
-        return "entity"
-
-    def _candidate_diagnostics(
-        self,
-        *,
-        analysis: Any,
-        raw_candidates: list[Any],
-        filtered_candidates: list[Any],
-        verified_candidates: list[Any],
-        rejected_candidates: list[dict[str, str]],
-        probability_rerank: dict[str, Any] | None = None,
-    ) -> dict[str, Any]:
-        top_candidate = verified_candidates[0] if verified_candidates else None
-        return {
-            "answer_type": getattr(analysis, "answer_type", "unknown"),
-            "raw_candidate_count": len(raw_candidates),
-            "filtered_candidate_count": len(filtered_candidates),
-            "verified_candidate_count": len(verified_candidates),
-            "top_candidate": getattr(top_candidate, "answer", "") if top_candidate else "",
-            "top_candidate_confidence": getattr(top_candidate, "confidence", 0.0) if top_candidate else 0.0,
-            "top_candidate_support": getattr(top_candidate, "support_count", 0) if top_candidate else 0,
-            "top_candidate_refute": getattr(top_candidate, "refute_count", 0) if top_candidate else 0,
-            "rejected_candidates": rejected_candidates[:20],
-            "probability_rerank": probability_rerank or {"enabled": False},
-        }
 
     def _domain(self, url: str) -> str:
         try:

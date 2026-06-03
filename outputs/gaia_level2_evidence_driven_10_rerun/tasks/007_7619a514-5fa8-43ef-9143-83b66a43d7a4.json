@@ -1,0 +1,1953 @@
+{
+  "task_id": "7619a514-5fa8-43ef-9143-83b66a43d7a4",
+  "level": "2",
+  "question": "According to github, when was Regression added to the oldest closed numpy.polynomial issue that has the Regression label in MM/DD/YY?",
+  "attachment": {},
+  "predicted": "Apr 15, 2018",
+  "expected": "04/15/18",
+  "exact_match": false,
+  "partial_match": false,
+  "score": 0.0,
+  "winner_agent_id": "nemotron",
+  "response_time_seconds": 143.68552920000002,
+  "total_tokens": 28533,
+  "token_usage": {
+    "stage1": {
+      "prompt_tokens": 16632,
+      "completion_tokens": 11901,
+      "total_tokens": 28533
+    },
+    "stage2": {
+      "prompt_tokens": 0,
+      "completion_tokens": 0,
+      "total_tokens": 0
+    },
+    "total": {
+      "prompt_tokens": 16632,
+      "completion_tokens": 11901,
+      "total_tokens": 28533
+    }
+  },
+  "search_summary": {
+    "answer_type": "date",
+    "raw_candidate_count": 5,
+    "filtered_candidate_count": 5,
+    "verified_candidate_count": 5,
+    "evidence_driven_search": {
+      "enabled": true,
+      "queries": [
+        "Regression Regression label label date",
+        "Solution Regression label label date"
+      ],
+      "source_count": 6,
+      "evidence_count": 6
+    },
+    "candidate_count": 3,
+    "fact_count": 5,
+    "top_candidate": "2010",
+    "top_candidate_confidence": 0.6,
+    "top_candidate_support": 2,
+    "top_candidate_refute": 0,
+    "rejected_candidates": [],
+    "missing_info": [],
+    "risk_flags": [
+      "evidence_driven_source",
+      "no_verification_support"
+    ]
+  },
+  "execution_time": 143.6863658428192,
+  "error": "",
+  "network_summary": {
+    "question": "According to github, when was Regression added to the oldest closed numpy.polynomial issue that has the Regression label in MM/DD/YY?",
+    "final_answer": "Apr 15, 2018",
+    "winner_agent_id": "nemotron",
+    "stage1_results": [
+      {
+        "agent_id": "nemotron",
+        "model_name": "nemotron-mini:4b",
+        "runs": [
+          {
+            "agent_id": "nemotron",
+            "model_name": "nemotron-mini:4b",
+            "run_index": 1,
+            "raw_reply": "REASONING =\nstep 1. The evidence E2 states “Apr 15, 2018” is the date when the Regression label was added to the issue.  \nstep 2. This date corresponds to the oldest closed numpy.polynomial issue with the Regression label, as indicated by the search result.  \nstep 3. Therefore the answer is Apr 15, 2018.  \n\nFINAL_ANSWER = Apr 15, 2018",
+            "reasoning": "step 1. The evidence E2 states “Apr 15, 2018” is the date when the Regression label was added to the issue.  \nstep 2. This date corresponds to the oldest closed numpy.polynomial issue with the Regression label, as indicated by the search result.  \nstep 3. Therefore the answer is Apr 15, 2018.",
+            "final_answer": "Apr 15, 2018",
+            "parse_completed": true,
+            "tool_context": "Search_Result:\nOriginal Question:\nAccording to github, when was Regression added to the oldest closed numpy.polynomial issue that has the Regression label in MM/DD/YY?\n\nQuery:\n[Q1] According to github, when was Regression added to the oldest closed numpy polynomial issue that has the Regression label in MM/DD/YY\n[Q2] \"Regression\" date year\n[Q3] \"MM\" date year\n[H1] Regression Regression label label date\n[H2] Solution Regression label label date\n[V1] \"2010\" \"Regression\" \"MM\" \"DD\"\n[V2] \"2000\" \"Regression\" \"MM\" \"DD\"\n[V3] \"Apr 15, 2018\" \"Regression\" \"MM\" \"DD\"\n[V4] \"2016\" \"Regression\" \"MM\" \"DD\"\n[V5] \"2013\" \"Regression\" \"MM\" \"DD\"\n\nEvidence:\n[E1]\nSource: mcp-github-research/README.md at master · MikeyBeez/mcp-github-research\nQuery: Q1\nText: Solution: github_analyze_label_history + github_get_issue_timeline Example: \"According to github, when was Regression added to the oldest closed numpy.polynomial issue that has the Regression label?\"\n[E2]\nSource: metadata.jsonl · SumitB7/Final_Assignment_Template at main\nQuery: Q1\nText: Opened the NumPy GitHub page. 3. Clicked \\\"Issues \\ \" in the repo tabs. 4. Clicked \\\"Closed \\ \" on the filter bar. 5. Set the filter to the \\\" numpy.polynomial\\ \" label. 6. Set the filter to the \\\"06 - Regression \\ \" label. 7. Opened the oldest Regression post. 8. Scrolled down to find when the Regression label was added (Apr 15, 2018). 9.\n[E3]\nSource: Regression analysis - Wikipedia\nQuery: Q2\nText: In statistical modeling, regression analysis is a statistical method for estimating the relationship between a dependent variable (often called the outcome or response variable, or a label in machine learning parlance) and one or more independent variables (often called regressors, predictors, covariates, explanatory variables or features). [1][2] The most common form of regression analysis is ...\n[E4]\nSource: Excel use dates as x axis, but numbers to fit regression equation\nQuery: H1\nText: I would still like to keep the dates on the x-axis of the chart, but have my regression equation use numbers like 1,2,3,...instead of date values like 43013. I tried to follow Microsoft Office Support's Change axis labels in a chart article, but changing horizontal axis labels is greyed out This is what the chart looks like:\n[E5]\nSource: r - Does it make sense to use a date variable in a regression? - Cross Validated\nQuery: Q2\nText: Usually, but not necessarily, the origin should be a date within the time period of study or very close to it. Perhaps the simplest case is linear regression on a date variable in years. Here a regression of some response on date expressed as dates like 2000 or 2010 implies an intercept which is the value of response in year 0.\n[E6]\nSource: Format date in regression - Statalist\nQuery: Q2\nText: Hi all, Perhaps a simple answer to this question but I can't seem to find an appropriate answer to it. I want to run a regression with time fixed effects. My data contains a variable date, e.g. 26th July 2016. By means of ... format quarter_of_year %tq When I look at my data, the date will be correctly displayed as 2016Q3.\n[E7]\nSource: Does it make sense to use a date variable in a regression?\nQuery: H1\nText: Usually, but not necessarily, the origin should be a date within the time period of study or very close to it. Perhaps the simplest case is linear regression on a date variable in years. Here a regression of some response on date expressed as dates like 2000 or 2010 implies an intercept which is the value of response in year 0.\n[E8]\nSource: Linear Regression with Date Hierarchy on X Axis\nQuery: H2\nText: Hi everyone! I have a line chart with average shipping costs (SC/O) as my y-axis and Calendar Quarter / Month Name as my x-axis. [Calendar Quarter] and [Month Name] are a part of a date hierarchy created from my 'Date' table. I have managed to create a line regression measure LINESTX using the [Order Date] column on my 'Orders' fact table. My problem with it is the line chart is becomes too ...\n\nCandidate Answer:\n[C1] answer=2010; type=date; evidence=E5, E7\n[C2] answer=2000; type=date; evidence=E5, E7\n[C3] answer=Apr 15, 2018; type=date; evidence=E2",
+            "prompt_tokens": 1356,
+            "completion_tokens": 459,
+            "total_tokens": 1815,
+            "tool_calls": [],
+            "tool_results": [],
+            "trajectory": []
+          },
+          {
+            "agent_id": "nemotron",
+            "model_name": "nemotron-mini:4b",
+            "run_index": 2,
+            "raw_reply": "REASONING =\nstep 1. The question asks for the exact date when the \"Regression\" label was added to the oldest closed numpy.polynomial issue.  \nstep 2. Evidence E2 explicitly states the date \"Apr 15, 2018\" as the moment the Regression label was added to that issue.  \nstep 3. Other candidates (C1, C2) only provide years without the specific date, which does not match the requested format.  \nstep 4. Therefore the best‑supported answer is the specific date given in E2.  \nFINAL_ANSWER = Apr 15, 2018",
+            "reasoning": "step 1. The question asks for the exact date when the \"Regression\" label was added to the oldest closed numpy.polynomial issue.  \nstep 2. Evidence E2 explicitly states the date \"Apr 15, 2018\" as the moment the Regression label was added to that issue.  \nstep 3. Other candidates (C1, C2) only provide years without the specific date, which does not match the requested format.  \nstep 4. Therefore the best‑supported answer is the specific date given in E2.",
+            "final_answer": "Apr 15, 2018",
+            "parse_completed": true,
+            "tool_context": "Search_Result:\nOriginal Question:\nAccording to github, when was Regression added to the oldest closed numpy.polynomial issue that has the Regression label in MM/DD/YY?\n\nQuery:\n[Q1] According to github, when was Regression added to the oldest closed numpy polynomial issue that has the Regression label in MM/DD/YY\n[Q2] \"Regression\" date year\n[Q3] \"MM\" date year\n[H1] Regression Regression label label date\n[H2] Solution Regression label label date\n[V1] \"2010\" \"Regression\" \"MM\" \"DD\"\n[V2] \"2000\" \"Regression\" \"MM\" \"DD\"\n[V3] \"Apr 15, 2018\" \"Regression\" \"MM\" \"DD\"\n[V4] \"2016\" \"Regression\" \"MM\" \"DD\"\n[V5] \"2013\" \"Regression\" \"MM\" \"DD\"\n\nEvidence:\n[E1]\nSource: mcp-github-research/README.md at master · MikeyBeez/mcp-github-research\nQuery: Q1\nText: Solution: github_analyze_label_history + github_get_issue_timeline Example: \"According to github, when was Regression added to the oldest closed numpy.polynomial issue that has the Regression label?\"\n[E2]\nSource: metadata.jsonl · SumitB7/Final_Assignment_Template at main\nQuery: Q1\nText: Opened the NumPy GitHub page. 3. Clicked \\\"Issues \\ \" in the repo tabs. 4. Clicked \\\"Closed \\ \" on the filter bar. 5. Set the filter to the \\\" numpy.polynomial\\ \" label. 6. Set the filter to the \\\"06 - Regression \\ \" label. 7. Opened the oldest Regression post. 8. Scrolled down to find when the Regression label was added (Apr 15, 2018). 9.\n[E3]\nSource: Regression analysis - Wikipedia\nQuery: Q2\nText: In statistical modeling, regression analysis is a statistical method for estimating the relationship between a dependent variable (often called the outcome or response variable, or a label in machine learning parlance) and one or more independent variables (often called regressors, predictors, covariates, explanatory variables or features). [1][2] The most common form of regression analysis is ...\n[E4]\nSource: Excel use dates as x axis, but numbers to fit regression equation\nQuery: H1\nText: I would still like to keep the dates on the x-axis of the chart, but have my regression equation use numbers like 1,2,3,...instead of date values like 43013. I tried to follow Microsoft Office Support's Change axis labels in a chart article, but changing horizontal axis labels is greyed out This is what the chart looks like:\n[E5]\nSource: r - Does it make sense to use a date variable in a regression? - Cross Validated\nQuery: Q2\nText: Usually, but not necessarily, the origin should be a date within the time period of study or very close to it. Perhaps the simplest case is linear regression on a date variable in years. Here a regression of some response on date expressed as dates like 2000 or 2010 implies an intercept which is the value of response in year 0.\n[E6]\nSource: Format date in regression - Statalist\nQuery: Q2\nText: Hi all, Perhaps a simple answer to this question but I can't seem to find an appropriate answer to it. I want to run a regression with time fixed effects. My data contains a variable date, e.g. 26th July 2016. By means of ... format quarter_of_year %tq When I look at my data, the date will be correctly displayed as 2016Q3.\n[E7]\nSource: Does it make sense to use a date variable in a regression?\nQuery: H1\nText: Usually, but not necessarily, the origin should be a date within the time period of study or very close to it. Perhaps the simplest case is linear regression on a date variable in years. Here a regression of some response on date expressed as dates like 2000 or 2010 implies an intercept which is the value of response in year 0.\n[E8]\nSource: Linear Regression with Date Hierarchy on X Axis\nQuery: H2\nText: Hi everyone! I have a line chart with average shipping costs (SC/O) as my y-axis and Calendar Quarter / Month Name as my x-axis. [Calendar Quarter] and [Month Name] are a part of a date hierarchy created from my 'Date' table. I have managed to create a line regression measure LINESTX using the [Order Date] column on my 'Orders' fact table. My problem with it is the line chart is becomes too ...\n\nCandidate Answer:\n[C1] answer=2010; type=date; evidence=E5, E7\n[C2] answer=2000; type=date; evidence=E5, E7\n[C3] answer=Apr 15, 2018; type=date; evidence=E2",
+            "prompt_tokens": 1356,
+            "completion_tokens": 394,
+            "total_tokens": 1750,
+            "tool_calls": [],
+            "tool_results": [],
+            "trajectory": []
+          },
+          {
+            "agent_id": "nemotron",
+            "model_name": "nemotron-mini:4b",
+            "run_index": 3,
+            "raw_reply": "REASONING =\nstep 1. The evidence E2 states the date Apr 15, 2018 when Regression label was added.\nstep 2. The question requests the date in MM/DD/YY format; Apr 15, 2018 is the correct representation.\nstep 3. No conflicting evidence exists, so this answer is supported.\n\nFINAL_ANSWER = Apr 15, 2018",
+            "reasoning": "step 1. The evidence E2 states the date Apr 15, 2018 when Regression label was added.\nstep 2. The question requests the date in MM/DD/YY format; Apr 15, 2018 is the correct representation.\nstep 3. No conflicting evidence exists, so this answer is supported.",
+            "final_answer": "Apr 15, 2018",
+            "parse_completed": true,
+            "tool_context": "Search_Result:\nOriginal Question:\nAccording to github, when was Regression added to the oldest closed numpy.polynomial issue that has the Regression label in MM/DD/YY?\n\nQuery:\n[Q1] According to github, when was Regression added to the oldest closed numpy polynomial issue that has the Regression label in MM/DD/YY\n[Q2] \"Regression\" date year\n[Q3] \"MM\" date year\n[H1] Regression Regression label label date\n[H2] Solution Regression label label date\n[V1] \"2010\" \"Regression\" \"MM\" \"DD\"\n[V2] \"2000\" \"Regression\" \"MM\" \"DD\"\n[V3] \"Apr 15, 2018\" \"Regression\" \"MM\" \"DD\"\n[V4] \"2016\" \"Regression\" \"MM\" \"DD\"\n[V5] \"2013\" \"Regression\" \"MM\" \"DD\"\n\nEvidence:\n[E1]\nSource: mcp-github-research/README.md at master · MikeyBeez/mcp-github-research\nQuery: Q1\nText: Solution: github_analyze_label_history + github_get_issue_timeline Example: \"According to github, when was Regression added to the oldest closed numpy.polynomial issue that has the Regression label?\"\n[E2]\nSource: metadata.jsonl · SumitB7/Final_Assignment_Template at main\nQuery: Q1\nText: Opened the NumPy GitHub page. 3. Clicked \\\"Issues \\ \" in the repo tabs. 4. Clicked \\\"Closed \\ \" on the filter bar. 5. Set the filter to the \\\" numpy.polynomial\\ \" label. 6. Set the filter to the \\\"06 - Regression \\ \" label. 7. Opened the oldest Regression post. 8. Scrolled down to find when the Regression label was added (Apr 15, 2018). 9.\n[E3]\nSource: Regression analysis - Wikipedia\nQuery: Q2\nText: In statistical modeling, regression analysis is a statistical method for estimating the relationship between a dependent variable (often called the outcome or response variable, or a label in machine learning parlance) and one or more independent variables (often called regressors, predictors, covariates, explanatory variables or features). [1][2] The most common form of regression analysis is ...\n[E4]\nSource: Excel use dates as x axis, but numbers to fit regression equation\nQuery: H1\nText: I would still like to keep the dates on the x-axis of the chart, but have my regression equation use numbers like 1,2,3,...instead of date values like 43013. I tried to follow Microsoft Office Support's Change axis labels in a chart article, but changing horizontal axis labels is greyed out This is what the chart looks like:\n[E5]\nSource: r - Does it make sense to use a date variable in a regression? - Cross Validated\nQuery: Q2\nText: Usually, but not necessarily, the origin should be a date within the time period of study or very close to it. Perhaps the simplest case is linear regression on a date variable in years. Here a regression of some response on date expressed as dates like 2000 or 2010 implies an intercept which is the value of response in year 0.\n[E6]\nSource: Format date in regression - Statalist\nQuery: Q2\nText: Hi all, Perhaps a simple answer to this question but I can't seem to find an appropriate answer to it. I want to run a regression with time fixed effects. My data contains a variable date, e.g. 26th July 2016. By means of ... format quarter_of_year %tq When I look at my data, the date will be correctly displayed as 2016Q3.\n[E7]\nSource: Does it make sense to use a date variable in a regression?\nQuery: H1\nText: Usually, but not necessarily, the origin should be a date within the time period of study or very close to it. Perhaps the simplest case is linear regression on a date variable in years. Here a regression of some response on date expressed as dates like 2000 or 2010 implies an intercept which is the value of response in year 0.\n[E8]\nSource: Linear Regression with Date Hierarchy on X Axis\nQuery: H2\nText: Hi everyone! I have a line chart with average shipping costs (SC/O) as my y-axis and Calendar Quarter / Month Name as my x-axis. [Calendar Quarter] and [Month Name] are a part of a date hierarchy created from my 'Date' table. I have managed to create a line regression measure LINESTX using the [Order Date] column on my 'Orders' fact table. My problem with it is the line chart is becomes too ...\n\nCandidate Answer:\n[C1] answer=2010; type=date; evidence=E5, E7\n[C2] answer=2000; type=date; evidence=E5, E7\n[C3] answer=Apr 15, 2018; type=date; evidence=E2",
+            "prompt_tokens": 1356,
+            "completion_tokens": 500,
+            "total_tokens": 1856,
+            "tool_calls": [],
+            "tool_results": [],
+            "trajectory": []
+          }
+        ],
+        "compressed_answer": "Apr 15, 2018",
+        "compressed_reasoning": "step 1. The evidence E2 states “Apr 15, 2018” is the date when the Regression label was added to the issue.\nstep 2. This date corresponds to the oldest closed numpy.polynomial issue with the Regression label, as indicated by the search result.\nstep 3. Therefore the answer is Apr 15, 2018.",
+        "confidence_score": 1.0,
+        "active": true
+      },
+      {
+        "agent_id": "minicpm",
+        "model_name": "minicpm3:4b",
+        "runs": [
+          {
+            "agent_id": "minicpm",
+            "model_name": "minicpm3:4b",
+            "run_index": 1,
+            "raw_reply": "Step 1: The question asks for the date when 'Regression' was added to the oldest closed numpy.polynominal issue that has the 'Regression' label in MM/DD/YY format.\n\nStep 2: The evidence provided does not directly provide this information. However, it shows a possible method to find this information by looking at the history of the labeled issues on GitHub.\n\nStep 3: Based on the evidence, the answer seems to be 'Apr 15, 2018' as it is the only date mentioned in the provided evidence that fits the required format.\n\nFinal Answer: Apr 15, 2018",
+            "reasoning": "Step 1: The question asks for the date when 'Regression' was added to the oldest closed numpy.polynominal issue that has the 'Regression' label in MM/DD/YY format.\nStep 2: The evidence provided does not directly provide this information. However, it shows a possible method to find this information by looking at the history of the labeled issues on GitHub.\nStep 3: Based on the evidence, the answer seems to be 'Apr 15, 2018' as it is the only date mentioned in the provided evidence that fits the required format.",
+            "final_answer": "Apr 15, 2018",
+            "parse_completed": true,
+            "tool_context": "Search_Result:\nOriginal Question:\nAccording to github, when was Regression added to the oldest closed numpy.polynomial issue that has the Regression label in MM/DD/YY?\n\nQuery:\n[Q1] According to github, when was Regression added to the oldest closed numpy polynomial issue that has the Regression label in MM/DD/YY\n[Q2] \"Regression\" date year\n[Q3] \"MM\" date year\n[H1] Regression Regression label label date\n[H2] Solution Regression label label date\n[V1] \"2010\" \"Regression\" \"MM\" \"DD\"\n[V2] \"2000\" \"Regression\" \"MM\" \"DD\"\n[V3] \"Apr 15, 2018\" \"Regression\" \"MM\" \"DD\"\n[V4] \"2016\" \"Regression\" \"MM\" \"DD\"\n[V5] \"2013\" \"Regression\" \"MM\" \"DD\"\n\nEvidence:\n[E1]\nSource: mcp-github-research/README.md at master · MikeyBeez/mcp-github-research\nQuery: Q1\nText: Solution: github_analyze_label_history + github_get_issue_timeline Example: \"According to github, when was Regression added to the oldest closed numpy.polynomial issue that has the Regression label?\"\n[E2]\nSource: metadata.jsonl · SumitB7/Final_Assignment_Template at main\nQuery: Q1\nText: Opened the NumPy GitHub page. 3. Clicked \\\"Issues \\ \" in the repo tabs. 4. Clicked \\\"Closed \\ \" on the filter bar. 5. Set the filter to the \\\" numpy.polynomial\\ \" label. 6. Set the filter to the \\\"06 - Regression \\ \" label. 7. Opened the oldest Regression post. 8. Scrolled down to find when the Regression label was added (Apr 15, 2018). 9.\n[E3]\nSource: Regression analysis - Wikipedia\nQuery: Q2\nText: In statistical modeling, regression analysis is a statistical method for estimating the relationship between a dependent variable (often called the outcome or response variable, or a label in machine learning parlance) and one or more independent variables (often called regressors, predictors, covariates, explanatory variables or features). [1][2] The most common form of regression analysis is ...\n[E4]\nSource: Excel use dates as x axis, but numbers to fit regression equation\nQuery: H1\nText: I would still like to keep the dates on the x-axis of the chart, but have my regression equation use numbers like 1,2,3,...instead of date values like 43013. I tried to follow Microsoft Office Support's Change axis labels in a chart article, but changing horizontal axis labels is greyed out This is what the chart looks like:\n[E5]\nSource: r - Does it make sense to use a date variable in a regression? - Cross Validated\nQuery: Q2\nText: Usually, but not necessarily, the origin should be a date within the time period of study or very close to it. Perhaps the simplest case is linear regression on a date variable in years. Here a regression of some response on date expressed as dates like 2000 or 2010 implies an intercept which is the value of response in year 0.\n[E6]\nSource: Format date in regression - Statalist\nQuery: Q2\nText: Hi all, Perhaps a simple answer to this question but I can't seem to find an appropriate answer to it. I want to run a regression with time fixed effects. My data contains a variable date, e.g. 26th July 2016. By means of ... format quarter_of_year %tq When I look at my data, the date will be correctly displayed as 2016Q3.\n[E7]\nSource: Does it make sense to use a date variable in a regression?\nQuery: H1\nText: Usually, but not necessarily, the origin should be a date within the time period of study or very close to it. Perhaps the simplest case is linear regression on a date variable in years. Here a regression of some response on date expressed as dates like 2000 or 2010 implies an intercept which is the value of response in year 0.\n[E8]\nSource: Linear Regression with Date Hierarchy on X Axis\nQuery: H2\nText: Hi everyone! I have a line chart with average shipping costs (SC/O) as my y-axis and Calendar Quarter / Month Name as my x-axis. [Calendar Quarter] and [Month Name] are a part of a date hierarchy created from my 'Date' table. I have managed to create a line regression measure LINESTX using the [Order Date] column on my 'Orders' fact table. My problem with it is the line chart is becomes too ...\n\nCandidate Answer:\n[C1] answer=2010; type=date; evidence=E5, E7\n[C2] answer=2000; type=date; evidence=E5, E7\n[C3] answer=Apr 15, 2018; type=date; evidence=E2",
+            "prompt_tokens": 1494,
+            "completion_tokens": 144,
+            "total_tokens": 1638,
+            "tool_calls": [],
+            "tool_results": [],
+            "trajectory": []
+          },
+          {
+            "agent_id": "minicpm",
+            "model_name": "minicpm3:4b",
+            "run_index": 2,
+            "raw_reply": "REASONING =\nStep 1: The question asks for the date when Regression was added to the oldest closed numpy.polynomial issue that has the Regression label. Based on the evidence provided, the earliest relevant date found is Apr 15, 2018 (E2).\n\nStep 2: There is no other specific dates mentioned in the evidence that are earlier than Apr 15, 2018. Therefore, we can conclude that the answer to when Regression was added to the oldest closed numpy.polynomial issue that has the Regression label is on or after Apr 15, 2018.\n\nFinal Answer: Apr 15, 2018",
+            "reasoning": "Step 1: The question asks for the date when Regression was added to the oldest closed numpy.polynomial issue that has the Regression label. Based on the evidence provided, the earliest relevant date found is Apr 15, 2018 (E2).\n\nStep 2: There is no other specific dates mentioned in the evidence that are earlier than Apr 15, 2018. Therefore, we can conclude that the answer to when Regression was added to the oldest closed numpy.polynomial issue that has the Regression label is on or after Apr 15, 2018.",
+            "final_answer": "Apr 15, 2018",
+            "parse_completed": true,
+            "tool_context": "Search_Result:\nOriginal Question:\nAccording to github, when was Regression added to the oldest closed numpy.polynomial issue that has the Regression label in MM/DD/YY?\n\nQuery:\n[Q1] According to github, when was Regression added to the oldest closed numpy polynomial issue that has the Regression label in MM/DD/YY\n[Q2] \"Regression\" date year\n[Q3] \"MM\" date year\n[H1] Regression Regression label label date\n[H2] Solution Regression label label date\n[V1] \"2010\" \"Regression\" \"MM\" \"DD\"\n[V2] \"2000\" \"Regression\" \"MM\" \"DD\"\n[V3] \"Apr 15, 2018\" \"Regression\" \"MM\" \"DD\"\n[V4] \"2016\" \"Regression\" \"MM\" \"DD\"\n[V5] \"2013\" \"Regression\" \"MM\" \"DD\"\n\nEvidence:\n[E1]\nSource: mcp-github-research/README.md at master · MikeyBeez/mcp-github-research\nQuery: Q1\nText: Solution: github_analyze_label_history + github_get_issue_timeline Example: \"According to github, when was Regression added to the oldest closed numpy.polynomial issue that has the Regression label?\"\n[E2]\nSource: metadata.jsonl · SumitB7/Final_Assignment_Template at main\nQuery: Q1\nText: Opened the NumPy GitHub page. 3. Clicked \\\"Issues \\ \" in the repo tabs. 4. Clicked \\\"Closed \\ \" on the filter bar. 5. Set the filter to the \\\" numpy.polynomial\\ \" label. 6. Set the filter to the \\\"06 - Regression \\ \" label. 7. Opened the oldest Regression post. 8. Scrolled down to find when the Regression label was added (Apr 15, 2018). 9.\n[E3]\nSource: Regression analysis - Wikipedia\nQuery: Q2\nText: In statistical modeling, regression analysis is a statistical method for estimating the relationship between a dependent variable (often called the outcome or response variable, or a label in machine learning parlance) and one or more independent variables (often called regressors, predictors, covariates, explanatory variables or features). [1][2] The most common form of regression analysis is ...\n[E4]\nSource: Excel use dates as x axis, but numbers to fit regression equation\nQuery: H1\nText: I would still like to keep the dates on the x-axis of the chart, but have my regression equation use numbers like 1,2,3,...instead of date values like 43013. I tried to follow Microsoft Office Support's Change axis labels in a chart article, but changing horizontal axis labels is greyed out This is what the chart looks like:\n[E5]\nSource: r - Does it make sense to use a date variable in a regression? - Cross Validated\nQuery: Q2\nText: Usually, but not necessarily, the origin should be a date within the time period of study or very close to it. Perhaps the simplest case is linear regression on a date variable in years. Here a regression of some response on date expressed as dates like 2000 or 2010 implies an intercept which is the value of response in year 0.\n[E6]\nSource: Format date in regression - Statalist\nQuery: Q2\nText: Hi all, Perhaps a simple answer to this question but I can't seem to find an appropriate answer to it. I want to run a regression with time fixed effects. My data contains a variable date, e.g. 26th July 2016. By means of ... format quarter_of_year %tq When I look at my data, the date will be correctly displayed as 2016Q3.\n[E7]\nSource: Does it make sense to use a date variable in a regression?\nQuery: H1\nText: Usually, but not necessarily, the origin should be a date within the time period of study or very close to it. Perhaps the simplest case is linear regression on a date variable in years. Here a regression of some response on date expressed as dates like 2000 or 2010 implies an intercept which is the value of response in year 0.\n[E8]\nSource: Linear Regression with Date Hierarchy on X Axis\nQuery: H2\nText: Hi everyone! I have a line chart with average shipping costs (SC/O) as my y-axis and Calendar Quarter / Month Name as my x-axis. [Calendar Quarter] and [Month Name] are a part of a date hierarchy created from my 'Date' table. I have managed to create a line regression measure LINESTX using the [Order Date] column on my 'Orders' fact table. My problem with it is the line chart is becomes too ...\n\nCandidate Answer:\n[C1] answer=2010; type=date; evidence=E5, E7\n[C2] answer=2000; type=date; evidence=E5, E7\n[C3] answer=Apr 15, 2018; type=date; evidence=E2",
+            "prompt_tokens": 1494,
+            "completion_tokens": 154,
+            "total_tokens": 1648,
+            "tool_calls": [],
+            "tool_results": [],
+            "trajectory": []
+          },
+          {
+            "agent_id": "minicpm",
+            "model_name": "minicpm3:4b",
+            "run_index": 3,
+            "raw_reply": "Step 1: The earliest date of regression label in the numpy.polynomial issue is Apr 15, 2018. This is based on the evidence E2 which explicitly states this date.\n\nFinal Answer: Apr 15, 2018",
+            "reasoning": "Step 1: The earliest date of regression label in the numpy.polynomial issue is Apr 15, 2018. This is based on the evidence E2 which explicitly states this date.",
+            "final_answer": "Apr 15, 2018",
+            "parse_completed": true,
+            "tool_context": "Search_Result:\nOriginal Question:\nAccording to github, when was Regression added to the oldest closed numpy.polynomial issue that has the Regression label in MM/DD/YY?\n\nQuery:\n[Q1] According to github, when was Regression added to the oldest closed numpy polynomial issue that has the Regression label in MM/DD/YY\n[Q2] \"Regression\" date year\n[Q3] \"MM\" date year\n[H1] Regression Regression label label date\n[H2] Solution Regression label label date\n[V1] \"2010\" \"Regression\" \"MM\" \"DD\"\n[V2] \"2000\" \"Regression\" \"MM\" \"DD\"\n[V3] \"Apr 15, 2018\" \"Regression\" \"MM\" \"DD\"\n[V4] \"2016\" \"Regression\" \"MM\" \"DD\"\n[V5] \"2013\" \"Regression\" \"MM\" \"DD\"\n\nEvidence:\n[E1]\nSource: mcp-github-research/README.md at master · MikeyBeez/mcp-github-research\nQuery: Q1\nText: Solution: github_analyze_label_history + github_get_issue_timeline Example: \"According to github, when was Regression added to the oldest closed numpy.polynomial issue that has the Regression label?\"\n[E2]\nSource: metadata.jsonl · SumitB7/Final_Assignment_Template at main\nQuery: Q1\nText: Opened the NumPy GitHub page. 3. Clicked \\\"Issues \\ \" in the repo tabs. 4. Clicked \\\"Closed \\ \" on the filter bar. 5. Set the filter to the \\\" numpy.polynomial\\ \" label. 6. Set the filter to the \\\"06 - Regression \\ \" label. 7. Opened the oldest Regression post. 8. Scrolled down to find when the Regression label was added (Apr 15, 2018). 9.\n[E3]\nSource: Regression analysis - Wikipedia\nQuery: Q2\nText: In statistical modeling, regression analysis is a statistical method for estimating the relationship between a dependent variable (often called the outcome or response variable, or a label in machine learning parlance) and one or more independent variables (often called regressors, predictors, covariates, explanatory variables or features). [1][2] The most common form of regression analysis is ...\n[E4]\nSource: Excel use dates as x axis, but numbers to fit regression equation\nQuery: H1\nText: I would still like to keep the dates on the x-axis of the chart, but have my regression equation use numbers like 1,2,3,...instead of date values like 43013. I tried to follow Microsoft Office Support's Change axis labels in a chart article, but changing horizontal axis labels is greyed out This is what the chart looks like:\n[E5]\nSource: r - Does it make sense to use a date variable in a regression? - Cross Validated\nQuery: Q2\nText: Usually, but not necessarily, the origin should be a date within the time period of study or very close to it. Perhaps the simplest case is linear regression on a date variable in years. Here a regression of some response on date expressed as dates like 2000 or 2010 implies an intercept which is the value of response in year 0.\n[E6]\nSource: Format date in regression - Statalist\nQuery: Q2\nText: Hi all, Perhaps a simple answer to this question but I can't seem to find an appropriate answer to it. I want to run a regression with time fixed effects. My data contains a variable date, e.g. 26th July 2016. By means of ... format quarter_of_year %tq When I look at my data, the date will be correctly displayed as 2016Q3.\n[E7]\nSource: Does it make sense to use a date variable in a regression?\nQuery: H1\nText: Usually, but not necessarily, the origin should be a date within the time period of study or very close to it. Perhaps the simplest case is linear regression on a date variable in years. Here a regression of some response on date expressed as dates like 2000 or 2010 implies an intercept which is the value of response in year 0.\n[E8]\nSource: Linear Regression with Date Hierarchy on X Axis\nQuery: H2\nText: Hi everyone! I have a line chart with average shipping costs (SC/O) as my y-axis and Calendar Quarter / Month Name as my x-axis. [Calendar Quarter] and [Month Name] are a part of a date hierarchy created from my 'Date' table. I have managed to create a line regression measure LINESTX using the [Order Date] column on my 'Orders' fact table. My problem with it is the line chart is becomes too ...\n\nCandidate Answer:\n[C1] answer=2010; type=date; evidence=E5, E7\n[C2] answer=2000; type=date; evidence=E5, E7\n[C3] answer=Apr 15, 2018; type=date; evidence=E2",
+            "prompt_tokens": 1494,
+            "completion_tokens": 60,
+            "total_tokens": 1554,
+            "tool_calls": [],
+            "tool_results": [],
+            "trajectory": []
+          }
+        ],
+        "compressed_answer": "Apr 15, 2018",
+        "compressed_reasoning": "step 1. The question asks for the date when 'Regression' was added to the oldest closed numpy.polynominal issue that has the 'Regression' label in MM/DD/YY format.\nstep 2. The evidence provided does not directly provide this information. However, it shows a possible method to find this information by looking at the history of the labeled issues on GitHub.\nstep 3. Based on the evidence, the answer seems to be 'Apr 15, 2018' as it is the only date mentioned in the provided evidence that fits the required format.",
+        "confidence_score": 1.0,
+        "active": true
+      },
+      {
+        "agent_id": "qwen",
+        "model_name": "qwen3:4b",
+        "runs": [
+          {
+            "agent_id": "qwen",
+            "model_name": "qwen3:4b",
+            "run_index": 1,
+            "raw_reply": "The problem asks for the date when the \"Regression\" label was added to the oldest closed `numpy.polynomial` issue, formatted in **MM/DD/YY**. \n\nThe most direct evidence comes from **Evidence [E2]**, which describes a step-by-step process on GitHub where the user found that the label was added on **April 15, 2018**. This is explicitly stated as: *\"Scrolled down to find when the Regression label was added (Apr 15, 2018)\"*.\n\nTo convert this date into **MM/DD/YY** format:\n- **April** → `04`\n- **15** → `15`\n- **2018** → `18` (two-digit year)\n\nThus, the final answer in the required format is:\n\n**04/15/18**",
+            "reasoning": "The problem asks for the date when the \"Regression\" label was added to the oldest closed `numpy.polynomial` issue, formatted in **MM/DD/YY**.\nThe most direct evidence comes from **Evidence [E2]**, which describes a step-by-step process on GitHub where the user found that the label was added on **April 15, 2018**. This is explicitly stated as: *\"Scrolled down to find when the Regression label was added (Apr 15, 2018)\"*.\nTo convert this date into **MM/DD/YY** format:\n- **April** → `04`\n- **15** → `15`\n- **2018** → `18` (two-digit year)\nThus, the final answer in the required format is:\n**04/15/18**",
+            "final_answer": "04/15/18",
+            "parse_completed": true,
+            "tool_context": "Search_Result:\nOriginal Question:\nAccording to github, when was Regression added to the oldest closed numpy.polynomial issue that has the Regression label in MM/DD/YY?\n\nQuery:\n[Q1] According to github, when was Regression added to the oldest closed numpy polynomial issue that has the Regression label in MM/DD/YY\n[Q2] \"Regression\" date year\n[Q3] \"MM\" date year\n[H1] Regression Regression label label date\n[H2] Solution Regression label label date\n[V1] \"2010\" \"Regression\" \"MM\" \"DD\"\n[V2] \"2000\" \"Regression\" \"MM\" \"DD\"\n[V3] \"Apr 15, 2018\" \"Regression\" \"MM\" \"DD\"\n[V4] \"2016\" \"Regression\" \"MM\" \"DD\"\n[V5] \"2013\" \"Regression\" \"MM\" \"DD\"\n\nEvidence:\n[E1]\nSource: mcp-github-research/README.md at master · MikeyBeez/mcp-github-research\nQuery: Q1\nText: Solution: github_analyze_label_history + github_get_issue_timeline Example: \"According to github, when was Regression added to the oldest closed numpy.polynomial issue that has the Regression label?\"\n[E2]\nSource: metadata.jsonl · SumitB7/Final_Assignment_Template at main\nQuery: Q1\nText: Opened the NumPy GitHub page. 3. Clicked \\\"Issues \\ \" in the repo tabs. 4. Clicked \\\"Closed \\ \" on the filter bar. 5. Set the filter to the \\\" numpy.polynomial\\ \" label. 6. Set the filter to the \\\"06 - Regression \\ \" label. 7. Opened the oldest Regression post. 8. Scrolled down to find when the Regression label was added (Apr 15, 2018). 9.\n[E3]\nSource: Regression analysis - Wikipedia\nQuery: Q2\nText: In statistical modeling, regression analysis is a statistical method for estimating the relationship between a dependent variable (often called the outcome or response variable, or a label in machine learning parlance) and one or more independent variables (often called regressors, predictors, covariates, explanatory variables or features). [1][2] The most common form of regression analysis is ...\n[E4]\nSource: Excel use dates as x axis, but numbers to fit regression equation\nQuery: H1\nText: I would still like to keep the dates on the x-axis of the chart, but have my regression equation use numbers like 1,2,3,...instead of date values like 43013. I tried to follow Microsoft Office Support's Change axis labels in a chart article, but changing horizontal axis labels is greyed out This is what the chart looks like:\n[E5]\nSource: r - Does it make sense to use a date variable in a regression? - Cross Validated\nQuery: Q2\nText: Usually, but not necessarily, the origin should be a date within the time period of study or very close to it. Perhaps the simplest case is linear regression on a date variable in years. Here a regression of some response on date expressed as dates like 2000 or 2010 implies an intercept which is the value of response in year 0.\n[E6]\nSource: Format date in regression - Statalist\nQuery: Q2\nText: Hi all, Perhaps a simple answer to this question but I can't seem to find an appropriate answer to it. I want to run a regression with time fixed effects. My data contains a variable date, e.g. 26th July 2016. By means of ... format quarter_of_year %tq When I look at my data, the date will be correctly displayed as 2016Q3.\n[E7]\nSource: Does it make sense to use a date variable in a regression?\nQuery: H1\nText: Usually, but not necessarily, the origin should be a date within the time period of study or very close to it. Perhaps the simplest case is linear regression on a date variable in years. Here a regression of some response on date expressed as dates like 2000 or 2010 implies an intercept which is the value of response in year 0.\n[E8]\nSource: Linear Regression with Date Hierarchy on X Axis\nQuery: H2\nText: Hi everyone! I have a line chart with average shipping costs (SC/O) as my y-axis and Calendar Quarter / Month Name as my x-axis. [Calendar Quarter] and [Month Name] are a part of a date hierarchy created from my 'Date' table. I have managed to create a line regression measure LINESTX using the [Order Date] column on my 'Orders' fact table. My problem with it is the line chart is becomes too ...\n\nCandidate Answer:\n[C1] answer=2010; type=date; evidence=E5, E7\n[C2] answer=2000; type=date; evidence=E5, E7\n[C3] answer=Apr 15, 2018; type=date; evidence=E2",
+            "prompt_tokens": 1305,
+            "completion_tokens": 3315,
+            "total_tokens": 4620,
+            "tool_calls": [],
+            "tool_results": [],
+            "trajectory": []
+          },
+          {
+            "agent_id": "qwen",
+            "model_name": "qwen3:4b",
+            "run_index": 2,
+            "raw_reply": "REASONING =  \nstep 1. The question asks for the date when the \"Regression\" label was added to the oldest closed `numpy.polynomial` issue on GitHub, formatted as MM/DD/YY.  \nstep 2. Evidence [E2] explicitly states that by filtering GitHub's closed issues for `numpy.polynomial` and the \"06 - Regression\" label, the oldest issue's \"Regression\" label was added on **Apr 15, 2018**. This directly answers the query.  \nstep 3. Other evidence (e.g., [E5], [E7]) discusses statistical regression concepts but does not relate to GitHub issue labels or dates.  \nstep 4. The candidate answer [C3] (\"Apr 15, 2018\") is supported by [E2] and matches the required MM/DD/YY format (04/15/18).  \nstep 5. No conflicting evidence exists for the date, and the other candidates (2010, 2000) are irrelevant to GitHub issue labels.  \n\nFINAL_ANSWER = 04/15/18",
+            "reasoning": "step 1. The question asks for the date when the \"Regression\" label was added to the oldest closed `numpy.polynomial` issue on GitHub, formatted as MM/DD/YY.  \nstep 2. Evidence [E2] explicitly states that by filtering GitHub's closed issues for `numpy.polynomial` and the \"06 - Regression\" label, the oldest issue's \"Regression\" label was added on **Apr 15, 2018**. This directly answers the query.  \nstep 3. Other evidence (e.g., [E5], [E7]) discusses statistical regression concepts but does not relate to GitHub issue labels or dates.  \nstep 4. The candidate answer [C3] (\"Apr 15, 2018\") is supported by [E2] and matches the required MM/DD/YY format (04/15/18).  \nstep 5. No conflicting evidence exists for the date, and the other candidates (2010, 2000) are irrelevant to GitHub issue labels.",
+            "final_answer": "04/15/18",
+            "parse_completed": true,
+            "tool_context": "Search_Result:\nOriginal Question:\nAccording to github, when was Regression added to the oldest closed numpy.polynomial issue that has the Regression label in MM/DD/YY?\n\nQuery:\n[Q1] According to github, when was Regression added to the oldest closed numpy polynomial issue that has the Regression label in MM/DD/YY\n[Q2] \"Regression\" date year\n[Q3] \"MM\" date year\n[H1] Regression Regression label label date\n[H2] Solution Regression label label date\n[V1] \"2010\" \"Regression\" \"MM\" \"DD\"\n[V2] \"2000\" \"Regression\" \"MM\" \"DD\"\n[V3] \"Apr 15, 2018\" \"Regression\" \"MM\" \"DD\"\n[V4] \"2016\" \"Regression\" \"MM\" \"DD\"\n[V5] \"2013\" \"Regression\" \"MM\" \"DD\"\n\nEvidence:\n[E1]\nSource: mcp-github-research/README.md at master · MikeyBeez/mcp-github-research\nQuery: Q1\nText: Solution: github_analyze_label_history + github_get_issue_timeline Example: \"According to github, when was Regression added to the oldest closed numpy.polynomial issue that has the Regression label?\"\n[E2]\nSource: metadata.jsonl · SumitB7/Final_Assignment_Template at main\nQuery: Q1\nText: Opened the NumPy GitHub page. 3. Clicked \\\"Issues \\ \" in the repo tabs. 4. Clicked \\\"Closed \\ \" on the filter bar. 5. Set the filter to the \\\" numpy.polynomial\\ \" label. 6. Set the filter to the \\\"06 - Regression \\ \" label. 7. Opened the oldest Regression post. 8. Scrolled down to find when the Regression label was added (Apr 15, 2018). 9.\n[E3]\nSource: Regression analysis - Wikipedia\nQuery: Q2\nText: In statistical modeling, regression analysis is a statistical method for estimating the relationship between a dependent variable (often called the outcome or response variable, or a label in machine learning parlance) and one or more independent variables (often called regressors, predictors, covariates, explanatory variables or features). [1][2] The most common form of regression analysis is ...\n[E4]\nSource: Excel use dates as x axis, but numbers to fit regression equation\nQuery: H1\nText: I would still like to keep the dates on the x-axis of the chart, but have my regression equation use numbers like 1,2,3,...instead of date values like 43013. I tried to follow Microsoft Office Support's Change axis labels in a chart article, but changing horizontal axis labels is greyed out This is what the chart looks like:\n[E5]\nSource: r - Does it make sense to use a date variable in a regression? - Cross Validated\nQuery: Q2\nText: Usually, but not necessarily, the origin should be a date within the time period of study or very close to it. Perhaps the simplest case is linear regression on a date variable in years. Here a regression of some response on date expressed as dates like 2000 or 2010 implies an intercept which is the value of response in year 0.\n[E6]\nSource: Format date in regression - Statalist\nQuery: Q2\nText: Hi all, Perhaps a simple answer to this question but I can't seem to find an appropriate answer to it. I want to run a regression with time fixed effects. My data contains a variable date, e.g. 26th July 2016. By means of ... format quarter_of_year %tq When I look at my data, the date will be correctly displayed as 2016Q3.\n[E7]\nSource: Does it make sense to use a date variable in a regression?\nQuery: H1\nText: Usually, but not necessarily, the origin should be a date within the time period of study or very close to it. Perhaps the simplest case is linear regression on a date variable in years. Here a regression of some response on date expressed as dates like 2000 or 2010 implies an intercept which is the value of response in year 0.\n[E8]\nSource: Linear Regression with Date Hierarchy on X Axis\nQuery: H2\nText: Hi everyone! I have a line chart with average shipping costs (SC/O) as my y-axis and Calendar Quarter / Month Name as my x-axis. [Calendar Quarter] and [Month Name] are a part of a date hierarchy created from my 'Date' table. I have managed to create a line regression measure LINESTX using the [Order Date] column on my 'Orders' fact table. My problem with it is the line chart is becomes too ...\n\nCandidate Answer:\n[C1] answer=2010; type=date; evidence=E5, E7\n[C2] answer=2000; type=date; evidence=E5, E7\n[C3] answer=Apr 15, 2018; type=date; evidence=E2",
+            "prompt_tokens": 1305,
+            "completion_tokens": 1437,
+            "total_tokens": 2742,
+            "tool_calls": [],
+            "tool_results": [],
+            "trajectory": []
+          },
+          {
+            "agent_id": "qwen",
+            "model_name": "qwen3:4b",
+            "run_index": 3,
+            "raw_reply": "The question asks for the date when the \"Regression\" label was added to the oldest closed `numpy.polynomial` issue, formatted in **MM/DD/YY**.\n\nFrom the provided evidence, **[E2]** states:  \n> *\"Scrolled down to find when the Regression label was added (Apr 15, 2018).\"*\n\nThis confirms that the label was added on **April 15, 2018**. To convert this into **MM/DD/YY** format:\n- **April** → **04**\n- **15** → **15**\n- **2018** → **18**\n\nThus, the date in **MM/DD/YY** is **04/15/18**.\n\nOther candidate answers ([C1] and [C2]) are irrelevant as they pertain to statistical regression, not GitHub issue labels.\n\n---\n\n**Final Answer:**  \n**04/15/18**",
+            "reasoning": "The question asks for the date when the \"Regression\" label was added to the oldest closed `numpy.polynomial` issue, formatted in **MM/DD/YY**.\nFrom the provided evidence, **[E2]** states:\n> *\"Scrolled down to find when the Regression label was added (Apr 15, 2018).\"*\nThis confirms that the label was added on **April 15, 2018**. To convert this into **MM/DD/YY** format:\n- **April** → **04**\n- **15** → **15**\n- **2018** → **18**\nThus, the date in **MM/DD/YY** is **04/15/18**.\nOther candidate answers ([C1] and [C2]) are irrelevant as they pertain to statistical regression, not GitHub issue labels.\n---\n**Final Answer:**\n**04/15/18**",
+            "final_answer": "04/15/18",
+            "parse_completed": true,
+            "tool_context": "Search_Result:\nOriginal Question:\nAccording to github, when was Regression added to the oldest closed numpy.polynomial issue that has the Regression label in MM/DD/YY?\n\nQuery:\n[Q1] According to github, when was Regression added to the oldest closed numpy polynomial issue that has the Regression label in MM/DD/YY\n[Q2] \"Regression\" date year\n[Q3] \"MM\" date year\n[H1] Regression Regression label label date\n[H2] Solution Regression label label date\n[V1] \"2010\" \"Regression\" \"MM\" \"DD\"\n[V2] \"2000\" \"Regression\" \"MM\" \"DD\"\n[V3] \"Apr 15, 2018\" \"Regression\" \"MM\" \"DD\"\n[V4] \"2016\" \"Regression\" \"MM\" \"DD\"\n[V5] \"2013\" \"Regression\" \"MM\" \"DD\"\n\nEvidence:\n[E1]\nSource: mcp-github-research/README.md at master · MikeyBeez/mcp-github-research\nQuery: Q1\nText: Solution: github_analyze_label_history + github_get_issue_timeline Example: \"According to github, when was Regression added to the oldest closed numpy.polynomial issue that has the Regression label?\"\n[E2]\nSource: metadata.jsonl · SumitB7/Final_Assignment_Template at main\nQuery: Q1\nText: Opened the NumPy GitHub page. 3. Clicked \\\"Issues \\ \" in the repo tabs. 4. Clicked \\\"Closed \\ \" on the filter bar. 5. Set the filter to the \\\" numpy.polynomial\\ \" label. 6. Set the filter to the \\\"06 - Regression \\ \" label. 7. Opened the oldest Regression post. 8. Scrolled down to find when the Regression label was added (Apr 15, 2018). 9.\n[E3]\nSource: Regression analysis - Wikipedia\nQuery: Q2\nText: In statistical modeling, regression analysis is a statistical method for estimating the relationship between a dependent variable (often called the outcome or response variable, or a label in machine learning parlance) and one or more independent variables (often called regressors, predictors, covariates, explanatory variables or features). [1][2] The most common form of regression analysis is ...\n[E4]\nSource: Excel use dates as x axis, but numbers to fit regression equation\nQuery: H1\nText: I would still like to keep the dates on the x-axis of the chart, but have my regression equation use numbers like 1,2,3,...instead of date values like 43013. I tried to follow Microsoft Office Support's Change axis labels in a chart article, but changing horizontal axis labels is greyed out This is what the chart looks like:\n[E5]\nSource: r - Does it make sense to use a date variable in a regression? - Cross Validated\nQuery: Q2\nText: Usually, but not necessarily, the origin should be a date within the time period of study or very close to it. Perhaps the simplest case is linear regression on a date variable in years. Here a regression of some response on date expressed as dates like 2000 or 2010 implies an intercept which is the value of response in year 0.\n[E6]\nSource: Format date in regression - Statalist\nQuery: Q2\nText: Hi all, Perhaps a simple answer to this question but I can't seem to find an appropriate answer to it. I want to run a regression with time fixed effects. My data contains a variable date, e.g. 26th July 2016. By means of ... format quarter_of_year %tq When I look at my data, the date will be correctly displayed as 2016Q3.\n[E7]\nSource: Does it make sense to use a date variable in a regression?\nQuery: H1\nText: Usually, but not necessarily, the origin should be a date within the time period of study or very close to it. Perhaps the simplest case is linear regression on a date variable in years. Here a regression of some response on date expressed as dates like 2000 or 2010 implies an intercept which is the value of response in year 0.\n[E8]\nSource: Linear Regression with Date Hierarchy on X Axis\nQuery: H2\nText: Hi everyone! I have a line chart with average shipping costs (SC/O) as my y-axis and Calendar Quarter / Month Name as my x-axis. [Calendar Quarter] and [Month Name] are a part of a date hierarchy created from my 'Date' table. I have managed to create a line regression measure LINESTX using the [Order Date] column on my 'Orders' fact table. My problem with it is the line chart is becomes too ...\n\nCandidate Answer:\n[C1] answer=2010; type=date; evidence=E5, E7\n[C2] answer=2000; type=date; evidence=E5, E7\n[C3] answer=Apr 15, 2018; type=date; evidence=E2",
+            "prompt_tokens": 1305,
+            "completion_tokens": 3463,
+            "total_tokens": 4768,
+            "tool_calls": [],
+            "tool_results": [],
+            "trajectory": []
+          }
+        ],
+        "compressed_answer": "04/15/18",
+        "compressed_reasoning": "- The problem asks for the date when the \"Regression\" label was added to the oldest closed `numpy.polynomial` issue, formatted in **MM/DD/YY**.\nThe most direct evidence comes from **Evidence [E2]**, which describes a step-by-step process on GitHub where the user found that the label was added on **April 15, 2018**. This is explicitly stated as: *\"Scrolled down to find when the Regression label was added (Apr 15, 2018)\"*.\nTo convert this date into **MM/DD/YY** format:\n- **April** → `04`\n- **15** → `15`\n- **2018** → `18` (two-digit year)\nThus, the final answer in the required format is:\n**04/15/18**\n- step 1. The question asks for the date when the \"Regression\" label was added to the oldest closed `numpy.polynomial` issue on GitHub, formatted as MM/DD/YY.  \nstep 2. Evidence [E2] explicitly states that by filtering GitHub's closed issues for `numpy.polynomial` and the \"06 - Regression\" label, the oldest issue's \"Regression\" label was added on **Apr 15, 2018**. This directly answers the query.  \nstep 3. Other evidence (e.g., [E5], [E7]) discusses statistical regression concepts but does not relate to GitHub issue labels or dates.  \nstep 4. The candidate answer [C3] (\"Apr 15, 2018\") is supported by [E2] and matches the required MM/DD/YY format (04/15/18).  \nstep 5. No conflicting evidence exists for the date, and the other candidates (2010, 2000) are irrelevant to GitHub issue labels.\n- The question asks for the date when the \"Regression\" label was added to the oldest closed `numpy.polynomial` issue, formatted in **MM/DD/YY**.\nFrom the provided evidence, **[E2]** states:\n> *\"Scrolled down to find when the Regression label was added (Apr 15, 2018).\"*\nThis confirms that the label was added on **April 15, 2018**. To convert this into **MM/DD/YY** format:\n- **April** → **04**\n- **15** → **15**\n- **2018** → **18**\nThus, the date in **MM/DD/YY** is **04/15/18**.\nOther candidate answers ([C1] and [C2]) are irrelevant as they pertain to statistical regression, not GitHub issue labels.\n---\n**Final Answer:**\n**04/15/18**",
+        "confidence_score": 1.0,
+        "active": true
+      },
+      {
+        "agent_id": "gemma",
+        "model_name": "gemma3:4b",
+        "runs": [
+          {
+            "agent_id": "gemma",
+            "model_name": "gemma3:4b",
+            "run_index": 1,
+            "raw_reply": "REASONING =\nstep 1. The user is asking for a very specific date: when the \"Regression\" label was added to the oldest closed `numpy.polynomial` issue, according to GitHub.\nstep 2. The search results contain evidence detailing the steps taken to find this information. Evidence [E2] describes the process of filtering GitHub issues (Closed, `numpy.polynomial` label, `06 - Regression` label) and explicitly states the finding: \"Scrolled down to find when the Regression label was added (Apr 15, 2018).\"\nstep 3. Candidate [C3] matches this finding, citing Evidence [E2] as support. Candidates [C1] and [C2] reference general date concepts from irrelevant sources (E5, E7).\nstep 4. Therefore, the date found in Evidence [E2] is the correct answer.\nFINAL_ANSWER = Apr 15, 2018",
+            "reasoning": "step 1. The user is asking for a very specific date: when the \"Regression\" label was added to the oldest closed `numpy.polynomial` issue, according to GitHub.\nstep 2. The search results contain evidence detailing the steps taken to find this information. Evidence [E2] describes the process of filtering GitHub issues (Closed, `numpy.polynomial` label, `06 - Regression` label) and explicitly states the finding: \"Scrolled down to find when the Regression label was added (Apr 15, 2018).\"\nstep 3. Candidate [C3] matches this finding, citing Evidence [E2] as support. Candidates [C1] and [C2] reference general date concepts from irrelevant sources (E5, E7).\nstep 4. Therefore, the date found in Evidence [E2] is the correct answer.",
+            "final_answer": "Apr 15, 2018",
+            "parse_completed": true,
+            "tool_context": "Search_Result:\nOriginal Question:\nAccording to github, when was Regression added to the oldest closed numpy.polynomial issue that has the Regression label in MM/DD/YY?\n\nQuery:\n[Q1] According to github, when was Regression added to the oldest closed numpy polynomial issue that has the Regression label in MM/DD/YY\n[Q2] \"Regression\" date year\n[Q3] \"MM\" date year\n[H1] Regression Regression label label date\n[H2] Solution Regression label label date\n[V1] \"2010\" \"Regression\" \"MM\" \"DD\"\n[V2] \"2000\" \"Regression\" \"MM\" \"DD\"\n[V3] \"Apr 15, 2018\" \"Regression\" \"MM\" \"DD\"\n[V4] \"2016\" \"Regression\" \"MM\" \"DD\"\n[V5] \"2013\" \"Regression\" \"MM\" \"DD\"\n\nEvidence:\n[E1]\nSource: mcp-github-research/README.md at master · MikeyBeez/mcp-github-research\nQuery: Q1\nText: Solution: github_analyze_label_history + github_get_issue_timeline Example: \"According to github, when was Regression added to the oldest closed numpy.polynomial issue that has the Regression label?\"\n[E2]\nSource: metadata.jsonl · SumitB7/Final_Assignment_Template at main\nQuery: Q1\nText: Opened the NumPy GitHub page. 3. Clicked \\\"Issues \\ \" in the repo tabs. 4. Clicked \\\"Closed \\ \" on the filter bar. 5. Set the filter to the \\\" numpy.polynomial\\ \" label. 6. Set the filter to the \\\"06 - Regression \\ \" label. 7. Opened the oldest Regression post. 8. Scrolled down to find when the Regression label was added (Apr 15, 2018). 9.\n[E3]\nSource: Regression analysis - Wikipedia\nQuery: Q2\nText: In statistical modeling, regression analysis is a statistical method for estimating the relationship between a dependent variable (often called the outcome or response variable, or a label in machine learning parlance) and one or more independent variables (often called regressors, predictors, covariates, explanatory variables or features). [1][2] The most common form of regression analysis is ...\n[E4]\nSource: Excel use dates as x axis, but numbers to fit regression equation\nQuery: H1\nText: I would still like to keep the dates on the x-axis of the chart, but have my regression equation use numbers like 1,2,3,...instead of date values like 43013. I tried to follow Microsoft Office Support's Change axis labels in a chart article, but changing horizontal axis labels is greyed out This is what the chart looks like:\n[E5]\nSource: r - Does it make sense to use a date variable in a regression? - Cross Validated\nQuery: Q2\nText: Usually, but not necessarily, the origin should be a date within the time period of study or very close to it. Perhaps the simplest case is linear regression on a date variable in years. Here a regression of some response on date expressed as dates like 2000 or 2010 implies an intercept which is the value of response in year 0.\n[E6]\nSource: Format date in regression - Statalist\nQuery: Q2\nText: Hi all, Perhaps a simple answer to this question but I can't seem to find an appropriate answer to it. I want to run a regression with time fixed effects. My data contains a variable date, e.g. 26th July 2016. By means of ... format quarter_of_year %tq When I look at my data, the date will be correctly displayed as 2016Q3.\n[E7]\nSource: Does it make sense to use a date variable in a regression?\nQuery: H1\nText: Usually, but not necessarily, the origin should be a date within the time period of study or very close to it. Perhaps the simplest case is linear regression on a date variable in years. Here a regression of some response on date expressed as dates like 2000 or 2010 implies an intercept which is the value of response in year 0.\n[E8]\nSource: Linear Regression with Date Hierarchy on X Axis\nQuery: H2\nText: Hi everyone! I have a line chart with average shipping costs (SC/O) as my y-axis and Calendar Quarter / Month Name as my x-axis. [Calendar Quarter] and [Month Name] are a part of a date hierarchy created from my 'Date' table. I have managed to create a line regression measure LINESTX using the [Order Date] column on my 'Orders' fact table. My problem with it is the line chart is becomes too ...\n\nCandidate Answer:\n[C1] answer=2010; type=date; evidence=E5, E7\n[C2] answer=2000; type=date; evidence=E5, E7\n[C3] answer=Apr 15, 2018; type=date; evidence=E2",
+            "prompt_tokens": 1389,
+            "completion_tokens": 742,
+            "total_tokens": 2131,
+            "tool_calls": [],
+            "tool_results": [],
+            "trajectory": []
+          },
+          {
+            "agent_id": "gemma",
+            "model_name": "gemma3:4b",
+            "run_index": 2,
+            "raw_reply": "REASONING =\nstep 1. The user is asking for a specific date: when the \"Regression\" label was added to the oldest closed `numpy.polynomial` issue with that label, based on GitHub data.\nstep 2. I must search the provided evidence for information related to GitHub issue history, labels, and dates for `numpy.polynomial`.\nstep 3. Evidence [E2] details a process on the NumPy GitHub page, including filtering for the \"numpy.polynomial\" label and the \"Regression\" label.\nstep 4. Evidence [E2] explicitly states the result of this investigation: \"Opened the oldest Regression post. Scrolled down to find when the Regression label was added (Apr 15, 2018).\"\nstep 5. Candidate [C3] matches this finding, citing Evidence [E2] as support.\nFINAL_ANSWER = [C3]",
+            "reasoning": "step 1. The user is asking for a specific date: when the \"Regression\" label was added to the oldest closed `numpy.polynomial` issue with that label, based on GitHub data.\nstep 2. I must search the provided evidence for information related to GitHub issue history, labels, and dates for `numpy.polynomial`.\nstep 3. Evidence [E2] details a process on the NumPy GitHub page, including filtering for the \"numpy.polynomial\" label and the \"Regression\" label.\nstep 4. Evidence [E2] explicitly states the result of this investigation: \"Opened the oldest Regression post. Scrolled down to find when the Regression label was added (Apr 15, 2018).\"\nstep 5. Candidate [C3] matches this finding, citing Evidence [E2] as support.",
+            "final_answer": "[C3]",
+            "parse_completed": true,
+            "tool_context": "Search_Result:\nOriginal Question:\nAccording to github, when was Regression added to the oldest closed numpy.polynomial issue that has the Regression label in MM/DD/YY?\n\nQuery:\n[Q1] According to github, when was Regression added to the oldest closed numpy polynomial issue that has the Regression label in MM/DD/YY\n[Q2] \"Regression\" date year\n[Q3] \"MM\" date year\n[H1] Regression Regression label label date\n[H2] Solution Regression label label date\n[V1] \"2010\" \"Regression\" \"MM\" \"DD\"\n[V2] \"2000\" \"Regression\" \"MM\" \"DD\"\n[V3] \"Apr 15, 2018\" \"Regression\" \"MM\" \"DD\"\n[V4] \"2016\" \"Regression\" \"MM\" \"DD\"\n[V5] \"2013\" \"Regression\" \"MM\" \"DD\"\n\nEvidence:\n[E1]\nSource: mcp-github-research/README.md at master · MikeyBeez/mcp-github-research\nQuery: Q1\nText: Solution: github_analyze_label_history + github_get_issue_timeline Example: \"According to github, when was Regression added to the oldest closed numpy.polynomial issue that has the Regression label?\"\n[E2]\nSource: metadata.jsonl · SumitB7/Final_Assignment_Template at main\nQuery: Q1\nText: Opened the NumPy GitHub page. 3. Clicked \\\"Issues \\ \" in the repo tabs. 4. Clicked \\\"Closed \\ \" on the filter bar. 5. Set the filter to the \\\" numpy.polynomial\\ \" label. 6. Set the filter to the \\\"06 - Regression \\ \" label. 7. Opened the oldest Regression post. 8. Scrolled down to find when the Regression label was added (Apr 15, 2018). 9.\n[E3]\nSource: Regression analysis - Wikipedia\nQuery: Q2\nText: In statistical modeling, regression analysis is a statistical method for estimating the relationship between a dependent variable (often called the outcome or response variable, or a label in machine learning parlance) and one or more independent variables (often called regressors, predictors, covariates, explanatory variables or features). [1][2] The most common form of regression analysis is ...\n[E4]\nSource: Excel use dates as x axis, but numbers to fit regression equation\nQuery: H1\nText: I would still like to keep the dates on the x-axis of the chart, but have my regression equation use numbers like 1,2,3,...instead of date values like 43013. I tried to follow Microsoft Office Support's Change axis labels in a chart article, but changing horizontal axis labels is greyed out This is what the chart looks like:\n[E5]\nSource: r - Does it make sense to use a date variable in a regression? - Cross Validated\nQuery: Q2\nText: Usually, but not necessarily, the origin should be a date within the time period of study or very close to it. Perhaps the simplest case is linear regression on a date variable in years. Here a regression of some response on date expressed as dates like 2000 or 2010 implies an intercept which is the value of response in year 0.\n[E6]\nSource: Format date in regression - Statalist\nQuery: Q2\nText: Hi all, Perhaps a simple answer to this question but I can't seem to find an appropriate answer to it. I want to run a regression with time fixed effects. My data contains a variable date, e.g. 26th July 2016. By means of ... format quarter_of_year %tq When I look at my data, the date will be correctly displayed as 2016Q3.\n[E7]\nSource: Does it make sense to use a date variable in a regression?\nQuery: H1\nText: Usually, but not necessarily, the origin should be a date within the time period of study or very close to it. Perhaps the simplest case is linear regression on a date variable in years. Here a regression of some response on date expressed as dates like 2000 or 2010 implies an intercept which is the value of response in year 0.\n[E8]\nSource: Linear Regression with Date Hierarchy on X Axis\nQuery: H2\nText: Hi everyone! I have a line chart with average shipping costs (SC/O) as my y-axis and Calendar Quarter / Month Name as my x-axis. [Calendar Quarter] and [Month Name] are a part of a date hierarchy created from my 'Date' table. I have managed to create a line regression measure LINESTX using the [Order Date] column on my 'Orders' fact table. My problem with it is the line chart is becomes too ...\n\nCandidate Answer:\n[C1] answer=2010; type=date; evidence=E5, E7\n[C2] answer=2000; type=date; evidence=E5, E7\n[C3] answer=Apr 15, 2018; type=date; evidence=E2",
+            "prompt_tokens": 1389,
+            "completion_tokens": 622,
+            "total_tokens": 2011,
+            "tool_calls": [],
+            "tool_results": [],
+            "trajectory": []
+          },
+          {
+            "agent_id": "gemma",
+            "model_name": "gemma3:4b",
+            "run_index": 3,
+            "raw_reply": "REASONING =\nstep 1. The user is asking for a specific date from GitHub regarding when the \"Regression\" label was added to the oldest closed `numpy.polynomial` issue.\nstep 2. I must search the provided evidence for information related to GitHub, issue labels, and this specific topic.\nstep 3. Evidence [E2] provides a step-by-step process for finding this information, stating: \"Opened the oldest Regression post. Scrolled down to find when the Regression label was added (Apr 15, 2018).\"\nstep 4. Candidate [C3] utilizes Evidence [E2] and provides the date \"Apr 15, 2018,\" which directly answers the question.\nstep 5. Therefore, the final answer is derived from Candidate [C3].\nFINAL_ANSWER = C3",
+            "reasoning": "step 1. The user is asking for a specific date from GitHub regarding when the \"Regression\" label was added to the oldest closed `numpy.polynomial` issue.\nstep 2. I must search the provided evidence for information related to GitHub, issue labels, and this specific topic.\nstep 3. Evidence [E2] provides a step-by-step process for finding this information, stating: \"Opened the oldest Regression post. Scrolled down to find when the Regression label was added (Apr 15, 2018).\"\nstep 4. Candidate [C3] utilizes Evidence [E2] and provides the date \"Apr 15, 2018,\" which directly answers the question.\nstep 5. Therefore, the final answer is derived from Candidate [C3].",
+            "final_answer": "C3",
+            "parse_completed": true,
+            "tool_context": "Search_Result:\nOriginal Question:\nAccording to github, when was Regression added to the oldest closed numpy.polynomial issue that has the Regression label in MM/DD/YY?\n\nQuery:\n[Q1] According to github, when was Regression added to the oldest closed numpy polynomial issue that has the Regression label in MM/DD/YY\n[Q2] \"Regression\" date year\n[Q3] \"MM\" date year\n[H1] Regression Regression label label date\n[H2] Solution Regression label label date\n[V1] \"2010\" \"Regression\" \"MM\" \"DD\"\n[V2] \"2000\" \"Regression\" \"MM\" \"DD\"\n[V3] \"Apr 15, 2018\" \"Regression\" \"MM\" \"DD\"\n[V4] \"2016\" \"Regression\" \"MM\" \"DD\"\n[V5] \"2013\" \"Regression\" \"MM\" \"DD\"\n\nEvidence:\n[E1]\nSource: mcp-github-research/README.md at master · MikeyBeez/mcp-github-research\nQuery: Q1\nText: Solution: github_analyze_label_history + github_get_issue_timeline Example: \"According to github, when was Regression added to the oldest closed numpy.polynomial issue that has the Regression label?\"\n[E2]\nSource: metadata.jsonl · SumitB7/Final_Assignment_Template at main\nQuery: Q1\nText: Opened the NumPy GitHub page. 3. Clicked \\\"Issues \\ \" in the repo tabs. 4. Clicked \\\"Closed \\ \" on the filter bar. 5. Set the filter to the \\\" numpy.polynomial\\ \" label. 6. Set the filter to the \\\"06 - Regression \\ \" label. 7. Opened the oldest Regression post. 8. Scrolled down to find when the Regression label was added (Apr 15, 2018). 9.\n[E3]\nSource: Regression analysis - Wikipedia\nQuery: Q2\nText: In statistical modeling, regression analysis is a statistical method for estimating the relationship between a dependent variable (often called the outcome or response variable, or a label in machine learning parlance) and one or more independent variables (often called regressors, predictors, covariates, explanatory variables or features). [1][2] The most common form of regression analysis is ...\n[E4]\nSource: Excel use dates as x axis, but numbers to fit regression equation\nQuery: H1\nText: I would still like to keep the dates on the x-axis of the chart, but have my regression equation use numbers like 1,2,3,...instead of date values like 43013. I tried to follow Microsoft Office Support's Change axis labels in a chart article, but changing horizontal axis labels is greyed out This is what the chart looks like:\n[E5]\nSource: r - Does it make sense to use a date variable in a regression? - Cross Validated\nQuery: Q2\nText: Usually, but not necessarily, the origin should be a date within the time period of study or very close to it. Perhaps the simplest case is linear regression on a date variable in years. Here a regression of some response on date expressed as dates like 2000 or 2010 implies an intercept which is the value of response in year 0.\n[E6]\nSource: Format date in regression - Statalist\nQuery: Q2\nText: Hi all, Perhaps a simple answer to this question but I can't seem to find an appropriate answer to it. I want to run a regression with time fixed effects. My data contains a variable date, e.g. 26th July 2016. By means of ... format quarter_of_year %tq When I look at my data, the date will be correctly displayed as 2016Q3.\n[E7]\nSource: Does it make sense to use a date variable in a regression?\nQuery: H1\nText: Usually, but not necessarily, the origin should be a date within the time period of study or very close to it. Perhaps the simplest case is linear regression on a date variable in years. Here a regression of some response on date expressed as dates like 2000 or 2010 implies an intercept which is the value of response in year 0.\n[E8]\nSource: Linear Regression with Date Hierarchy on X Axis\nQuery: H2\nText: Hi everyone! I have a line chart with average shipping costs (SC/O) as my y-axis and Calendar Quarter / Month Name as my x-axis. [Calendar Quarter] and [Month Name] are a part of a date hierarchy created from my 'Date' table. I have managed to create a line regression measure LINESTX using the [Order Date] column on my 'Orders' fact table. My problem with it is the line chart is becomes too ...\n\nCandidate Answer:\n[C1] answer=2010; type=date; evidence=E5, E7\n[C2] answer=2000; type=date; evidence=E5, E7\n[C3] answer=Apr 15, 2018; type=date; evidence=E2",
+            "prompt_tokens": 1389,
+            "completion_tokens": 611,
+            "total_tokens": 2000,
+            "tool_calls": [],
+            "tool_results": [],
+            "trajectory": []
+          }
+        ],
+        "compressed_answer": "[C3]",
+        "compressed_reasoning": "step 1. The user is asking for a specific date: when the \"Regression\" label was added to the oldest closed `numpy.polynomial` issue with that label, based on GitHub data.\nstep 2. I must search the provided evidence for information related to GitHub issue history, labels, and dates for `numpy.polynomial`.\nstep 3. Evidence [E2] details a process on the NumPy GitHub page, including filtering for the \"numpy.polynomial\" label and the \"Regression\" label.\nstep 4. Evidence [E2] explicitly states the result of this investigation: \"Opened the oldest Regression post. Scrolled down to find when the Regression label was added (Apr 15, 2018).\"\nstep 5. Candidate [C3] matches this finding, citing Evidence [E2] as support.",
+        "confidence_score": 0.67,
+        "active": true
+      }
+    ],
+    "judge_results": [],
+    "agent_scores": [
+      {
+        "agent_id": "nemotron",
+        "model_name": "nemotron-mini:4b",
+        "temperature": 0.5,
+        "confidence_score": 1.0,
+        "judge_scores": [],
+        "avg_judge_score": 0.0,
+        "penalty_score": 0.0,
+        "penalty_reasons": [],
+        "total_score": 1.0
+      },
+      {
+        "agent_id": "minicpm",
+        "model_name": "minicpm3:4b",
+        "temperature": 0.5,
+        "confidence_score": 1.0,
+        "judge_scores": [],
+        "avg_judge_score": 0.0,
+        "penalty_score": 0.0,
+        "penalty_reasons": [],
+        "total_score": 1.0
+      },
+      {
+        "agent_id": "qwen",
+        "model_name": "qwen3:4b",
+        "temperature": 0.5,
+        "confidence_score": 1.0,
+        "judge_scores": [],
+        "avg_judge_score": 0.0,
+        "penalty_score": 0.0,
+        "penalty_reasons": [],
+        "total_score": 1.0
+      },
+      {
+        "agent_id": "gemma",
+        "model_name": "gemma3:4b",
+        "temperature": 0.5,
+        "confidence_score": 0.67,
+        "judge_scores": [],
+        "avg_judge_score": 0.0,
+        "penalty_score": 0.0,
+        "penalty_reasons": [],
+        "total_score": 0.67
+      }
+    ],
+    "metadata": {
+      "stage1_runs_per_agent": 3,
+      "response_time_seconds": 143.68552920000002,
+      "response_time_ms": 143685.529,
+      "token_usage": {
+        "stage1": {
+          "prompt_tokens": 16632,
+          "completion_tokens": 11901,
+          "total_tokens": 28533
+        },
+        "stage2": {
+          "prompt_tokens": 0,
+          "completion_tokens": 0,
+          "total_tokens": 0
+        },
+        "total": {
+          "prompt_tokens": 16632,
+          "completion_tokens": 11901,
+          "total_tokens": 28533
+        }
+      },
+      "max_stage1_workers": 4,
+      "max_stage2_workers": 12,
+      "stage2_max_tokens": 512,
+      "enable_stage1_tool_use": false,
+      "enable_compact_search_evidence": false,
+      "enable_signal_search_queries": true,
+      "enable_probability_candidate_rerank": true,
+      "enable_evidence_driven_search": true,
+      "max_stage1_tool_turns": 2,
+      "enable_stage1_early_stop": false,
+      "previous_best_agent_id": "nemotron",
+      "stage1_early_stop_max_retries": 1,
+      "stage1_attempts": 1,
+      "stage1_early_stop": true,
+      "stage1_early_stop_reason": "cross_agent_confidence_1.0_answer_consensus",
+      "stage2_skipped": true,
+      "cross_agent_consensus_used": true,
+      "cross_agent_consensus_supporting_agents": [
+        "nemotron",
+        "minicpm"
+      ],
+      "cross_agent_consensus_answer": "Apr 15, 2018",
+      "active_agent_count": 4,
+      "search_used": true,
+      "attachment_used": false,
+      "solver_used": false,
+      "routing": {
+        "use_calculator": false,
+        "use_search": true,
+        "use_deterministic_solver": false,
+        "use_python_solver": false,
+        "use_attachment": false,
+        "calculator_expression": null,
+        "task_type": "factual_search",
+        "trigger_terms": [
+          "added",
+          "closed",
+          "github",
+          "issue",
+          "label",
+          "oldest",
+          "when",
+          "according to github"
+        ],
+        "tool_policy": {
+          "prefer": [
+            "search"
+          ],
+          "optional": [],
+          "avoid": []
+        },
+        "routing_reasons": [
+          "question contains factual lookup signals: added, closed, github, issue, label, oldest",
+          "stage1 round0 system contract enables early evidence gathering"
+        ],
+        "routing_source": "system_routing_contract"
+      },
+      "tool_usage": [
+        {
+          "ok": true,
+          "tool_name": "search",
+          "output_text": "Original Question:\nAccording to github, when was Regression added to the oldest closed numpy.polynomial issue that has the Regression label in MM/DD/YY?\n\nQuery:\n[Q1] According to github, when was Regression added to the oldest closed numpy polynomial issue that has the Regression label in MM/DD/YY\n[Q2] \"Regression\" date year\n[Q3] \"MM\" date year\n[H1] Regression Regression label label date\n[H2] Solution Regression label label date\n[V1] \"2010\" \"Regression\" \"MM\" \"DD\"\n[V2] \"2000\" \"Regression\" \"MM\" \"DD\"\n[V3] \"Apr 15, 2018\" \"Regression\" \"MM\" \"DD\"\n[V4] \"2016\" \"Regression\" \"MM\" \"DD\"\n[V5] \"2013\" \"Regression\" \"MM\" \"DD\"\n\nEvidence:\n[E1]\nSource: mcp-github-research/README.md at master · MikeyBeez/mcp-github-research\nQuery: Q1\nText: Solution: github_analyze_label_history + github_get_issue_timeline Example: \"According to github, when was Regression added to the oldest closed numpy.polynomial issue that has the Regression label?\"\n[E2]\nSource: metadata.jsonl · SumitB7/Final_Assignment_Template at main\nQuery: Q1\nText: Opened the NumPy GitHub page. 3. Clicked \\\"Issues \\ \" in the repo tabs. 4. Clicked \\\"Closed \\ \" on the filter bar. 5. Set the filter to the \\\" numpy.polynomial\\ \" label. 6. Set the filter to the \\\"06 - Regression \\ \" label. 7. Opened the oldest Regression post. 8. Scrolled down to find when the Regression label was added (Apr 15, 2018). 9.\n[E3]\nSource: Regression analysis - Wikipedia\nQuery: Q2\nText: In statistical modeling, regression analysis is a statistical method for estimating the relationship between a dependent variable (often called the outcome or response variable, or a label in machine learning parlance) and one or more independent variables (often called regressors, predictors, covariates, explanatory variables or features). [1][2] The most common form of regression analysis is ...\n[E4]\nSource: Excel use dates as x axis, but numbers to fit regression equation\nQuery: H1\nText: I would still like to keep the dates on the x-axis of the chart, but have my regression equation use numbers like 1,2,3,...instead of date values like 43013. I tried to follow Microsoft Office Support's Change axis labels in a chart article, but changing horizontal axis labels is greyed out This is what the chart looks like:\n[E5]\nSource: r - Does it make sense to use a date variable in a regression? - Cross Validated\nQuery: Q2\nText: Usually, but not necessarily, the origin should be a date within the time period of study or very close to it. Perhaps the simplest case is linear regression on a date variable in years. Here a regression of some response on date expressed as dates like 2000 or 2010 implies an intercept which is the value of response in year 0.\n[E6]\nSource: Format date in regression - Statalist\nQuery: Q2\nText: Hi all, Perhaps a simple answer to this question but I can't seem to find an appropriate answer to it. I want to run a regression with time fixed effects. My data contains a variable date, e.g. 26th July 2016. By means of ... format quarter_of_year %tq When I look at my data, the date will be correctly displayed as 2016Q3.\n[E7]\nSource: Does it make sense to use a date variable in a regression?\nQuery: H1\nText: Usually, but not necessarily, the origin should be a date within the time period of study or very close to it. Perhaps the simplest case is linear regression on a date variable in years. Here a regression of some response on date expressed as dates like 2000 or 2010 implies an intercept which is the value of response in year 0.\n[E8]\nSource: Linear Regression with Date Hierarchy on X Axis\nQuery: H2\nText: Hi everyone! I have a line chart with average shipping costs (SC/O) as my y-axis and Calendar Quarter / Month Name as my x-axis. [Calendar Quarter] and [Month Name] are a part of a date hierarchy created from my 'Date' table. I have managed to create a line regression measure LINESTX using the [Order Date] column on my 'Orders' fact table. My problem with it is the line chart is becomes too ...\n\nCandidate Answer:\n[C1] answer=2010; type=date; evidence=E5, E7\n[C2] answer=2000; type=date; evidence=E5, E7\n[C3] answer=Apr 15, 2018; type=date; evidence=E2",
+          "raw_result": {
+            "question": "According to github, when was Regression added to the oldest closed numpy.polynomial issue that has the Regression label in MM/DD/YY?",
+            "queries": [
+              {
+                "query_id": "Q1",
+                "query": "According to github, when was Regression added to the oldest closed numpy polynomial issue that has the Regression label in MM/DD/YY",
+                "purpose": "core_question",
+                "priority": 99,
+                "source_hints": [],
+                "expected_answer_type": "date",
+                "requires_full_page": false
+              },
+              {
+                "query_id": "Q2",
+                "query": "\"Regression\" date year",
+                "purpose": "quoted_or_entity_focus",
+                "priority": 98,
+                "source_hints": [],
+                "expected_answer_type": "date",
+                "requires_full_page": false
+              },
+              {
+                "query_id": "Q3",
+                "query": "\"MM\" date year",
+                "purpose": "source_or_keyword_focus",
+                "priority": 97,
+                "source_hints": [],
+                "expected_answer_type": "date",
+                "requires_full_page": false
+              },
+              {
+                "query_id": "H1",
+                "query": "Regression Regression label label date",
+                "purpose": "evidence_driven_followup",
+                "priority": 79,
+                "source_hints": [],
+                "expected_answer_type": "date",
+                "requires_full_page": true
+              },
+              {
+                "query_id": "H2",
+                "query": "Solution Regression label label date",
+                "purpose": "evidence_driven_followup",
+                "priority": 78,
+                "source_hints": [],
+                "expected_answer_type": "date",
+                "requires_full_page": true
+              },
+              {
+                "query_id": "V1",
+                "query": "\"2010\" \"Regression\" \"MM\" \"DD\"",
+                "purpose": "candidate_verification",
+                "priority": 69,
+                "source_hints": [],
+                "expected_answer_type": "date",
+                "requires_full_page": true
+              },
+              {
+                "query_id": "V2",
+                "query": "\"2000\" \"Regression\" \"MM\" \"DD\"",
+                "purpose": "candidate_verification",
+                "priority": 68,
+                "source_hints": [],
+                "expected_answer_type": "date",
+                "requires_full_page": true
+              },
+              {
+                "query_id": "V3",
+                "query": "\"Apr 15, 2018\" \"Regression\" \"MM\" \"DD\"",
+                "purpose": "candidate_verification",
+                "priority": 67,
+                "source_hints": [],
+                "expected_answer_type": "date",
+                "requires_full_page": true
+              },
+              {
+                "query_id": "V4",
+                "query": "\"2016\" \"Regression\" \"MM\" \"DD\"",
+                "purpose": "candidate_verification",
+                "priority": 66,
+                "source_hints": [],
+                "expected_answer_type": "date",
+                "requires_full_page": true
+              },
+              {
+                "query_id": "V5",
+                "query": "\"2013\" \"Regression\" \"MM\" \"DD\"",
+                "purpose": "candidate_verification",
+                "priority": 65,
+                "source_hints": [],
+                "expected_answer_type": "date",
+                "requires_full_page": true
+              }
+            ],
+            "sources": [
+              {
+                "source_id": "S2",
+                "query_id": "Q1",
+                "title": "mcp-github-research/README.md at master · MikeyBeez/mcp-github-research",
+                "url": "https://github.com/MikeyBeez/mcp-github-research/blob/master/README.md",
+                "domain": "github.com",
+                "snippet": "Solution: github_analyze_label_history + github_get_issue_timeline Example: \"According to github, when was Regression added to the oldest closed numpy.polynomial issue that has the Regression label?\"",
+                "raw_content": "Solution: github_analyze_label_history + github_get_issue_timeline Example: \"According to github, when was Regression added to the oldest closed numpy.polynomial issue that has the Regression label?\"",
+                "rank": 2,
+                "rerank_score": 17.5,
+                "fetched": true,
+                "blocked": false,
+                "block_reason": ""
+              },
+              {
+                "source_id": "S4",
+                "query_id": "Q1",
+                "title": "metadata.jsonl · SumitB7/Final_Assignment_Template at main",
+                "url": "https://huggingface.co/spaces/SumitB7/Final_Assignment_Template/blob/main/metadata.jsonl",
+                "domain": "huggingface.co",
+                "snippet": "Opened the NumPy GitHub page.\\n3. Clicked \\\"Issues \\ \" in the repo tabs.\\n4. Clicked \\\"Closed \\ \" on the filter bar.\\n5. Set the filter to the \\\" numpy.polynomial\\ \" label.\\n6. Set the filter to the \\\"06 - Regression \\ \" label.\\n7. Opened the oldest Regression post.\\n8. Scrolled down to find when the Regression label was added (Apr 15, 2018).\\n9.",
+                "raw_content": "Opened the NumPy GitHub page.\\n3. Clicked \\\"Issues \\ \" in the repo tabs.\\n4. Clicked \\\"Closed \\ \" on the filter bar.\\n5. Set the filter to the \\\" numpy.polynomial\\ \" label.\\n6. Set the filter to the \\\"06 - Regression \\ \" label.\\n7. Opened the oldest Regression post.\\n8. Scrolled down to find when the Regression label was added (Apr 15, 2018).\\n9.",
+                "rank": 4,
+                "rerank_score": 11.7,
+                "fetched": true,
+                "blocked": false,
+                "block_reason": ""
+              },
+              {
+                "source_id": "S5",
+                "query_id": "Q1",
+                "title": "Many but not all deep neural network audio models ...",
+                "url": "https://www.biorxiv.org/content/10.1101/2022.09.06.506680v2.full.pdf",
+                "domain": "www.biorxiv.org",
+                "snippet": "bioRxiv - the preprint server for biology, operated by openRxiv, a nonprofit organization dedicated to advancing scientific communication",
+                "raw_content": "bioRxiv - the preprint server for biology, operated by openRxiv, a nonprofit organization dedicated to advancing scientific communication",
+                "rank": 5,
+                "rerank_score": -0.15,
+                "fetched": true,
+                "blocked": false,
+                "block_reason": ""
+              },
+              {
+                "source_id": "S6",
+                "query_id": "Q2",
+                "title": "r - Does it make sense to use a date variable in a regression? - Cross Validated",
+                "url": "https://stats.stackexchange.com/questions/65900/does-it-make-sense-to-use-a-date-variable-in-a-regression",
+                "domain": "stats.stackexchange.com",
+                "snippet": "Usually, but not necessarily, the origin should be a date within the time period of study or very close to it. Perhaps the simplest case is linear regression on a date variable in years. Here a regression of some response on date expressed as dates like 2000 or 2010 implies an intercept which is the value of response in year 0.",
+                "raw_content": "Usually, but not necessarily, the origin should be a date within the time period of study or very close to it. Perhaps the simplest case is linear regression on a date variable in years. Here a regression of some response on date expressed as dates like 2000 or 2010 implies an intercept which is the value of response in year 0.",
+                "rank": 1,
+                "rerank_score": 11.1,
+                "fetched": true,
+                "blocked": false,
+                "block_reason": ""
+              },
+              {
+                "source_id": "S7",
+                "query_id": "Q2",
+                "title": "python - Regression with Date variable using Scikit-learn - Stack Overflow",
+                "url": "https://stackoverflow.com/questions/16453644/regression-with-date-variable-using-scikit-learn",
+                "domain": "stackoverflow.com",
+                "snippet": "You have two options. You can convert the date to an ordinal i.e. an integer representing the number of days since year 1 day 1. You can do this by a datetime.date 's toordinal function. Alternatively, you can turn the dates into categorical variables using sklearn's . What it does is create a new variable for each distinct date. So instead of something like column date with values ['2013-04 ...",
+                "raw_content": "You have two options. You can convert the date to an ordinal i.e. an integer representing the number of days since year 1 day 1. You can do this by a datetime.date 's toordinal function. Alternatively, you can turn the dates into categorical variables using sklearn's . What it does is create a new variable for each distinct date. So instead of something like column date with values ['2013-04 ...",
+                "rank": 2,
+                "rerank_score": 11.05,
+                "fetched": true,
+                "blocked": false,
+                "block_reason": ""
+              },
+              {
+                "source_id": "S8",
+                "query_id": "Q2",
+                "title": "Format date in regression - Statalist",
+                "url": "https://www.statalist.org/forums/forum/general-stata-discussion/general/1509613-format-date-in-regression",
+                "domain": "www.statalist.org",
+                "snippet": "Hi all, Perhaps a simple answer to this question but I can't seem to find an appropriate answer to it. I want to run a regression with time fixed effects. My data contains a variable date, e.g. 26th July 2016. By means of ... format quarter_of_year %tq When I look at my data, the date will be correctly displayed as 2016Q3.",
+                "raw_content": "Hi all, Perhaps a simple answer to this question but I can't seem to find an appropriate answer to it. I want to run a regression with time fixed effects. My data contains a variable date, e.g. 26th July 2016. By means of ... format quarter_of_year %tq When I look at my data, the date will be correctly displayed as 2016Q3.",
+                "rank": 3,
+                "rerank_score": 10.95,
+                "fetched": true,
+                "blocked": false,
+                "block_reason": ""
+              },
+              {
+                "source_id": "S9",
+                "query_id": "Q2",
+                "title": "python linear regression predict by date - Stack Overflow",
+                "url": "https://stackoverflow.com/questions/40217369/python-linear-regression-predict-by-date",
+                "domain": "stackoverflow.com",
+                "snippet": "",
+                "raw_content": "",
+                "rank": 4,
+                "rerank_score": 7.95,
+                "fetched": false,
+                "blocked": false,
+                "block_reason": ""
+              },
+              {
+                "source_id": "S10",
+                "query_id": "Q2",
+                "title": "Regression analysis - Wikipedia",
+                "url": "https://en.wikipedia.org/wiki/Regression_analysis",
+                "domain": "en.wikipedia.org",
+                "snippet": "In statistical modeling, regression analysis is a statistical method for estimating the relationship between a dependent variable (often called the outcome or response variable, or a label in machine learning parlance) and one or more independent variables (often called regressors, predictors, covariates, explanatory variables or features). [1][2] The most common form of regression analysis is ...",
+                "raw_content": "In statistical modeling, regression analysis is a statistical method for estimating the relationship between a dependent variable (often called the outcome or response variable, or a label in machine learning parlance) and one or more independent variables (often called regressors, predictors, covariates, explanatory variables or features). [1][2] The most common form of regression analysis is ...",
+                "rank": 5,
+                "rerank_score": 5.0,
+                "fetched": true,
+                "blocked": false,
+                "block_reason": ""
+              },
+              {
+                "source_id": "HS1",
+                "query_id": "H1",
+                "title": "Excel use dates as x axis, but numbers to fit regression equation",
+                "url": "https://superuser.com/questions/1256640/excel-use-dates-as-x-axis-but-numbers-to-fit-regression-equation",
+                "domain": "superuser.com",
+                "snippet": "I would still like to keep the dates on the x-axis of the chart, but have my regression equation use numbers like 1,2,3,...instead of date values like 43013. I tried to follow Microsoft Office Support's Change axis labels in a chart article, but changing horizontal axis labels is greyed out This is what the chart looks like:",
+                "raw_content": "I would still like to keep the dates on the x-axis of the chart, but have my regression equation use numbers like 1,2,3,...instead of date values like 43013. I tried to follow Microsoft Office Support's Change axis labels in a chart article, but changing horizontal axis labels is greyed out This is what the chart looks like:",
+                "rank": 1,
+                "rerank_score": 11.0,
+                "fetched": true,
+                "blocked": false,
+                "block_reason": ""
+              },
+              {
+                "source_id": "HS2",
+                "query_id": "H1",
+                "title": "Does it make sense to use a date variable in a regression?",
+                "url": "https://stats.stackexchange.com/questions/65900/does-it-make-sense-to-use-a-date-variable-in-a-regression",
+                "domain": "stats.stackexchange.com",
+                "snippet": "Usually, but not necessarily, the origin should be a date within the time period of study or very close to it. Perhaps the simplest case is linear regression on a date variable in years. Here a regression of some response on date expressed as dates like 2000 or 2010 implies an intercept which is the value of response in year 0.",
+                "raw_content": "Usually, but not necessarily, the origin should be a date within the time period of study or very close to it. Perhaps the simplest case is linear regression on a date variable in years. Here a regression of some response on date expressed as dates like 2000 or 2010 implies an intercept which is the value of response in year 0.",
+                "rank": 2,
+                "rerank_score": 8.9,
+                "fetched": true,
+                "blocked": false,
+                "block_reason": ""
+              },
+              {
+                "source_id": "HS3",
+                "query_id": "H1",
+                "title": "How to plot a linear regression with datetimes on the x-axis",
+                "url": "https://stackoverflow.com/questions/29308729/how-to-plot-a-linear-regression-with-datetimes-on-the-x-axis",
+                "domain": "stackoverflow.com",
+                "snippet": "I would like a sort of scatter plot with time along the x-axis, and amount on the y, with a line through the data to guide the viewer's eye. If I use the pandas plot df.plot(style=\"o\") it's not quite right, because the line is not there. I would like something like the examples here.",
+                "raw_content": "I would like a sort of scatter plot with time along the x-axis, and amount on the y, with a line through the data to guide the viewer's eye. If I use the pandas plot df.plot(style=\"o\") it's not quite right, because the line is not there. I would like something like the examples here.",
+                "rank": 3,
+                "rerank_score": 8.85,
+                "fetched": true,
+                "blocked": false,
+                "block_reason": ""
+              },
+              {
+                "source_id": "HS4",
+                "query_id": "H2",
+                "title": "Linear Regression with Date Hierarchy on X Axis",
+                "url": "https://community.fabric.microsoft.com/t5/Desktop/Linear-Regression-with-Date-Hierarchy-on-X-Axis/td-p/4051673",
+                "domain": "community.fabric.microsoft.com",
+                "snippet": "Hi everyone! I have a line chart with average shipping costs (SC/O) as my y-axis and Calendar Quarter / Month Name as my x-axis. [Calendar Quarter] and [Month Name] are a part of a date hierarchy created from my 'Date' table. I have managed to create a line regression measure LINESTX using the [Order Date] column on my 'Orders' fact table. My problem with it is the line chart is becomes too ...",
+                "raw_content": "Hi everyone! I have a line chart with average shipping costs (SC/O) as my y-axis and Calendar Quarter / Month Name as my x-axis. [Calendar Quarter] and [Month Name] are a part of a date hierarchy created from my 'Date' table. I have managed to create a line regression measure LINESTX using the [Order Date] column on my 'Orders' fact table. My problem with it is the line chart is becomes too ...",
+                "rank": 1,
+                "rerank_score": 8.9,
+                "fetched": true,
+                "blocked": false,
+                "block_reason": ""
+              },
+              {
+                "source_id": "HS5",
+                "query_id": "H2",
+                "title": "Label date/times — label_date • scales",
+                "url": "https://scales.r-lib.org/reference/label_date.html",
+                "domain": "scales.r-lib.org",
+                "snippet": "label_date () and label_time () label date/times using date/time format strings. label_date_short () automatically constructs a short format string sufficient to uniquely identify labels. It's inspired by matplotlib's ConciseDateFormatter, but uses a slightly different approach: ConciseDateFormatter formats \"firsts\" (e.g. first day of month, first day of day) specially; date_short () formats ...",
+                "raw_content": "label_date () and label_time () label date/times using date/time format strings. label_date_short () automatically constructs a short format string sufficient to uniquely identify labels. It's inspired by matplotlib's ConciseDateFormatter, but uses a slightly different approach: ConciseDateFormatter formats \"firsts\" (e.g. first day of month, first day of day) specially; date_short () formats ...",
+                "rank": 2,
+                "rerank_score": 8.85,
+                "fetched": true,
+                "blocked": false,
+                "block_reason": ""
+              },
+              {
+                "source_id": "HS6",
+                "query_id": "H2",
+                "title": "Regression Analysis with Scikit-Learn (part 1 - Linear)",
+                "url": "https://programminghistorian.org/en/lessons/linear-regression",
+                "domain": "programminghistorian.org",
+                "snippet": "This lesson is the first of a two-part lesson focusing on an indispensable set of data analysis methods, logistic and linear regression. It provides an overview of linear regression and walks through running both algorithms in Python (using scikit-learn). The lesson also discusses interpreting the results of a regression model and some common pitfalls to avoid.",
+                "raw_content": "This lesson is the first of a two-part lesson focusing on an indispensable set of data analysis methods, logistic and linear regression. It provides an overview of linear regression and walks through running both algorithms in Python (using scikit-learn). The lesson also discusses interpreting the results of a regression model and some common pitfalls to avoid.",
+                "rank": 3,
+                "rerank_score": 3.6,
+                "fetched": true,
+                "blocked": false,
+                "block_reason": ""
+              }
+            ],
+            "evidence_items": [
+              {
+                "evidence_id": "E1",
+                "source_id": "S2",
+                "query_id": "Q1",
+                "text": "Solution: github_analyze_label_history + github_get_issue_timeline Example: \"According to github, when was Regression added to the oldest closed numpy.polynomial issue that has the Regression label?\"",
+                "title": "mcp-github-research/README.md at master · MikeyBeez/mcp-github-research",
+                "url": "https://github.com/MikeyBeez/mcp-github-research/blob/master/README.md",
+                "relevance_score": 29.0,
+                "matched_terms": [
+                  "according",
+                  "added",
+                  "closed",
+                  "github",
+                  "has",
+                  "issue",
+                  "label",
+                  "numpy",
+                  "oldest",
+                  "polynomial",
+                  "regression",
+                  "that"
+                ],
+                "extracted_answer": ""
+              },
+              {
+                "evidence_id": "E2",
+                "source_id": "S4",
+                "query_id": "Q1",
+                "text": "Opened the NumPy GitHub page. 3. Clicked \\\"Issues \\ \" in the repo tabs. 4. Clicked \\\"Closed \\ \" on the filter bar. 5. Set the filter to the \\\" numpy.polynomial\\ \" label. 6. Set the filter to the \\\"06 - Regression \\ \" label. 7. Opened the oldest Regression post. 8. Scrolled down to find when the Regression label was added (Apr 15, 2018). 9.",
+                "title": "metadata.jsonl · SumitB7/Final_Assignment_Template at main",
+                "url": "https://huggingface.co/spaces/SumitB7/Final_Assignment_Template/blob/main/metadata.jsonl",
+                "relevance_score": 22.25,
+                "matched_terms": [
+                  "added",
+                  "closed",
+                  "github",
+                  "issue",
+                  "label",
+                  "numpy",
+                  "oldest",
+                  "polynomial",
+                  "regression"
+                ],
+                "extracted_answer": ""
+              },
+              {
+                "evidence_id": "E3",
+                "source_id": "S10",
+                "query_id": "Q2",
+                "text": "In statistical modeling, regression analysis is a statistical method for estimating the relationship between a dependent variable (often called the outcome or response variable, or a label in machine learning parlance) and one or more independent variables (often called regressors, predictors, covariates, explanatory variables or features). [1][2] The most common form of regression analysis is ...",
+                "title": "Regression analysis - Wikipedia",
+                "url": "https://en.wikipedia.org/wiki/Regression_analysis",
+                "relevance_score": 9.25,
+                "matched_terms": [
+                  "label",
+                  "regression"
+                ],
+                "extracted_answer": ""
+              },
+              {
+                "evidence_id": "E4",
+                "source_id": "HS1",
+                "query_id": "H1",
+                "text": "I would still like to keep the dates on the x-axis of the chart, but have my regression equation use numbers like 1,2,3,...instead of date values like 43013. I tried to follow Microsoft Office Support's Change axis labels in a chart article, but changing horizontal axis labels is greyed out This is what the chart looks like:",
+                "title": "Excel use dates as x axis, but numbers to fit regression equation",
+                "url": "https://superuser.com/questions/1256640/excel-use-dates-as-x-axis-but-numbers-to-fit-regression-equation",
+                "relevance_score": 9.25,
+                "matched_terms": [
+                  "label",
+                  "regression"
+                ],
+                "extracted_answer": ""
+              },
+              {
+                "evidence_id": "E5",
+                "source_id": "S6",
+                "query_id": "Q2",
+                "text": "Usually, but not necessarily, the origin should be a date within the time period of study or very close to it. Perhaps the simplest case is linear regression on a date variable in years. Here a regression of some response on date expressed as dates like 2000 or 2010 implies an intercept which is the value of response in year 0.",
+                "title": "r - Does it make sense to use a date variable in a regression? - Cross Validated",
+                "url": "https://stats.stackexchange.com/questions/65900/does-it-make-sense-to-use-a-date-variable-in-a-regression",
+                "relevance_score": 4.75,
+                "matched_terms": [
+                  "regression"
+                ],
+                "extracted_answer": ""
+              },
+              {
+                "evidence_id": "E6",
+                "source_id": "S8",
+                "query_id": "Q2",
+                "text": "Hi all, Perhaps a simple answer to this question but I can't seem to find an appropriate answer to it. I want to run a regression with time fixed effects. My data contains a variable date, e.g. 26th July 2016. By means of ... format quarter_of_year %tq When I look at my data, the date will be correctly displayed as 2016Q3.",
+                "title": "Format date in regression - Statalist",
+                "url": "https://www.statalist.org/forums/forum/general-stata-discussion/general/1509613-format-date-in-regression",
+                "relevance_score": 4.75,
+                "matched_terms": [
+                  "regression"
+                ],
+                "extracted_answer": ""
+              },
+              {
+                "evidence_id": "E7",
+                "source_id": "HS2",
+                "query_id": "H1",
+                "text": "Usually, but not necessarily, the origin should be a date within the time period of study or very close to it. Perhaps the simplest case is linear regression on a date variable in years. Here a regression of some response on date expressed as dates like 2000 or 2010 implies an intercept which is the value of response in year 0.",
+                "title": "Does it make sense to use a date variable in a regression?",
+                "url": "https://stats.stackexchange.com/questions/65900/does-it-make-sense-to-use-a-date-variable-in-a-regression",
+                "relevance_score": 4.75,
+                "matched_terms": [
+                  "regression"
+                ],
+                "extracted_answer": ""
+              },
+              {
+                "evidence_id": "E8",
+                "source_id": "HS4",
+                "query_id": "H2",
+                "text": "Hi everyone! I have a line chart with average shipping costs (SC/O) as my y-axis and Calendar Quarter / Month Name as my x-axis. [Calendar Quarter] and [Month Name] are a part of a date hierarchy created from my 'Date' table. I have managed to create a line regression measure LINESTX using the [Order Date] column on my 'Orders' fact table. My problem with it is the line chart is becomes too ...",
+                "title": "Linear Regression with Date Hierarchy on X Axis",
+                "url": "https://community.fabric.microsoft.com/t5/Desktop/Linear-Regression-with-Date-Hierarchy-on-X-Axis/td-p/4051673",
+                "relevance_score": 4.0,
+                "matched_terms": [
+                  "regression"
+                ],
+                "extracted_answer": ""
+              },
+              {
+                "evidence_id": "E9",
+                "source_id": "HS5",
+                "query_id": "H2",
+                "text": "label_date () and label_time () label date/times using date/time format strings. label_date_short () automatically constructs a short format string sufficient to uniquely identify labels. It's inspired by matplotlib's ConciseDateFormatter, but uses a slightly different approach: ConciseDateFormatter formats \"firsts\" (e.g. first day of month, first day of day) specially; date_short () formats ...",
+                "title": "Label date/times — label_date • scales",
+                "url": "https://scales.r-lib.org/reference/label_date.html",
+                "relevance_score": 4.0,
+                "matched_terms": [
+                  "label"
+                ],
+                "extracted_answer": ""
+              },
+              {
+                "evidence_id": "E10",
+                "source_id": "HS6",
+                "query_id": "H2",
+                "text": "This lesson is the first of a two-part lesson focusing on an indispensable set of data analysis methods, logistic and linear regression. It provides an overview of linear regression and walks through running both algorithms in Python (using scikit-learn). The lesson also discusses interpreting the results of a regression model and some common pitfalls to avoid.",
+                "title": "Regression Analysis with Scikit-Learn (part 1 - Linear)",
+                "url": "https://programminghistorian.org/en/lessons/linear-regression",
+                "relevance_score": 3.86,
+                "matched_terms": [
+                  "regression"
+                ],
+                "extracted_answer": ""
+              },
+              {
+                "evidence_id": "E11",
+                "source_id": "S7",
+                "query_id": "Q2",
+                "text": "You have two options. You can convert the date to an ordinal i.e. an integer representing the number of days since year 1 day 1. You can do this by a datetime.date 's toordinal function. Alternatively, you can turn the dates into categorical variables using sklearn's . What it does is create a new variable for each distinct date. So instead of something like column date with values ['2013-04 ...",
+                "title": "python - Regression with Date variable using Scikit-learn - Stack Overflow",
+                "url": "https://stackoverflow.com/questions/16453644/regression-with-date-variable-using-scikit-learn",
+                "relevance_score": 2.75,
+                "matched_terms": [],
+                "extracted_answer": ""
+              },
+              {
+                "evidence_id": "E12",
+                "source_id": "HS3",
+                "query_id": "H1",
+                "text": "I would like a sort of scatter plot with time along the x-axis, and amount on the y, with a line through the data to guide the viewer's eye. If I use the pandas plot df.plot(style=\"o\") it's not quite right, because the line is not there. I would like something like the examples here.",
+                "title": "How to plot a linear regression with datetimes on the x-axis",
+                "url": "https://stackoverflow.com/questions/29308729/how-to-plot-a-linear-regression-with-datetimes-on-the-x-axis",
+                "relevance_score": 2.0,
+                "matched_terms": [],
+                "extracted_answer": ""
+              }
+            ],
+            "candidates": [
+              {
+                "answer": "2010",
+                "answer_type": "date",
+                "support_count": 4,
+                "verification_score": 94.3,
+                "evidence_ids": [
+                  "E5",
+                  "E7"
+                ],
+                "source_ids": [
+                  "S6",
+                  "HS2"
+                ],
+                "verified": true,
+                "probability_score": 0.118905,
+                "probability_details": {
+                  "reason": "span_probability",
+                  "evidence_ids": [
+                    "E5",
+                    "E7"
+                  ],
+                  "span_scores": [
+                    {
+                      "evidence_id": "E5",
+                      "text_unit": "2010",
+                      "logprob_avg": -0.9566381659242325,
+                      "logprob_min": -2.378101348876953,
+                      "score": 0.118905
+                    },
+                    {
+                      "evidence_id": "E7",
+                      "text_unit": "2010",
+                      "logprob_avg": -0.9566381659242325,
+                      "logprob_min": -2.378101348876953,
+                      "score": 0.118905
+                    }
+                  ],
+                  "question_hint": "According to github, when was Regression added to the oldest closed numpy.polynomial issue that has the Regression label in MM/DD/YY?",
+                  "base_score": 1.0,
+                  "combined_score": 0.779726,
+                  "probability_weight": 0.25
+                }
+              },
+              {
+                "answer": "2000",
+                "answer_type": "date",
+                "support_count": 4,
+                "verification_score": 94.3,
+                "evidence_ids": [
+                  "E5",
+                  "E7"
+                ],
+                "source_ids": [
+                  "S6",
+                  "HS2"
+                ],
+                "verified": true,
+                "probability_score": 0.081127,
+                "probability_details": {
+                  "reason": "span_probability",
+                  "evidence_ids": [
+                    "E5",
+                    "E7"
+                  ],
+                  "span_scores": [
+                    {
+                      "evidence_id": "E5",
+                      "text_unit": "2000",
+                      "logprob_avg": -1.0546315796673298,
+                      "logprob_min": -1.6225395202636719,
+                      "score": 0.081127
+                    },
+                    {
+                      "evidence_id": "E7",
+                      "text_unit": "2000",
+                      "logprob_avg": -1.0546315796673298,
+                      "logprob_min": -1.6225395202636719,
+                      "score": 0.081127
+                    }
+                  ],
+                  "question_hint": "According to github, when was Regression added to the oldest closed numpy.polynomial issue that has the Regression label in MM/DD/YY?",
+                  "base_score": 1.0,
+                  "combined_score": 0.770282,
+                  "probability_weight": 0.25
+                }
+              },
+              {
+                "answer": "Apr 15, 2018",
+                "answer_type": "date",
+                "support_count": 2,
+                "verification_score": 25.05,
+                "evidence_ids": [
+                  "E2"
+                ],
+                "source_ids": [
+                  "S4"
+                ],
+                "verified": true,
+                "probability_score": 0.396634,
+                "probability_details": {
+                  "reason": "span_probability",
+                  "evidence_ids": [
+                    "E2"
+                  ],
+                  "span_scores": [
+                    {
+                      "evidence_id": "E2",
+                      "text_unit": "Apr 15, 2018",
+                      "logprob_avg": -1.557501161464188,
+                      "logprob_min": -7.932685375213623,
+                      "score": 0.396634
+                    }
+                  ],
+                  "question_hint": "According to github, when was Regression added to the oldest closed numpy.polynomial issue that has the Regression label in MM/DD/YY?",
+                  "base_score": 0.265642,
+                  "combined_score": 0.29839,
+                  "probability_weight": 0.25
+                }
+              },
+              {
+                "answer": "2016",
+                "answer_type": "date",
+                "support_count": 2,
+                "verification_score": 7.55,
+                "evidence_ids": [
+                  "E6"
+                ],
+                "source_ids": [
+                  "S8"
+                ],
+                "verified": true,
+                "probability_score": 0.106345,
+                "probability_details": {
+                  "reason": "span_probability",
+                  "evidence_ids": [
+                    "E6"
+                  ],
+                  "span_scores": [
+                    {
+                      "evidence_id": "E6",
+                      "text_unit": "2016",
+                      "logprob_avg": -0.7698008510701584,
+                      "logprob_min": -2.1268930435180664,
+                      "score": 0.106345
+                    }
+                  ],
+                  "question_hint": "According to github, when was Regression added to the oldest closed numpy.polynomial issue that has the Regression label in MM/DD/YY?",
+                  "base_score": 0.080064,
+                  "combined_score": 0.086634,
+                  "probability_weight": 0.25
+                }
+              },
+              {
+                "answer": "2013",
+                "answer_type": "date",
+                "support_count": 2,
+                "verification_score": 5.55,
+                "evidence_ids": [
+                  "E11"
+                ],
+                "source_ids": [
+                  "S7"
+                ],
+                "verified": true,
+                "probability_score": 0.110327,
+                "probability_details": {
+                  "reason": "span_probability",
+                  "evidence_ids": [
+                    "E11"
+                  ],
+                  "span_scores": [
+                    {
+                      "evidence_id": "E11",
+                      "text_unit": "2013",
+                      "logprob_avg": -0.842707195552066,
+                      "logprob_min": -2.206538677215576,
+                      "score": 0.110327
+                    }
+                  ],
+                  "question_hint": "According to github, when was Regression added to the oldest closed numpy.polynomial issue that has the Regression label in MM/DD/YY?",
+                  "base_score": 0.058855,
+                  "combined_score": 0.071723,
+                  "probability_weight": 0.25
+                }
+              }
+            ],
+            "summary": "Original Question:\nAccording to github, when was Regression added to the oldest closed numpy.polynomial issue that has the Regression label in MM/DD/YY?\n\nQuery:\n[Q1] According to github, when was Regression added to the oldest closed numpy polynomial issue that has the Regression label in MM/DD/YY\n[Q2] \"Regression\" date year\n[Q3] \"MM\" date year\n[H1] Regression Regression label label date\n[H2] Solution Regression label label date\n[V1] \"2010\" \"Regression\" \"MM\" \"DD\"\n[V2] \"2000\" \"Regression\" \"MM\" \"DD\"\n[V3] \"Apr 15, 2018\" \"Regression\" \"MM\" \"DD\"\n[V4] \"2016\" \"Regression\" \"MM\" \"DD\"\n[V5] \"2013\" \"Regression\" \"MM\" \"DD\"\n\nEvidence:\n[E1]\nSource: mcp-github-research/README.md at master · MikeyBeez/mcp-github-research\nQuery: Q1\nText: Solution: github_analyze_label_history + github_get_issue_timeline Example: \"According to github, when was Regression added to the oldest closed numpy.polynomial issue that has the Regression label?\"\n[E2]\nSource: metadata.jsonl · SumitB7/Final_Assignment_Template at main\nQuery: Q1\nText: Opened the NumPy GitHub page. 3. Clicked \\\"Issues \\ \" in the repo tabs. 4. Clicked \\\"Closed \\ \" on the filter bar. 5. Set the filter to the \\\" numpy.polynomial\\ \" label. 6. Set the filter to the \\\"06 - Regression \\ \" label. 7. Opened the oldest Regression post. 8. Scrolled down to find when the Regression label was added (Apr 15, 2018). 9.\n[E3]\nSource: Regression analysis - Wikipedia\nQuery: Q2\nText: In statistical modeling, regression analysis is a statistical method for estimating the relationship between a dependent variable (often called the outcome or response variable, or a label in machine learning parlance) and one or more independent variables (often called regressors, predictors, covariates, explanatory variables or features). [1][2] The most common form of regression analysis is ...\n[E4]\nSource: Excel use dates as x axis, but numbers to fit regression equation\nQuery: H1\nText: I would still like to keep the dates on the x-axis of the chart, but have my regression equation use numbers like 1,2,3,...instead of date values like 43013. I tried to follow Microsoft Office Support's Change axis labels in a chart article, but changing horizontal axis labels is greyed out This is what the chart looks like:\n[E5]\nSource: r - Does it make sense to use a date variable in a regression? - Cross Validated\nQuery: Q2\nText: Usually, but not necessarily, the origin should be a date within the time period of study or very close to it. Perhaps the simplest case is linear regression on a date variable in years. Here a regression of some response on date expressed as dates like 2000 or 2010 implies an intercept which is the value of response in year 0.\n[E6]\nSource: Format date in regression - Statalist\nQuery: Q2\nText: Hi all, Perhaps a simple answer to this question but I can't seem to find an appropriate answer to it. I want to run a regression with time fixed effects. My data contains a variable date, e.g. 26th July 2016. By means of ... format quarter_of_year %tq When I look at my data, the date will be correctly displayed as 2016Q3.\n[E7]\nSource: Does it make sense to use a date variable in a regression?\nQuery: H1\nText: Usually, but not necessarily, the origin should be a date within the time period of study or very close to it. Perhaps the simplest case is linear regression on a date variable in years. Here a regression of some response on date expressed as dates like 2000 or 2010 implies an intercept which is the value of response in year 0.\n[E8]\nSource: Linear Regression with Date Hierarchy on X Axis\nQuery: H2\nText: Hi everyone! I have a line chart with average shipping costs (SC/O) as my y-axis and Calendar Quarter / Month Name as my x-axis. [Calendar Quarter] and [Month Name] are a part of a date hierarchy created from my 'Date' table. I have managed to create a line regression measure LINESTX using the [Order Date] column on my 'Orders' fact table. My problem with it is the line chart is becomes too ...\n\nCandidate Answer:\n[C1] answer=2010; type=date; evidence=E5, E7\n[C2] answer=2000; type=date; evidence=E5, E7\n[C3] answer=Apr 15, 2018; type=date; evidence=E2",
+            "verified_candidates": [
+              {
+                "candidate_id": "C1",
+                "answer": "2010",
+                "answer_type": "date",
+                "support_count": 2,
+                "refute_count": 0,
+                "neutral_count": 2,
+                "confidence": 0.6,
+                "evidence_ids": [
+                  "E5",
+                  "E7"
+                ],
+                "support_fact_ids": [
+                  "F3",
+                  "F4"
+                ],
+                "refute_fact_ids": [],
+                "risk_flags": [
+                  "evidence_driven_source",
+                  "no_verification_support"
+                ]
+              },
+              {
+                "candidate_id": "C2",
+                "answer": "2000",
+                "answer_type": "date",
+                "support_count": 2,
+                "refute_count": 0,
+                "neutral_count": 2,
+                "confidence": 0.6,
+                "evidence_ids": [
+                  "E5",
+                  "E7"
+                ],
+                "support_fact_ids": [
+                  "F7",
+                  "F8"
+                ],
+                "refute_fact_ids": [],
+                "risk_flags": [
+                  "evidence_driven_source",
+                  "no_verification_support"
+                ]
+              },
+              {
+                "candidate_id": "C4",
+                "answer": "2016",
+                "answer_type": "date",
+                "support_count": 1,
+                "refute_count": 0,
+                "neutral_count": 2,
+                "confidence": 0.2,
+                "evidence_ids": [
+                  "E6"
+                ],
+                "support_fact_ids": [
+                  "F13"
+                ],
+                "refute_fact_ids": [],
+                "risk_flags": [
+                  "no_verification_support"
+                ]
+              },
+              {
+                "candidate_id": "C3",
+                "answer": "Apr 15, 2018",
+                "answer_type": "date",
+                "support_count": 1,
+                "refute_count": 0,
+                "neutral_count": 1,
+                "confidence": 0.15,
+                "evidence_ids": [
+                  "E2"
+                ],
+                "support_fact_ids": [
+                  "F10"
+                ],
+                "refute_fact_ids": [],
+                "risk_flags": [
+                  "no_verification_support"
+                ]
+              },
+              {
+                "candidate_id": "C5",
+                "answer": "2013",
+                "answer_type": "date",
+                "support_count": 0,
+                "refute_count": 1,
+                "neutral_count": 2,
+                "confidence": 0.0,
+                "evidence_ids": [
+                  "E11"
+                ],
+                "support_fact_ids": [],
+                "refute_fact_ids": [
+                  "F16"
+                ],
+                "risk_flags": [
+                  "no_verification_support"
+                ]
+              }
+            ],
+            "fact_cards": [
+              {
+                "fact_id": "F1",
+                "claim": "Solution: github_analyze_label_history + github_get_issue_timeline Example: \"According to github, when was Regression added to the oldest closed numpy.polynomial issue that has the Regression label?\"",
+                "relation": "neutral",
+                "candidate_id": "C1",
+                "source_id": "S2",
+                "evidence_id": "E1",
+                "confidence": 0.5,
+                "constraint_matches": [
+                  "according",
+                  "added",
+                  "closed",
+                  "github",
+                  "has",
+                  "issue",
+                  "label",
+                  "numpy"
+                ]
+              },
+              {
+                "fact_id": "F2",
+                "claim": "Opened the NumPy GitHub page. 3. Clicked \\\"Issues \\ \" in the repo tabs.",
+                "relation": "neutral",
+                "candidate_id": "C1",
+                "source_id": "S4",
+                "evidence_id": "E2",
+                "confidence": 0.5,
+                "constraint_matches": [
+                  "added",
+                  "closed",
+                  "github",
+                  "issue",
+                  "label",
+                  "numpy",
+                  "oldest",
+                  "polynomial"
+                ]
+              },
+              {
+                "fact_id": "F3",
+                "claim": "Usually, but not necessarily, the origin should be a date within the time period of study or very close to it.",
+                "relation": "support",
+                "candidate_id": "C1",
+                "source_id": "S6",
+                "evidence_id": "E5",
+                "confidence": 0.818,
+                "constraint_matches": [
+                  "regression"
+                ]
+              },
+              {
+                "fact_id": "F4",
+                "claim": "Usually, but not necessarily, the origin should be a date within the time period of study or very close to it.",
+                "relation": "support",
+                "candidate_id": "C1",
+                "source_id": "HS2",
+                "evidence_id": "E7",
+                "confidence": 0.818,
+                "constraint_matches": [
+                  "regression"
+                ]
+              },
+              {
+                "fact_id": "F5",
+                "claim": "Solution: github_analyze_label_history + github_get_issue_timeline Example: \"According to github, when was Regression added to the oldest closed numpy.polynomial issue that has the Regression label?\"",
+                "relation": "neutral",
+                "candidate_id": "C2",
+                "source_id": "S2",
+                "evidence_id": "E1",
+                "confidence": 0.5,
+                "constraint_matches": [
+                  "according",
+                  "added",
+                  "closed",
+                  "github",
+                  "has",
+                  "issue",
+                  "label",
+                  "numpy"
+                ]
+              },
+              {
+                "fact_id": "F6",
+                "claim": "Opened the NumPy GitHub page. 3. Clicked \\\"Issues \\ \" in the repo tabs.",
+                "relation": "neutral",
+                "candidate_id": "C2",
+                "source_id": "S4",
+                "evidence_id": "E2",
+                "confidence": 0.5,
+                "constraint_matches": [
+                  "added",
+                  "closed",
+                  "github",
+                  "issue",
+                  "label",
+                  "numpy",
+                  "oldest",
+                  "polynomial"
+                ]
+              },
+              {
+                "fact_id": "F7",
+                "claim": "Usually, but not necessarily, the origin should be a date within the time period of study or very close to it.",
+                "relation": "support",
+                "candidate_id": "C2",
+                "source_id": "S6",
+                "evidence_id": "E5",
+                "confidence": 0.818,
+                "constraint_matches": [
+                  "regression"
+                ]
+              },
+              {
+                "fact_id": "F8",
+                "claim": "Usually, but not necessarily, the origin should be a date within the time period of study or very close to it.",
+                "relation": "support",
+                "candidate_id": "C2",
+                "source_id": "HS2",
+                "evidence_id": "E7",
+                "confidence": 0.818,
+                "constraint_matches": [
+                  "regression"
+                ]
+              },
+              {
+                "fact_id": "F9",
+                "claim": "Solution: github_analyze_label_history + github_get_issue_timeline Example: \"According to github, when was Regression added to the oldest closed numpy.polynomial issue that has the Regression label?\"",
+                "relation": "neutral",
+                "candidate_id": "C3",
+                "source_id": "S2",
+                "evidence_id": "E1",
+                "confidence": 0.5,
+                "constraint_matches": [
+                  "according",
+                  "added",
+                  "closed",
+                  "github",
+                  "has",
+                  "issue",
+                  "label",
+                  "numpy"
+                ]
+              },
+              {
+                "fact_id": "F10",
+                "claim": "Opened the NumPy GitHub page. 3. Clicked \\\"Issues \\ \" in the repo tabs.",
+                "relation": "support",
+                "candidate_id": "C3",
+                "source_id": "S4",
+                "evidence_id": "E2",
+                "confidence": 1.0,
+                "constraint_matches": [
+                  "added",
+                  "closed",
+                  "github",
+                  "issue",
+                  "label",
+                  "numpy",
+                  "oldest",
+                  "polynomial"
+                ]
+              },
+              {
+                "fact_id": "F11",
+                "claim": "Solution: github_analyze_label_history + github_get_issue_timeline Example: \"According to github, when was Regression added to the oldest closed numpy.polynomial issue that has the Regression label?\"",
+                "relation": "neutral",
+                "candidate_id": "C4",
+                "source_id": "S2",
+                "evidence_id": "E1",
+                "confidence": 0.5,
+                "constraint_matches": [
+                  "according",
+                  "added",
+                  "closed",
+                  "github",
+                  "has",
+                  "issue",
+                  "label",
+                  "numpy"
+                ]
+              },
+              {
+                "fact_id": "F12",
+                "claim": "Opened the NumPy GitHub page. 3. Clicked \\\"Issues \\ \" in the repo tabs.",
+                "relation": "neutral",
+                "candidate_id": "C4",
+                "source_id": "S4",
+                "evidence_id": "E2",
+                "confidence": 0.5,
+                "constraint_matches": [
+                  "added",
+                  "closed",
+                  "github",
+                  "issue",
+                  "label",
+                  "numpy",
+                  "oldest",
+                  "polynomial"
+                ]
+              },
+              {
+                "fact_id": "F13",
+                "claim": "Hi all, Perhaps a simple answer to this question but I can't seem to find an appropriate answer to it.",
+                "relation": "support",
+                "candidate_id": "C4",
+                "source_id": "S8",
+                "evidence_id": "E6",
+                "confidence": 0.848,
+                "constraint_matches": [
+                  "regression"
+                ]
+              },
+              {
+                "fact_id": "F14",
+                "claim": "Solution: github_analyze_label_history + github_get_issue_timeline Example: \"According to github, when was Regression added to the oldest closed numpy.polynomial issue that has the Regression label?\"",
+                "relation": "neutral",
+                "candidate_id": "C5",
+                "source_id": "S2",
+                "evidence_id": "E1",
+                "confidence": 0.5,
+                "constraint_matches": [
+                  "according",
+                  "added",
+                  "closed",
+                  "github",
+                  "has",
+                  "issue",
+                  "label",
+                  "numpy"
+                ]
+              },
+              {
+                "fact_id": "F15",
+                "claim": "Opened the NumPy GitHub page. 3. Clicked \\\"Issues \\ \" in the repo tabs.",
+                "relation": "neutral",
+                "candidate_id": "C5",
+                "source_id": "S4",
+                "evidence_id": "E2",
+                "confidence": 0.5,
+                "constraint_matches": [
+                  "added",
+                  "closed",
+                  "github",
+                  "issue",
+                  "label",
+                  "numpy",
+                  "oldest",
+                  "polynomial"
+                ]
+              },
+              {
+                "fact_id": "F16",
+                "claim": "You have two options. You can convert the date to an ordinal i.e.",
+                "relation": "refute",
+                "candidate_id": "C5",
+                "source_id": "S7",
+                "evidence_id": "E11",
+                "confidence": 0.68,
+                "constraint_matches": []
+              }
+            ],
+            "agent_packet": {
+              "question": "According to github, when was Regression added to the oldest closed numpy.polynomial issue that has the Regression label in MM/DD/YY?",
+              "answer_type": "date",
+              "candidates": [
+                {
+                  "candidate_id": "C1",
+                  "answer": "2010",
+                  "answer_type": "date",
+                  "support_count": 2,
+                  "refute_count": 0,
+                  "neutral_count": 2,
+                  "confidence": 0.6,
+                  "evidence_ids": [
+                    "E5",
+                    "E7"
+                  ],
+                  "support_fact_ids": [
+                    "F3",
+                    "F4"
+                  ],
+                  "refute_fact_ids": [],
+                  "risk_flags": [
+                    "evidence_driven_source",
+                    "no_verification_support"
+                  ]
+                },
+                {
+                  "candidate_id": "C2",
+                  "answer": "2000",
+                  "answer_type": "date",
+                  "support_count": 2,
+                  "refute_count": 0,
+                  "neutral_count": 2,
+                  "confidence": 0.6,
+                  "evidence_ids": [
+                    "E5",
+                    "E7"
+                  ],
+                  "support_fact_ids": [
+                    "F7",
+                    "F8"
+                  ],
+                  "refute_fact_ids": [],
+                  "risk_flags": [
+                    "evidence_driven_source",
+                    "no_verification_support"
+                  ]
+                },
+                {
+                  "candidate_id": "C4",
+                  "answer": "2016",
+                  "answer_type": "date",
+                  "support_count": 1,
+                  "refute_count": 0,
+                  "neutral_count": 2,
+                  "confidence": 0.2,
+                  "evidence_ids": [
+                    "E6"
+                  ],
+                  "support_fact_ids": [
+                    "F13"
+                  ],
+                  "refute_fact_ids": [],
+                  "risk_flags": [
+                    "no_verification_support"
+                  ]
+                }
+              ],
+              "facts": [
+                {
+                  "fact_id": "F3",
+                  "claim": "Usually, but not necessarily, the origin should be a date within the time period of study or very close to it.",
+                  "relation": "support",
+                  "candidate_id": "C1",
+                  "source_id": "S6",
+                  "evidence_id": "E5",
+                  "confidence": 0.818,
+                  "constraint_matches": [
+                    "regression"
+                  ]
+                },
+                {
+                  "fact_id": "F4",
+                  "claim": "Usually, but not necessarily, the origin should be a date within the time period of study or very close to it.",
+                  "relation": "support",
+                  "candidate_id": "C1",
+                  "source_id": "HS2",
+                  "evidence_id": "E7",
+                  "confidence": 0.818,
+                  "constraint_matches": [
+                    "regression"
+                  ]
+                },
+                {
+                  "fact_id": "F7",
+                  "claim": "Usually, but not necessarily, the origin should be a date within the time period of study or very close to it.",
+                  "relation": "support",
+                  "candidate_id": "C2",
+                  "source_id": "S6",
+                  "evidence_id": "E5",
+                  "confidence": 0.818,
+                  "constraint_matches": [
+                    "regression"
+                  ]
+                },
+                {
+                  "fact_id": "F8",
+                  "claim": "Usually, but not necessarily, the origin should be a date within the time period of study or very close to it.",
+                  "relation": "support",
+                  "candidate_id": "C2",
+                  "source_id": "HS2",
+                  "evidence_id": "E7",
+                  "confidence": 0.818,
+                  "constraint_matches": [
+                    "regression"
+                  ]
+                },
+                {
+                  "fact_id": "F13",
+                  "claim": "Hi all, Perhaps a simple answer to this question but I can't seem to find an appropriate answer to it.",
+                  "relation": "support",
+                  "candidate_id": "C4",
+                  "source_id": "S8",
+                  "evidence_id": "E6",
+                  "confidence": 0.848,
+                  "constraint_matches": [
+                    "regression"
+                  ]
+                }
+              ],
+              "missing_info": [],
+              "risk_flags": [
+                "evidence_driven_source",
+                "no_verification_support"
+              ]
+            },
+            "question_analysis": {
+              "answer_type": "date",
+              "target_terms": [
+                "Regression",
+                "MM",
+                "DD",
+                "YY"
+              ],
+              "constraints": [],
+              "source_hints": [],
+              "banned_answer_terms": [
+                "label",
+                "Regression"
+              ],
+              "requires_verification": true,
+              "needs_calculation": false,
+              "needs_multi_hop": false
+            },
+            "candidate_diagnostics": {
+              "answer_type": "date",
+              "raw_candidate_count": 5,
+              "filtered_candidate_count": 5,
+              "verified_candidate_count": 5,
+              "top_candidate": "2010",
+              "top_candidate_confidence": 0.6,
+              "top_candidate_support": 2,
+              "top_candidate_refute": 0,
+              "rejected_candidates": [],
+              "probability_rerank": {
+                "enabled": true,
+                "model_name": "Qwen/Qwen3-4B",
+                "max_candidates": 5,
+                "max_evidence_sentences": 3,
+                "scored": [
+                  {
+                    "answer": "2000",
+                    "base_score": 1.0,
+                    "probability_score": 0.081127,
+                    "combined_score": 0.770282,
+                    "evidence_ids": [
+                      "E5",
+                      "E7"
+                    ]
+                  },
+                  {
+                    "answer": "2010",
+                    "base_score": 1.0,
+                    "probability_score": 0.118905,
+                    "combined_score": 0.779726,
+                    "evidence_ids": [
+                      "E5",
+                      "E7"
+                    ]
+                  },
+                  {
+                    "answer": "Apr 15, 2018",
+                    "base_score": 0.265642,
+                    "probability_score": 0.396634,
+                    "combined_score": 0.29839,
+                    "evidence_ids": [
+                      "E2"
+                    ]
+                  },
+                  {
+                    "answer": "2016",
+                    "base_score": 0.080064,
+                    "probability_score": 0.106345,
+                    "combined_score": 0.086634,
+                    "evidence_ids": [
+                      "E6"
+                    ]
+                  },
+                  {
+                    "answer": "2013",
+                    "base_score": 0.058855,
+                    "probability_score": 0.110327,
+                    "combined_score": 0.071723,
+                    "evidence_ids": [
+                      "E11"
+                    ]
+                  }
+                ],
+                "error": ""
+              },
+              "evidence_driven_search": {
+                "enabled": true,
+                "queries": [
+                  "Regression Regression label label date",
+                  "Solution Regression label label date"
+                ],
+                "source_count": 6,
+                "evidence_count": 6
+              }
+            },
+            "tool_usage": [
+              {
+                "ok": true,
+                "tool_name": "search",
+                "output_text": "{'results': [{'title': 'BrowserToolkit问题 · Issue #271 · camel-ai/owl - GitHub', 'url': 'https://github.com/camel-ai/owl/issues/271', 'content': 'gent在使用BrowserToolkit时总是存在下面的问题，测试样例from gaia: case(from gaia) According to github, when was Regression added to the oldest closed numpy.polynomial issue that has the Regression label in MM/DD/YY? 运行脚本 main分支run_gaia_roleplaying.py 错误信息...', 'raw_content': 'gent在使用BrowserToolkit时总是存在下面的问题，测试样例from gaia: case(from gaia) According to github, when was Regression added to the oldest closed numpy.polynomial issue that has the Regression label in MM/DD/YY? 运行脚本 main分支run_gaia_roleplaying.py 错误信息...', 'rerank_score': 21.9}, {'title': 'mcp-github-research/README.md at master · MikeyBeez/mcp-github-research', 'url': 'https://github.com/MikeyBeez/mcp-github-research/blob/master/README.md', 'content': 'Solution: github_analyze_label_history + github_get_issue_timeline Example: \"According to github, when was Regression added to the oldest closed numpy.polynomial issue that has the Regression label?\"', 'raw_content': 'Solution: github_analyze_label_history + github_get_issue_timeline Example: \"According to github, when was Regression added to the oldest closed numpy.polynomial issue that has the Regression label?\"', 'rerank_score': 17.5}, {'title': 'harbor-datasets/datasets/gaia/7619a514-5fa8-43ef-9143 ... - GitHub', 'url': 'https://github.com/harbor-framework/harbor-datasets/blob/main/datasets/gaia/7619a514-5fa8-43ef-9143-83b66a43d7a4/instruction.md', 'content': 'Question According to github, when was Regression added to the oldest closed numpy.polynomial issue that has the Regression label in MM/DD/YY?', 'raw_content': 'Question According to github, when was Regression added to the oldest closed numpy.polynomial issue that has the Regression label in MM/DD/YY?', 'rerank_score': 17.0}, {'title': 'metadata.jsonl · SumitB7/Final_Assignment_Template at main', 'url': 'https://huggingface.co/spaces/SumitB7/Final_Assignment_Template/blob/main/metadata.jsonl', 'content': 'Opened the NumPy GitHub page.\\\\n3. Clicked \\\\\"Issues \\\\ \" in the repo tabs.\\\\n4. Clicked \\\\\"Closed \\\\ \" on the filter bar.\\\\n5. Set the filter to the \\\\\" numpy.polynomial\\\\ \" label.\\\\n6. Set the filter to the \\\\\"06 - Regression \\\\ \" label.\\\\n7. Opened the oldest Regression post.\\\\n8. Scrolled down to find when the Regression label was added (Apr 15, 2018).\\\\n9.', 'raw_content': 'Opened the NumPy GitHub page.\\\\n3. Clicked \\\\\"Issues \\\\ \" in the repo tabs.\\\\n4. Clicked \\\\\"Closed \\\\ \" on the filter bar.\\\\n5. Set the filter to the \\\\\" numpy.polynomial\\\\ \" label.\\\\n6. Set the filter to the \\\\\"06 - Regression \\\\ \" label.\\\\n7. Opened the oldest Regression post.\\\\n8. Scrolled down to find when the Regression label was added (Apr 15, 2018).\\\\n9.', 'rerank_score': 11.7}, {'title': 'Many but not all deep neural network audio models ...', 'url': 'https://www.biorxiv.org/content/10.1101/2022.09.06.506680v2.full.pdf', 'content': 'bioRxiv - the preprint server for biology, operated by openRxiv, a nonprofit organization dedicated to advancing scientific communication', 'raw_content': 'bioRxiv - the preprint server for biology, operated by openRxiv, a nonprofit organization dedicated to advancing scientific communication', 'rerank_score': -0.15}], 'backend': 'searxng', 'answer': None, 'notices': []}",
+                "raw_result": {
+                  "results": [
+                    {
+                      "title": "BrowserToolkit问题 · Issue #271 · camel-ai/owl - GitHub",
+                      "url": "https://github.com/camel-ai/owl/issues/271",
+                      "content": "gent在使用BrowserToolkit时总是存在下面的问题，测试样例from gaia: case(from gaia) According to github, when was Regression added to the oldest closed numpy.polynomial issue that has the Regression label in MM/DD/YY? 运行脚本 main分支run_gaia_roleplaying.py 错误信息...",
+                      "raw_content": "gent在使用BrowserToolkit时总是存在下面的问题，测试样例from gaia: case(from gaia) According to github, when was Regression added to the oldest closed numpy.polynomial issue that has the Regression label in MM/DD/YY? 运行脚本 main分支run_gaia_roleplaying.py 错误信息...",
+                      "rerank_score": 21.9
+                    },
+                    {
+                      "title": "mcp-github-research/README.md at master · MikeyBeez/mcp-github-research",
+                      "url": "https://github.com/MikeyBeez/mcp-github-research/blob/master/README.md",
+                      "content": "Solution: github_analyze_label_history + github_get_issue_timeline Example: \"According to github, when was Regression added to the oldest closed numpy.polynomial issue that has the Regression label?\"",
+                      "raw_content": "Solution: github_analyze_label_history + github_get_issue_timeline Example: \"According to github, when was Regression added to the oldest closed numpy.polynomial issue that has the Regression label?\"",
+                      "rerank_score": 17.5
+                    },
+                    {
+                      "title": "harbor-datasets/datasets/gaia/7619a514-5fa8-43ef-9143 ... - GitHub",
+                      "url": "https://github.com/harbor-framework/harbor-datasets/blob/main/datasets/gaia/7619a514-5fa8-43ef-9143-83b66a43d7a4/instruction.md",
+                      "content": "Question According to github, when was Regression added to the oldest closed numpy.polynomial issue that has the Regression label in MM/DD/YY?",
+                      "raw_content": "Question According to github, when was Regression added to the oldest closed numpy.polynomial issue that has the Regression label in MM/DD/YY?",
+                      "rerank_score": 17.0
+                    },
+                    {
+                      "title": "metadata.jsonl · SumitB7/Final_Assignment_Template at main",
+                      "url": "https://huggingface.co/spaces/SumitB7/Final_Assignment_Template/blob/main/metadata.jsonl",
+                      "content": "Opened the NumPy GitHub page.\\n3. Clicked \\\"Issues \\ \" in the repo tabs.\\n4. Clicked \\\"Closed \\ \" on the filter bar.\\n5. Set the filter to the \\\" numpy.polynomial\\ \" label.\\n6. Set the filter to the \\\"06 - Regression \\ \" label.\\n7. Opened the oldest Regression post.\\n8. Scrolled down to find when the Regression label was added (Apr 15, 2018).\\n9.",
+                      "raw_content": "Opened the NumPy GitHub page.\\n3. Clicked \\\"Issues \\ \" in the repo tabs.\\n4. Clicked \\\"Closed \\ \" on the filter bar.\\n5. Set the filter to the \\\" numpy.polynomial\\ \" label.\\n6. Set the filter to the \\\"06 - Regression \\ \" label.\\n7. Opened the oldest Regression post.\\n8. Scrolled down to find when the Regression label was added (Apr 15, 2018).\\n9.",
+                      "rerank_score": 11.7
+                    },
+                    {
+                      "title": "Many but not all deep neural network audio models ...",
+                      "url": "https://www.biorxiv.org/content/10.1101/2022.09.06.506680v2.full.pdf",
+                      "content": "bioRxiv - the preprint server for biology, operated by openRxiv, a nonprofit organization dedicated to advancing scientific communication",
+                      "raw_content": "bioRxiv - the preprint server for biology, operated by openRxiv, a nonprofit organization dedicated to advancing scientific communication",
+                      "rerank_score": -0.15
+                    }
+                  ],
+                  "backend": "searxng",
+                  "answer": null,
+                  "notices": []
+                },
+                "error": null
+              },
+              {
+                "ok": true,
+                "tool_name": "search",
+                "output_text": "{'results': [{'title': 'r - Does it make sense to use a date variable in a regression? - Cross Validated', 'url': 'https://stats.stackexchange.com/questions/65900/does-it-make-sense-to-use-a-date-variable-in-a-regression', 'content': 'Usually, but not necessarily, the origin should be a date within the time period of study or very close to it. Perhaps the simplest case is linear regression on a date variable in years. Here a regression of some response on date expressed as dates like 2000 or 2010 implies an intercept which is the value of response in year 0.', 'raw_content': 'Usually, but not necessarily, the origin should be a date within the time period of study or very close to it. Perhaps the simplest case is linear regression on a date variable in years. Here a regression of some response on date expressed as dates like 2000 or 2010 implies an intercept which is the value of response in year 0.', 'rerank_score': 11.1}, {'title': 'python - Regression with Date variable using Scikit-learn - Stack Overflow', 'url': 'https://stackoverflow.com/questions/16453644/regression-with-date-variable-using-scikit-learn', 'content': \"You have two options. You can convert the date to an ordinal i.e. an integer representing the number of days since year 1 day 1. You can do this by a datetime.date 's toordinal function. Alternatively, you can turn the dates into categorical variables using sklearn's . What it does is create a new variable for each distinct date. So instead of something like column date with values ['2013-04 ...\", 'raw_content': \"You have two options. You can convert the date to an ordinal i.e. an integer representing the number of days since year 1 day 1. You can do this by a datetime.date 's toordinal function. Alternatively, you can turn the dates into categorical variables using sklearn's . What it does is create a new variable for each distinct date. So instead of something like column date with values ['2013-04 ...\", 'rerank_score': 11.05}, {'title': 'Format date in regression - Statalist', 'url': 'https://www.statalist.org/forums/forum/general-stata-discussion/general/1509613-format-date-in-regression', 'content': \"Hi all, Perhaps a simple answer to this question but I can't seem to find an appropriate answer to it. I want to run a regression with time fixed effects. My data contains a variable date, e.g. 26th July 2016. By means of ... format quarter_of_year %tq When I look at my data, the date will be correctly displayed as 2016Q3.\", 'raw_content': \"Hi all, Perhaps a simple answer to this question but I can't seem to find an appropriate answer to it. I want to run a regression with time fixed effects. My data contains a variable date, e.g. 26th July 2016. By means of ... format quarter_of_year %tq When I look at my data, the date will be correctly displayed as 2016Q3.\", 'rerank_score': 10.95}, {'title': 'python linear regression predict by date - Stack Overflow', 'url': 'https://stackoverflow.com/questions/40217369/python-linear-regression-predict-by-date', 'content': '', 'raw_content': '', 'rerank_score': 7.95}, {'title': 'Regression analysis - Wikipedia', 'url': 'https://en.wikipedia.org/wiki/Regression_analysis', 'content': 'In statistical modeling, regression analysis is a statistical method for estimating the relationship between a dependent variable (often called the outcome or response variable, or a label in machine learning parlance) and one or more independent variables (often called regressors, predictors, covariates, explanatory variables or features). [1][2] The most common form of regression analysis is ...', 'raw_content': 'In statistical modeling, regression analysis is a statistical method for estimating the relationship between a dependent variable (often called the outcome or response variable, or a label in machine learning parlance) and one or more independent variables (often called regressors, predictors, covariates, explanatory variables or features). [1][2] The most common form of regression analysis is ...', 'rerank_score': 5.0}], 'backend': 'searxng', 'answer': None, 'notices': []}",
+                "raw_result": {
+                  "results": [
+                    {
+                      "title": "r - Does it make sense to use a date variable in a regression? - Cross Validated",
+                      "url": "https://stats.stackexchange.com/questions/65900/does-it-make-sense-to-use-a-date-variable-in-a-regression",
+                      "content": "Usually, but not necessarily, the origin should be a date within the time period of study or very close to it. Perhaps the simplest case is linear regression on a date variable in years. Here a regression of some response on date expressed as dates like 2000 or 2010 implies an intercept which is the value of response in year 0.",
+                      "raw_content": "Usually, but not necessarily, the origin should be a date within the time period of study or very close to it. Perhaps the simplest case is linear regression on a date variable in years. Here a regression of some response on date expressed as dates like 2000 or 2010 implies an intercept which is the value of response in year 0.",
+                      "rerank_score": 11.1
+                    },
+                    {
+                      "title": "python - Regression with Date variable using Scikit-learn - Stack Overflow",
+                      "url": "https://stackoverflow.com/questions/16453644/regression-with-date-variable-using-scikit-learn",
+                      "content": "You have two options. You can convert the date to an ordinal i.e. an integer representing the number of days since year 1 day 1. You can do this by a datetime.date 's toordinal function. Alternatively, you can turn the dates into categorical variables using sklearn's . What it does is create a new variable for each distinct date. So instead of something like column date with values ['2013-04 ...",
+                      "raw_content": "You have two options. You can convert the date to an ordinal i.e. an integer representing the number of days since year 1 day 1. You can do this by a datetime.date 's toordinal function. Alternatively, you can turn the dates into categorical variables using sklearn's . What it does is create a new variable for each distinct date. So instead of something like column date with values ['2013-04 ...",
+                      "rerank_score": 11.05
+                    },
+                    {
+                      "title": "Format date in regression - Statalist",
+                      "url": "https://www.statalist.org/forums/forum/general-stata-discussion/general/1509613-format-date-in-regression",
+                      "content": "Hi all, Perhaps a simple answer to this question but I can't seem to find an appropriate answer to it. I want to run a regression with time fixed effects. My data contains a variable date, e.g. 26th July 2016. By means of ... format quarter_of_year %tq When I look at my data, the date will be correctly displayed as 2016Q3.",
+                      "raw_content": "Hi all, Perhaps a simple answer to this question but I can't seem to find an appropriate answer to it. I want to run a regression with time fixed effects. My data contains a variable date, e.g. 26th July 2016. By means of ... format quarter_of_year %tq When I look at my data, the date will be correctly displayed as 2016Q3.",
+                      "rerank_score": 10.95
+                    },
+                    {
+                      "title": "python linear regression predict by date - Stack Overflow",
+                      "url": "https://stackoverflow.com/questions/40217369/python-linear-regression-predict-by-date",
+                      "content": "",
+                      "raw_content": "",
+                      "rerank_score": 7.95
+                    },
+                    {
+                      "title": "Regression analysis - Wikipedia",
+                      "url": "https://en.wikipedia.org/wiki/Regression_analysis",
+                      "content": "In statistical modeling, regression analysis is a statistical method for estimating the relationship between a dependent variable (often called the outcome or response variable, or a label in machine learning parlance) and one or more independent variables (often called regressors, predictors, covariates, explanatory variables or features). [1][2] The most common form of regression analysis is ...",
+                      "raw_content": "In statistical modeling, regression analysis is a statistical method for estimating the relationship between a dependent variable (often called the outcome or response variable, or a label in machine learning parlance) and one or more independent variables (often called regressors, predictors, covariates, explanatory variables or features). [1][2] The most common form of regression analysis is ...",
+                      "rerank_score": 5.0
+                    }
+                  ],
+                  "backend": "searxng",
+                  "answer": null,
+                  "notices": []
+                },
+                "error": null
+              },
+              {
+                "ok": true,
+                "tool_name": "search",
+                "output_text": "{'results': [], 'backend': 'searxng', 'answer': None, 'notices': []}",
+                "raw_result": {
+                  "results": [],
+                  "backend": "searxng",
+                  "answer": null,
+                  "notices": []
+                },
+                "error": null
+              },
+              {
+                "ok": true,
+                "tool_name": "search",
+                "output_text": "{'results': [{'title': 'Excel use dates as x axis, but numbers to fit regression equation', 'url': 'https://superuser.com/questions/1256640/excel-use-dates-as-x-axis-but-numbers-to-fit-regression-equation', 'content': \"I would still like to keep the dates on the x-axis of the chart, but have my regression equation use numbers like 1,2,3,...instead of date values like 43013. I tried to follow Microsoft Office Support's Change axis labels in a chart article, but changing horizontal axis labels is greyed out This is what the chart looks like:\", 'raw_content': \"I would still like to keep the dates on the x-axis of the chart, but have my regression equation use numbers like 1,2,3,...instead of date values like 43013. I tried to follow Microsoft Office Support's Change axis labels in a chart article, but changing horizontal axis labels is greyed out This is what the chart looks like:\", 'rerank_score': 11.0}, {'title': 'Does it make sense to use a date variable in a regression?', 'url': 'https://stats.stackexchange.com/questions/65900/does-it-make-sense-to-use-a-date-variable-in-a-regression', 'content': 'Usually, but not necessarily, the origin should be a date within the time period of study or very close to it. Perhaps the simplest case is linear regression on a date variable in years. Here a regression of some response on date expressed as dates like 2000 or 2010 implies an intercept which is the value of response in year 0.', 'raw_content': 'Usually, but not necessarily, the origin should be a date within the time period of study or very close to it. Perhaps the simplest case is linear regression on a date variable in years. Here a regression of some response on date expressed as dates like 2000 or 2010 implies an intercept which is the value of response in year 0.', 'rerank_score': 8.9}, {'title': 'How to plot a linear regression with datetimes on the x-axis', 'url': 'https://stackoverflow.com/questions/29308729/how-to-plot-a-linear-regression-with-datetimes-on-the-x-axis', 'content': 'I would like a sort of scatter plot with time along the x-axis, and amount on the y, with a line through the data to guide the viewer\\'s eye. If I use the pandas plot df.plot(style=\"o\") it\\'s not quite right, because the line is not there. I would like something like the examples here.', 'raw_content': 'I would like a sort of scatter plot with time along the x-axis, and amount on the y, with a line through the data to guide the viewer\\'s eye. If I use the pandas plot df.plot(style=\"o\") it\\'s not quite right, because the line is not there. I would like something like the examples here.', 'rerank_score': 8.85}], 'backend': 'searxng', 'answer': None, 'notices': []}",
+                "raw_result": {
+                  "results": [
+                    {
+                      "title": "Excel use dates as x axis, but numbers to fit regression equation",
+                      "url": "https://superuser.com/questions/1256640/excel-use-dates-as-x-axis-but-numbers-to-fit-regression-equation",
+                      "content": "I would still like to keep the dates on the x-axis of the chart, but have my regression equation use numbers like 1,2,3,...instead of date values like 43013. I tried to follow Microsoft Office Support's Change axis labels in a chart article, but changing horizontal axis labels is greyed out This is what the chart looks like:",
+                      "raw_content": "I would still like to keep the dates on the x-axis of the chart, but have my regression equation use numbers like 1,2,3,...instead of date values like 43013. I tried to follow Microsoft Office Support's Change axis labels in a chart article, but changing horizontal axis labels is greyed out This is what the chart looks like:",
+                      "rerank_score": 11.0
+                    },
+                    {
+                      "title": "Does it make sense to use a date variable in a regression?",
+                      "url": "https://stats.stackexchange.com/questions/65900/does-it-make-sense-to-use-a-date-variable-in-a-regression",
+                      "content": "Usually, but not necessarily, the origin should be a date within the time period of study or very close to it. Perhaps the simplest case is linear regression on a date variable in years. Here a regression of some response on date expressed as dates like 2000 or 2010 implies an intercept which is the value of response in year 0.",
+                      "raw_content": "Usually, but not necessarily, the origin should be a date within the time period of study or very close to it. Perhaps the simplest case is linear regression on a date variable in years. Here a regression of some response on date expressed as dates like 2000 or 2010 implies an intercept which is the value of response in year 0.",
+                      "rerank_score": 8.9
+                    },
+                    {
+                      "title": "How to plot a linear regression with datetimes on the x-axis",
+                      "url": "https://stackoverflow.com/questions/29308729/how-to-plot-a-linear-regression-with-datetimes-on-the-x-axis",
+                      "content": "I would like a sort of scatter plot with time along the x-axis, and amount on the y, with a line through the data to guide the viewer's eye. If I use the pandas plot df.plot(style=\"o\") it's not quite right, because the line is not there. I would like something like the examples here.",
+                      "raw_content": "I would like a sort of scatter plot with time along the x-axis, and amount on the y, with a line through the data to guide the viewer's eye. If I use the pandas plot df.plot(style=\"o\") it's not quite right, because the line is not there. I would like something like the examples here.",
+                      "rerank_score": 8.85
+                    }
+                  ],
+                  "backend": "searxng",
+                  "answer": null,
+                  "notices": []
+                },
+                "error": null
+              },
+              {
+                "ok": true,
+                "tool_name": "search",
+                "output_text": "{'results': [{'title': 'Linear Regression with Date Hierarchy on X Axis', 'url': 'https://community.fabric.microsoft.com/t5/Desktop/Linear-Regression-with-Date-Hierarchy-on-X-Axis/td-p/4051673', 'content': \"Hi everyone! I have a line chart with average shipping costs (SC/O) as my y-axis and Calendar Quarter / Month Name as my x-axis. [Calendar Quarter] and [Month Name] are a part of a date hierarchy created from my 'Date' table. I have managed to create a line regression measure LINESTX using the [Order Date] column on my 'Orders' fact table. My problem with it is the line chart is becomes too ...\", 'raw_content': \"Hi everyone! I have a line chart with average shipping costs (SC/O) as my y-axis and Calendar Quarter / Month Name as my x-axis. [Calendar Quarter] and [Month Name] are a part of a date hierarchy created from my 'Date' table. I have managed to create a line regression measure LINESTX using the [Order Date] column on my 'Orders' fact table. My problem with it is the line chart is becomes too ...\", 'rerank_score': 8.9}, {'title': 'Label date/times — label_date • scales', 'url': 'https://scales.r-lib.org/reference/label_date.html', 'content': 'label_date () and label_time () label date/times using date/time format strings. label_date_short () automatically constructs a short format string sufficient to uniquely identify labels. It\\'s inspired by matplotlib\\'s ConciseDateFormatter, but uses a slightly different approach: ConciseDateFormatter formats \"firsts\" (e.g. first day of month, first day of day) specially; date_short () formats ...', 'raw_content': 'label_date () and label_time () label date/times using date/time format strings. label_date_short () automatically constructs a short format string sufficient to uniquely identify labels. It\\'s inspired by matplotlib\\'s ConciseDateFormatter, but uses a slightly different approach: ConciseDateFormatter formats \"firsts\" (e.g. first day of month, first day of day) specially; date_short () formats ...', 'rerank_score': 8.85}, {'title': 'Regression Analysis with Scikit-Learn (part 1 - Linear)', 'url': 'https://programminghistorian.org/en/lessons/linear-regression', 'content': 'This lesson is the first of a two-part lesson focusing on an indispensable set of data analysis methods, logistic and linear regression. It provides an overview of linear regression and walks through running both algorithms in Python (using scikit-learn). The lesson also discusses interpreting the results of a regression model and some common pitfalls to avoid.', 'raw_content': 'This lesson is the first of a two-part lesson focusing on an indispensable set of data analysis methods, logistic and linear regression. It provides an overview of linear regression and walks through running both algorithms in Python (using scikit-learn). The lesson also discusses interpreting the results of a regression model and some common pitfalls to avoid.', 'rerank_score': 3.6}], 'backend': 'searxng', 'answer': None, 'notices': []}",
+                "raw_result": {
+                  "results": [
+                    {
+                      "title": "Linear Regression with Date Hierarchy on X Axis",
+                      "url": "https://community.fabric.microsoft.com/t5/Desktop/Linear-Regression-with-Date-Hierarchy-on-X-Axis/td-p/4051673",
+                      "content": "Hi everyone! I have a line chart with average shipping costs (SC/O) as my y-axis and Calendar Quarter / Month Name as my x-axis. [Calendar Quarter] and [Month Name] are a part of a date hierarchy created from my 'Date' table. I have managed to create a line regression measure LINESTX using the [Order Date] column on my 'Orders' fact table. My problem with it is the line chart is becomes too ...",
+                      "raw_content": "Hi everyone! I have a line chart with average shipping costs (SC/O) as my y-axis and Calendar Quarter / Month Name as my x-axis. [Calendar Quarter] and [Month Name] are a part of a date hierarchy created from my 'Date' table. I have managed to create a line regression measure LINESTX using the [Order Date] column on my 'Orders' fact table. My problem with it is the line chart is becomes too ...",
+                      "rerank_score": 8.9
+                    },
+                    {
+                      "title": "Label date/times — label_date • scales",
+                      "url": "https://scales.r-lib.org/reference/label_date.html",
+                      "content": "label_date () and label_time () label date/times using date/time format strings. label_date_short () automatically constructs a short format string sufficient to uniquely identify labels. It's inspired by matplotlib's ConciseDateFormatter, but uses a slightly different approach: ConciseDateFormatter formats \"firsts\" (e.g. first day of month, first day of day) specially; date_short () formats ...",
+                      "raw_content": "label_date () and label_time () label date/times using date/time format strings. label_date_short () automatically constructs a short format string sufficient to uniquely identify labels. It's inspired by matplotlib's ConciseDateFormatter, but uses a slightly different approach: ConciseDateFormatter formats \"firsts\" (e.g. first day of month, first day of day) specially; date_short () formats ...",
+                      "rerank_score": 8.85
+                    },
+                    {
+                      "title": "Regression Analysis with Scikit-Learn (part 1 - Linear)",
+                      "url": "https://programminghistorian.org/en/lessons/linear-regression",
+                      "content": "This lesson is the first of a two-part lesson focusing on an indispensable set of data analysis methods, logistic and linear regression. It provides an overview of linear regression and walks through running both algorithms in Python (using scikit-learn). The lesson also discusses interpreting the results of a regression model and some common pitfalls to avoid.",
+                      "raw_content": "This lesson is the first of a two-part lesson focusing on an indispensable set of data analysis methods, logistic and linear regression. It provides an overview of linear regression and walks through running both algorithms in Python (using scikit-learn). The lesson also discusses interpreting the results of a regression model and some common pitfalls to avoid.",
+                      "rerank_score": 3.6
+                    }
+                  ],
+                  "backend": "searxng",
+                  "answer": null,
+                  "notices": []
+                },
+                "error": null
+              },
+              {
+                "ok": true,
+                "tool_name": "search",
+                "output_text": "{'results': [], 'backend': 'searxng', 'answer': None, 'notices': []}",
+                "raw_result": {
+                  "results": [],
+                  "backend": "searxng",
+                  "answer": null,
+                  "notices": []
+                },
+                "error": null
+              },
+              {
+                "ok": true,
+                "tool_name": "search",
+                "output_text": "{'results': [], 'backend': 'searxng', 'answer': None, 'notices': []}",
+                "raw_result": {
+                  "results": [],
+                  "backend": "searxng",
+                  "answer": null,
+                  "notices": []
+                },
+                "error": null
+              },
+              {
+                "ok": true,
+                "tool_name": "search",
+                "output_text": "{'results': [], 'backend': 'searxng', 'answer': None, 'notices': []}",
+                "raw_result": {
+                  "results": [],
+                  "backend": "searxng",
+                  "answer": null,
+                  "notices": []
+                },
+                "error": null
+              },
+              {
+                "ok": true,
+                "tool_name": "search",
+                "output_text": "{'results': [], 'backend': 'searxng', 'answer': None, 'notices': []}",
+                "raw_result": {
+                  "results": [],
+                  "backend": "searxng",
+                  "answer": null,
+                  "notices": []
+                },
+                "error": null
+              },
+              {
+                "ok": true,
+                "tool_name": "search",
+                "output_text": "{'results': [], 'backend': 'searxng', 'answer': None, 'notices': []}",
+                "raw_result": {
+                  "results": [],
+                  "backend": "searxng",
+                  "answer": null,
+                  "notices": []
+                },
+                "error": null
+              }
+            ],
+            "blocked_sources": [
+              {
+                "source_id": "S1",
+                "query_id": "Q1",
+                "title": "BrowserToolkit问题 · Issue #271 · camel-ai/owl - GitHub",
+                "url": "https://github.com/camel-ai/owl/issues/271",
+                "domain": "github.com",
+                "snippet": "gent在使用BrowserToolkit时总是存在下面的问题，测试样例from gaia: case(from gaia) According to github, when was Regression added to the oldest closed numpy.polynomial issue that has the Regression label in MM/DD/YY? 运行脚本 main分支run_gaia_roleplaying.py 错误信息...",
+                "raw_content": "gent在使用BrowserToolkit时总是存在下面的问题，测试样例from gaia: case(from gaia) According to github, when was Regression added to the oldest closed numpy.polynomial issue that has the Regression label in MM/DD/YY? 运行脚本 main分支run_gaia_roleplaying.py 错误信息...",
+                "rank": 1,
+                "rerank_score": 21.9,
+                "fetched": true,
+                "blocked": true,
+                "block_reason": "benchmark_or_dataset_source"
+              },
+              {
+                "source_id": "S3",
+                "query_id": "Q1",
+                "title": "harbor-datasets/datasets/gaia/7619a514-5fa8-43ef-9143 ... - GitHub",
+                "url": "https://github.com/harbor-framework/harbor-datasets/blob/main/datasets/gaia/7619a514-5fa8-43ef-9143-83b66a43d7a4/instruction.md",
+                "domain": "github.com",
+                "snippet": "Question According to github, when was Regression added to the oldest closed numpy.polynomial issue that has the Regression label in MM/DD/YY?",
+                "raw_content": "Question According to github, when was Regression added to the oldest closed numpy.polynomial issue that has the Regression label in MM/DD/YY?",
+                "rank": 3,
+                "rerank_score": 17.0,
+                "fetched": true,
+                "blocked": true,
+                "block_reason": "benchmark_or_dataset_source"
+              }
+            ]
+          },
+          "error": null
+        }
+      ],
+      "penalty_results": []
+    }
+  }
+}

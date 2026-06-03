@@ -134,7 +134,7 @@ class EvidenceBuilder:
             "calculator_context": calc["context"],
             "search_context": search["context"],
             "solver_context": solver["context"],
-            "best_verified_candidate": search.get("best_verified_candidate"),
+            "best_candidate": search.get("best_candidate"),
             "deterministic_solver_result": solver.get("deterministic_solver_result"),
             "used_attachment": attachment["used"],
             "used_calculator": calc["used"],
@@ -404,11 +404,7 @@ class EvidenceBuilder:
             tool_usage = output.tool_usage
             query_plan = searcher.to_dict(output)
             queries = [query.query for query in output.queries]
-            best_verified_candidate = (
-                output.verified_candidates[0].__dict__
-                if output.verified_candidates
-                else output.candidates[0].__dict__ if output.candidates else None
-            )
+            best_candidate = output.candidates[0].__dict__ if output.candidates else None
         except Exception as exc:
             context = ""
             tool_usage = [
@@ -422,7 +418,7 @@ class EvidenceBuilder:
             ]
             query_plan = {}
             queries = []
-            best_verified_candidate = None
+            best_candidate = None
 
         return {
             "tool_usage": tool_usage,
@@ -431,7 +427,7 @@ class EvidenceBuilder:
             "queries": queries,
             "query_plan": query_plan,
             "search_runs": [],
-            "best_verified_candidate": best_verified_candidate,
+            "best_candidate": best_candidate,
         }
 
     def _ensure_evidence_searcher(self) -> Any:
