@@ -6,7 +6,7 @@ from typing import Any
 
 from utils.network_utils import normalize_text
 
-from ..config import CandidateAnswer, EvidenceItem, QuestionAnalysis, SearchSourceCandidate
+from ..config import CandidateAnswer, EvidenceItem, SearchSourceCandidate
 from .seer.helpfulness_expert import HelpfulnessExpert
 from .seer.ngram_deduplicate import NgramDeduplicator
 from .seer.page_content_fetcher import PageContentFetcher
@@ -162,7 +162,6 @@ class SourceAnalysis:
         self,
         *,
         question: str,
-        analysis: QuestionAnalysis,
         sources: list[SearchSourceCandidate],
         query_text_by_id: dict[str, str],
         fetch_limit: int,
@@ -176,7 +175,6 @@ class SourceAnalysis:
 
         Args:
             - question: 原始問題。
-            - analysis: QuestionAnalysis。
             - sources: search tool 回傳 sources。
             - query_text_by_id: query id 到 query 文字的對應。
             - fetch_limit: 最多標記幾個 source 抓全文。
@@ -188,7 +186,7 @@ class SourceAnalysis:
         Returns:
             - SourceUsefulnessResult: source analysis 結果。
         """
-        del analysis, max_candidates
+        del max_candidates
         filtered_sources = self.source_filter.filter_sources(
             sources,
             question=question,

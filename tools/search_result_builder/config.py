@@ -5,22 +5,25 @@ from typing import Any
 
 
 @dataclass
-class QuestionAnalysis:
+class SearchSignals:
     """
-    儲存搜尋流程需要的輕量問題分析。
+    保存搜尋流程需要的輕量問題訊號。
+
+    目前這個資料由 embedding salience query generator 從原始問題抽出的
+    重要 span 建立，不再經過額外的問題分析階段。
 
     Args:
-        - answer_type: 預估答案型別。
-        - target_terms: 問題中的重要實體、名詞或關鍵詞。
-        - constraints: 日期、年份、數字等限制條件。
-        - source_hints: 可選的來源提示。
-        - needs_multi_hop: 是否可能需要多跳搜尋。
+        - answer_type: 保留欄位，預設 unknown，不在 search 主流程中推斷答案型別。
+        - target_terms: embedding salience 選出的重要文字 span。
+        - constraints: 保留欄位，目前通常為空。
+        - source_hints: 保留欄位，目前通常為空。
+        - needs_multi_hop: 保留欄位，目前由 retrieval controller 判斷是否需要下一跳。
 
     Returns:
-        - QuestionAnalysis: 問題分析資料。
+        - SearchSignals: 搜尋控制用的輕量問題訊號。
     """
 
-    answer_type: str = "entity"
+    answer_type: str = "unknown"
     target_terms: list[str] = field(default_factory=list)
     constraints: list[str] = field(default_factory=list)
     source_hints: list[str] = field(default_factory=list)
@@ -30,19 +33,19 @@ class QuestionAnalysis:
 @dataclass
 class SearchQueryPlan:
     """
-    儲存一次要送進搜尋引擎的 query plan。
+    描述一次要執行的搜尋 query。
 
     Args:
         - query_id: query id。
-        - query: 搜尋字串。
-        - purpose: query 用途。
-        - priority: query 優先序。
-        - source_hints: 可選的來源提示。
-        - expected_answer_type: 預期答案型別。
-        - requires_full_page: 是否建議 source analysis 抓全文。
+        - query: 實際送進搜尋工具的字串。
+        - purpose: query 的用途描述。
+        - priority: query 優先順序。
+        - source_hints: 偏好的來源提示，目前通常為空。
+        - expected_answer_type: 保留欄位，預設 unknown。
+        - requires_full_page: 是否建議後續 source analysis 抓完整頁面。
 
     Returns:
-        - SearchQueryPlan: 單一搜尋 query 計畫。
+        - SearchQueryPlan: 搜尋 query 計畫。
     """
 
     query_id: str
@@ -57,25 +60,25 @@ class SearchQueryPlan:
 @dataclass
 class SearchSourceCandidate:
     """
-    儲存 search tool 回傳的一個 source。
+    保存 search tool 回傳的一筆 source。
 
     Args:
         - source_id: source id。
-        - query_id: 來源 query id。
+        - query_id: 對應的 query id。
         - title: 搜尋結果標題。
         - url: 搜尋結果 URL。
         - domain: URL domain。
-        - snippet: 搜尋結果摘要或短內容。
-        - raw_content: full-page fetch 後的全文內容。
-        - rank: 原始搜尋結果排序。
-        - fetched: 是否已抓全文。
-        - blocked: 是否被 hard filter 擋掉。
-        - block_reason: 被擋原因。
-        - leak_score: leak hard-filter 診斷值。
-        - duplicate_score: duplicate hard-filter 診斷值。
-        - question_echo_score: question echo hard-filter 診斷值。
-        - should_fetch_full_page: 是否要抓全文。
-        - filter_reasons: filter / fetch 診斷資訊。
+        - snippet: 搜尋結果摘要。
+        - raw_content: full-page fetch 後取得的網頁內容。
+        - rank: 搜尋結果排名。
+        - fetched: 是否已抓取完整頁面。
+        - blocked: 是否被 source filter 擋下。
+        - block_reason: 被擋下的原因。
+        - leak_score: 題目洩漏檢查分數。
+        - duplicate_score: 重複來源檢查分數。
+        - question_echo_score: 題目 echo 檢查分數。
+        - should_fetch_full_page: 是否建議抓取完整頁面。
+        - filter_reasons: filter / fetch 的判斷紀錄。
 
     Returns:
         - SearchSourceCandidate: 搜尋來源資料。
@@ -102,22 +105,22 @@ class SearchSourceCandidate:
 @dataclass
 class EvidenceItem:
     """
-    儲存已通過 source analysis 的 useful evidence chunk。
+    保存 source analysis 後可交給 Agent 的 evidence chunk。
 
     Args:
         - evidence_id: evidence id。
-        - source_id: 來源 source id。
-        - query_id: 來源 query id。
+        - source_id: 對應的 source id。
+        - query_id: 對應的 query id。
         - text: evidence 文字。
         - title: source title。
         - url: source URL。
         - matched_terms: EfficientRAG labeler 保留的 useful tokens。
         - helpfulness_score: Helpfulness Expert 分數。
-        - evidence_quality: 給 next-hop controller 使用的 evidence 品質分數，目前等同 helpfulness_score。
-        - cleaning_reasons: helpfulness / labeler / dedup 診斷資訊。
+        - evidence_quality: next-hop controller 使用的 evidence 品質分數。
+        - cleaning_reasons: helpfulness / labeler / dedup 的處理紀錄。
 
     Returns:
-        - EvidenceItem: 可放入 Agent prompt 的 evidence。
+        - EvidenceItem: prompt-ready evidence。
     """
 
     evidence_id: str
@@ -135,18 +138,18 @@ class EvidenceItem:
 @dataclass
 class CandidateAnswer:
     """
-    儲存可選的候選答案。
+    保存 search flow 可能抽出的候選答案。
 
-    目前新 search flow 不主動產生 candidate，但保留此結構給 next-hop query
-    此結構用來記錄搜尋流程抽出的候選答案。
+    目前 Agent prompt 不直接使用 candidate answer；此結構主要保留給
+    next-hop query 或後續實驗使用。
 
     Args:
         - answer: 候選答案文字。
         - answer_type: 候選答案型別。
-        - support_count: 支撐次數。
-        - confidence: 候選答案信心。
-        - evidence_ids: 支撐 evidence ids。
-        - source_ids: 支撐 source ids。
+        - support_count: 支撐 evidence 數量。
+        - confidence: 候選答案信心分數。
+        - evidence_ids: 支撐該候選的 evidence ids。
+        - source_ids: 支撐該候選的 source ids。
 
     Returns:
         - CandidateAnswer: 候選答案資料。
@@ -163,22 +166,22 @@ class CandidateAnswer:
 @dataclass
 class EvidenceOutput:
     """
-    儲存 EvidenceSearcher 的完整輸出。
+    保存 EvidenceSearcher 的完整輸出。
 
     Args:
         - question: 原始問題。
-        - queries: 執行過的 query plans。
-        - sources: 通過 hard filter 的 sources。
+        - queries: 已執行的 query plans。
+        - sources: source analysis 後保留的 sources。
         - evidence_items: useful evidence chunks。
-        - candidates: 可選候選答案，目前通常為空。
-        - summary: 給 Agent 的 prompt-ready evidence context。
-        - question_analysis: 問題分析結果。
-        - candidate_diagnostics: 搜尋與 source analysis 診斷資訊。
+        - summary: 給 Agent 使用的 prompt-ready evidence context。
+        - candidates: 候選答案，目前通常不輸出到 Agent prompt。
+        - search_signals: 搜尋控制訊號，目前來自 embedding salient spans。
+        - candidate_diagnostics: source analysis 診斷資訊。
         - tool_usage: search tool 使用紀錄。
-        - blocked_sources: 被 hard filter 擋掉的 sources。
+        - blocked_sources: 被 hard filter 擋下的 sources。
 
     Returns:
-        - EvidenceOutput: search_result_builder 主輸出。
+        - EvidenceOutput: search_result_builder 的結構化輸出。
     """
 
     question: str
@@ -187,7 +190,7 @@ class EvidenceOutput:
     evidence_items: list[EvidenceItem]
     summary: str
     candidates: list[CandidateAnswer] = field(default_factory=list)
-    question_analysis: QuestionAnalysis | None = None
+    search_signals: SearchSignals | None = None
     candidate_diagnostics: dict[str, Any] = field(default_factory=dict)
     tool_usage: list[dict[str, Any]] = field(default_factory=list)
     blocked_sources: list[SearchSourceCandidate] = field(default_factory=list)
@@ -197,7 +200,7 @@ __all__ = [
     "CandidateAnswer",
     "EvidenceItem",
     "EvidenceOutput",
-    "QuestionAnalysis",
     "SearchQueryPlan",
+    "SearchSignals",
     "SearchSourceCandidate",
 ]

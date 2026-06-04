@@ -51,17 +51,20 @@ class SearchQueryPlanner:
                 return {
                     "queries": queries,
                     "precision_needed": self.precision_needed,
+                    "salient_spans": [span.text for span in self.generator.last_salient_spans],
                 }
         except Exception as exc:
             return {
                 "queries": [text],
                 "precision_needed": self.precision_needed,
+                "salient_spans": [],
                 "planner_error": f"mask_salience:{type(exc).__name__}: {exc}",
             }
 
         return {
             "queries": [text],
             "precision_needed": self.precision_needed,
+            "salient_spans": [],
         }
 
     def _dedupe_queries(self, queries: list[str]) -> list[str]:

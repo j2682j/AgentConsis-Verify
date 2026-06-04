@@ -6,8 +6,7 @@ from urllib.parse import urlparse
 
 from utils.network_utils import normalize_text
 
-from .question_analyzer import QuestionAnalyzer
-from .config import CandidateAnswer, EvidenceOutput, SearchQueryPlan, SearchSourceCandidate
+from .config import CandidateAnswer, EvidenceOutput, SearchQueryPlan, SearchSignals, SearchSourceCandidate
 from .next_hop_query import NextHopQueryGenerator, RetrievalController
 from .query import SearchQueryPlanner
 from .evidence_renderer import EvidenceRenderer
@@ -39,7 +38,6 @@ class EvidenceSearcher:
         retrieval_controller: RetrievalController | None = None,
         next_hop_query_generator: NextHopQueryGenerator | None = None,
         renderer: EvidenceRenderer | None = None,
-        question_analyzer: QuestionAnalyzer | None = None,
         enable_evidence_driven_search: bool = True,
         max_evidence_driven_queries: int = 2,
         **_: Any,
@@ -50,7 +48,6 @@ class EvidenceSearcher:
         self.retrieval_controller = retrieval_controller or RetrievalController()
         self.next_hop_query_generator = next_hop_query_generator or NextHopQueryGenerator()
         self.renderer = renderer or EvidenceRenderer()
-        self.question_analyzer = question_analyzer or QuestionAnalyzer()
         self.enable_evidence_driven_search = enable_evidence_driven_search
         self.max_evidence_driven_queries = max(0, max_evidence_driven_queries)
 
@@ -78,8 +75,8 @@ class EvidenceSearcher:
         Returns:
             - EvidenceOutput: 結構化 search evidence 結果。
         """
-        analysis = self.question_analyzer.analyze(question)
         plan_dict = self.query_planner.plan(question=question, max_queries=max_queries)
+        search_signals = self._build_search_signals(plan_dict)
         initial_queries = self._build_query_plans(plan_dict, fallback_question=question)
 
         tool_usage: list[dict[str, Any]] = []
@@ -93,7 +90,6 @@ class EvidenceSearcher:
         )
         initial_seer = self._build_seer_result(
             question=question,
-            analysis=analysis,
             sources=initial_sources,
             queries=initial_queries,
             fetch_limit=max(0, max_full_page_results) * max(1, len(initial_queries)),
@@ -107,7 +103,6 @@ class EvidenceSearcher:
         candidates = list(self.seer_builder.last_candidates)
 
         initial_decision = self.retrieval_controller.assess(
-            analysis=analysis,
             evidence_items=evidence_items,
             candidates=candidates,
         )
@@ -116,7 +111,7 @@ class EvidenceSearcher:
         if self.enable_evidence_driven_search and initial_decision.need_next_hop:
             follow_up_queries = self.next_hop_query_generator.build(
                 question=question,
-                analysis=analysis,
+                search_signals=search_signals,
                 initial_queries=initial_queries,
                 evidence_items=evidence_items,
                 candidates=candidates,
@@ -138,7 +133,6 @@ class EvidenceSearcher:
                 )
                 follow_up_seer = self._build_seer_result(
                     question=question,
-                    analysis=analysis,
                     sources=follow_up_sources,
                     queries=follow_up_queries,
                     fetch_limit=follow_up_fetch_limit,
@@ -165,7 +159,7 @@ class EvidenceSearcher:
             evidence_items=evidence_items,
             summary="",
             candidates=candidates,
-            question_analysis=analysis,
+            search_signals=search_signals,
             candidate_diagnostics={},
             tool_usage=tool_usage,
             blocked_sources=blocked_sources,
@@ -218,7 +212,7 @@ class EvidenceSearcher:
                     purpose=self._query_purpose(index),
                     priority=100 - index,
                     source_hints=source_hints,
-                    expected_answer_type=self._expected_answer_type(query),
+                    expected_answer_type="unknown",
                     requires_full_page=precision_needed,
                 )
             )
@@ -229,11 +223,36 @@ class EvidenceSearcher:
                     query=fallback_question,
                     purpose="original_question",
                     priority=100,
-                    expected_answer_type=self._expected_answer_type(fallback_question),
+                    expected_answer_type="unknown",
                     requires_full_page=True,
                 )
             )
         return plans
+
+    def _build_search_signals(self, plan_dict: dict[str, Any]) -> SearchSignals:
+        salient_spans = [
+            normalize_text(str(span))
+            for span in list(plan_dict.get("salient_spans") or [])
+            if normalize_text(str(span))
+        ]
+        return SearchSignals(
+            answer_type="unknown",
+            target_terms=self._dedupe_texts(salient_spans)[:8],
+            constraints=[],
+            source_hints=[],
+            needs_multi_hop=False,
+        )
+
+    def _dedupe_texts(self, values: list[str]) -> list[str]:
+        deduped: list[str] = []
+        seen: set[str] = set()
+        for value in values:
+            cleaned = normalize_text(value).strip()
+            key = cleaned.lower()
+            if cleaned and key not in seen:
+                deduped.append(cleaned)
+                seen.add(key)
+        return deduped
 
     def _search_sources(
         self,
@@ -295,7 +314,6 @@ class EvidenceSearcher:
         self,
         *,
         question: str,
-        analysis: Any,
         sources: list[SearchSourceCandidate],
         queries: list[SearchQueryPlan],
         fetch_limit: int,
@@ -305,7 +323,6 @@ class EvidenceSearcher:
     ) -> SEERBuildResult:
         return self.seer_builder.build(
             question=question,
-            analysis=analysis,
             sources=sources,
             query_text_by_id={query.query_id: query.query for query in queries},
             fetch_limit=fetch_limit,
@@ -401,20 +418,6 @@ class EvidenceSearcher:
         if index == 2:
             return "quoted_or_entity_focus"
         return "source_or_keyword_focus"
-
-    def _expected_answer_type(self, query: str) -> str:
-        lowered = query.lower()
-        if any(marker in lowered for marker in ("when", "date", "year")):
-            return "date"
-        if "where" in lowered:
-            return "place"
-        if "who" in lowered:
-            return "person"
-        if any(marker in lowered for marker in ("title", "book", "paper", "video")):
-            return "title"
-        if any(marker in lowered for marker in ("url", "website")):
-            return "website"
-        return "entity"
 
     def _domain(self, url: str) -> str:
         try:

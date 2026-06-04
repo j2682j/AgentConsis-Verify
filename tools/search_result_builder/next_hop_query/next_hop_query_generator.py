@@ -5,7 +5,7 @@ from dataclasses import dataclass
 
 from utils.network_utils import normalize_text
 
-from ..config import CandidateAnswer, EvidenceItem, QuestionAnalysis, SearchQueryPlan
+from ..config import CandidateAnswer, EvidenceItem, SearchQueryPlan, SearchSignals
 
 
 @dataclass
@@ -105,7 +105,7 @@ class EvidenceDrivenQueryBuilder:
         self,
         *,
         question: str,
-        analysis: QuestionAnalysis,
+        search_signals: SearchSignals,
         initial_queries: list[SearchQueryPlan],
         evidence_items: list[EvidenceItem],
         candidates: list[CandidateAnswer],
@@ -116,7 +116,7 @@ class EvidenceDrivenQueryBuilder:
 
         Args:
             - question: Original task question.
-            - analysis: Question analysis produced before search.
+            - search_signals: Search signals produced by embedding salience.
             - initial_queries: Queries already executed in the first hop.
             - evidence_items: Evidence chunks extracted from first-hop sources.
             - candidates: First-hop answer candidates.
@@ -128,15 +128,15 @@ class EvidenceDrivenQueryBuilder:
         if max_queries <= 0:
             return []
 
-        role_terms = self._answer_role_terms(question, analysis)
-        constraints = self._constraints(question, analysis)
-        source_hints = list(analysis.source_hints)
+        role_terms = self._answer_role_terms(question, search_signals)
+        constraints = self._constraints(question, search_signals)
+        source_hints = list(search_signals.source_hints)
         initial_keys = {self._query_key(plan.query) for plan in initial_queries}
 
         query_candidates: list[EvidenceDrivenQueryCandidate] = []
         for clue, clue_score in self._ranked_intermediate_clues(
             question=question,
-            analysis=analysis,
+            search_signals=search_signals,
             evidence_items=evidence_items,
             candidates=candidates,
         ):
@@ -156,9 +156,9 @@ class EvidenceDrivenQueryBuilder:
                 )
             )
 
-        if not query_candidates and analysis.target_terms:
+        if not query_candidates and search_signals.target_terms:
             fallback = self._compose_query(
-                clue=" ".join(analysis.target_terms[:3]),
+                clue=" ".join(search_signals.target_terms[:3]),
                 role_terms=role_terms,
                 constraints=constraints,
                 source_hints=source_hints,
@@ -183,7 +183,7 @@ class EvidenceDrivenQueryBuilder:
                     purpose="evidence_driven_followup",
                     priority=80 - index,
                     source_hints=source_hints,
-                    expected_answer_type=analysis.answer_type,
+                    expected_answer_type=search_signals.answer_type,
                     requires_full_page=True,
                 )
             )
@@ -193,7 +193,7 @@ class EvidenceDrivenQueryBuilder:
         self,
         *,
         question: str,
-        analysis: QuestionAnalysis,
+        search_signals: SearchSignals,
         evidence_items: list[EvidenceItem],
         candidates: list[CandidateAnswer],
     ) -> list[tuple[str, float]]:
@@ -218,7 +218,7 @@ class EvidenceDrivenQueryBuilder:
                 allow_question_overlap=False,
             )
 
-        for index, term in enumerate(analysis.target_terms[:8]):
+        for index, term in enumerate(search_signals.target_terms[:8]):
             self._add_clue(
                 clues,
                 term,
@@ -298,7 +298,7 @@ class EvidenceDrivenQueryBuilder:
 
         return clues[:20]
 
-    def _answer_role_terms(self, question: str, analysis: QuestionAnalysis) -> list[str]:
+    def _answer_role_terms(self, question: str, search_signals: SearchSignals) -> list[str]:
         lowered = normalize_text(question).lower()
         roles: list[str] = []
         role_patterns = [
@@ -336,14 +336,14 @@ class EvidenceDrivenQueryBuilder:
                 "website": "website",
                 "word": "word",
             }
-            fallback = fallback_by_type.get(analysis.answer_type)
+            fallback = fallback_by_type.get(search_signals.answer_type)
             if fallback:
                 roles.append(fallback)
         return roles[:4]
 
-    def _constraints(self, question: str, analysis: QuestionAnalysis) -> list[str]:
+    def _constraints(self, question: str, search_signals: SearchSignals) -> list[str]:
         constraints: list[str] = []
-        for value in analysis.constraints:
+        for value in search_signals.constraints:
             self._append(constraints, value)
         for value in re.findall(
             r"\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)[a-z]*\.?\s+(?:19|20)\d{2}\b",

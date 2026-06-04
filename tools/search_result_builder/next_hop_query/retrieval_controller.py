@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from ..config import CandidateAnswer, EvidenceItem, QuestionAnalysis
+from ..config import CandidateAnswer, EvidenceItem
 
 
 @dataclass
@@ -50,7 +50,6 @@ class RetrievalController:
     def assess(
         self,
         *,
-        analysis: QuestionAnalysis,
         evidence_items: list[EvidenceItem],
         candidates: list[CandidateAnswer],
     ) -> RetrievalDecision:
@@ -58,7 +57,6 @@ class RetrievalController:
         評估目前 retrieval 是否足夠，或是否要進行下一跳 search。
 
         Args:
-            - analysis: 問題分析結果。
             - evidence_items: SEER cleaning 後的 evidence。
             - candidates: 從 evidence 抽出的候選答案。
 
