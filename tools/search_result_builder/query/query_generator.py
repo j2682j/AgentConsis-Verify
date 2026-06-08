@@ -8,7 +8,7 @@ from utils.network_utils import normalize_text
 from .mask_salience_query import MaskSalienceQueryGenerator
 
 
-class SearchQueryPlanner:
+class QueryGenerator:
     """
     使用 token salience 產生搜尋 query，失敗時退回原始問題。
 
@@ -83,6 +83,4 @@ class SearchQueryPlanner:
         return re.sub(r"\s+", " ", normalize_text(query).lower()).strip()
 
 
-QueryGenerator = SearchQueryPlanner
-
-__all__ = ["QueryGenerator", "SearchQueryPlanner"]
+__all__ = ["QueryGenerator"]

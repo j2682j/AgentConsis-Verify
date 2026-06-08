@@ -94,6 +94,7 @@ class SalienceQueryCandidate:
     matched_spans: list[str]
     coverage_score: float
     score: float
+    semantic_impact_score: float = 0.0
     source: str = "qwen3:4b"
 
 
@@ -197,14 +198,14 @@ class MaskSalienceQueryGenerator:
     USER_TEMPLATE = """Question:
     {question}
 
-    Important spans:
+    Top semantic-impact spans:
     {spans}
 
     Generate {num_candidates} concise web search queries.
 
     Rules:
     - Generate search queries, not answers.
-    - Each query must include at least one important span.
+    - Each query must include at least one top semantic-impact span.
     - Prefer exact names, dates, titles, organizations, acronyms, and constraints.
     - Keep each query short.
     - Do not include explanations.
@@ -219,7 +220,7 @@ class MaskSalienceQueryGenerator:
         query_model_name: str = "qwen3:4b",
         max_input_tokens: int = 256,
         max_salient_tokens: int = 12,
-        max_salient_spans: int = 8,
+        max_salient_spans: int = 3,
         max_query_candidates: int = 3,
         min_token_chars: int = 2,
         merge_gap_chars: int = 2,
@@ -263,7 +264,7 @@ class MaskSalienceQueryGenerator:
         kept_tokens = self.filter_tokens(token_salience)
         spans = self.select_top_spans(self.merge_salient_tokens(text, kept_tokens))
         raw_queries = self.generate_queries_with_qwen(text, spans, num_candidates=num_candidates)
-        candidates = self.rank_queries(raw_queries, spans)
+        candidates = self.build_candidates(raw_queries, spans)
 
         if not candidates:
             candidates = self._fallback_candidates(text, spans)
@@ -463,7 +464,7 @@ class MaskSalienceQueryGenerator:
             return self._fallback_raw_queries(question, spans)
         return self._parse_query_json(raw_reply) or self._fallback_raw_queries(question, spans)
 
-    def rank_queries(
+    def build_candidates(
         self,
         queries: list[str],
         spans: list[SalientSpan],
@@ -481,22 +482,24 @@ class MaskSalienceQueryGenerator:
         deduped = self._dedupe_queries(queries)
         candidates: list[SalienceQueryCandidate] = []
         total_score = sum(max(span.score, 0.0) for span in spans) or 1.0
+        max_span_score = max((span.score for span in spans), default=1.0) or 1.0
         for query in deduped:
             matched = self._matched_spans(query, spans)
-            coverage_score = sum(span.score for span in matched) / total_score
-            score = coverage_score + self._query_bonus(query, matched) - self._generic_query_penalty(query)
-            if score <= 0 and matched:
-                score = coverage_score
+            matched_impact = sum(span.score for span in matched)
+            coverage_score = matched_impact / total_score
+            semantic_impact_score = (
+                max((span.score for span in matched), default=0.0) / max_span_score
+            )
             candidates.append(
                 SalienceQueryCandidate(
                     query=normalize_text(query),
                     matched_spans=[span.text for span in matched],
                     coverage_score=round(max(0.0, min(coverage_score, 1.0)), 6),
-                    score=round(max(0.0, score), 6),
+                    score=0.0,
+                    semantic_impact_score=round(max(0.0, semantic_impact_score), 6),
                     source=self.query_model_name,
                 )
             )
-        candidates.sort(key=lambda item: (item.score, item.coverage_score, len(item.query)), reverse=True)
         return candidates
 
     def diagnostics(self) -> dict[str, Any]:
@@ -725,7 +728,7 @@ class MaskSalienceQueryGenerator:
         question: str,
         spans: list[SalientSpan],
     ) -> list[SalienceQueryCandidate]:
-        return self.rank_queries(self._fallback_raw_queries(question, spans), spans)
+        return self.build_candidates(self._fallback_raw_queries(question, spans), spans)
 
     def _matched_spans(self, query: str, spans: list[SalientSpan]) -> list[SalientSpan]:
         query_key = self._normalize_for_match(query)
@@ -735,27 +738,6 @@ class MaskSalienceQueryGenerator:
             if span_key and span_key in query_key:
                 matched.append(span)
         return matched
-
-    def _query_bonus(self, query: str, matched_spans: list[SalientSpan]) -> float:
-        bonus = 0.0
-        if re.search(r"\b(?:19|20)\d{2}\b|\b\d+(?:\.\d+)?\b", query):
-            bonus += 0.08
-        if '"' in query or "'" in query:
-            bonus += 0.04
-        if len(matched_spans) >= 2:
-            bonus += 0.06
-        return bonus
-
-    def _generic_query_penalty(self, query: str) -> float:
-        tokens = re.findall(r"[A-Za-z0-9_.-]+", query.lower())
-        if not tokens:
-            return 0.4
-        generic_hits = sum(1 for token in tokens if token in self.GENERIC_QUERY_TERMS)
-        meaningful = [token for token in tokens if token not in self.STOPWORDS and token not in self.GENERIC_QUERY_TERMS]
-        penalty = generic_hits / max(len(tokens), 1) * 0.2
-        if len(meaningful) < 2:
-            penalty += 0.2
-        return penalty
 
     def _dedupe_spans(self, spans: list[SalientSpan]) -> list[SalientSpan]:
         best_by_key: dict[str, SalientSpan] = {}

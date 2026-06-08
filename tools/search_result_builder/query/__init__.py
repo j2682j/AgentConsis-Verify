@@ -4,13 +4,12 @@ from .mask_salience_query import (
     SalientSpan,
     TokenSalient,
 )
-from .query_generator import QueryGenerator, SearchQueryPlanner
+from .query_generator import QueryGenerator, QueryGenerator
 
 __all__ = [
     "MaskSalienceQueryGenerator",
     "QueryGenerator",
     "SalienceQueryCandidate",
     "SalientSpan",
-    "SearchQueryPlanner",
     "TokenSalient",
 ]

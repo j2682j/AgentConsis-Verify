@@ -82,10 +82,10 @@ class UsefulLabeledChunk:
     """
 
     chunk: SourceChunk
-    helpfulness: HelpfulnessSignal
     label: str
     kept_tokens: list[str]
     dropped_tokens: list[str]
+    helpfulness: HelpfulnessSignal | None = None
 
 
 @dataclass
@@ -113,7 +113,7 @@ class SourceUsefulnessResult:
 
 class SourceAnalysis:
     """
-    執行不依賴手刻分數的 source usefulness pipeline。
+    Source Usefulness Pipeline。
 
     Args:
         - source_filter: hard source filter。
@@ -202,17 +202,13 @@ class SourceAnalysis:
         chunks = self._chunk_sources(filtered_sources)
         labeled_chunks: list[UsefulLabeledChunk] = []
         for chunk in chunks:
-            helpfulness = self._score_helpfulness(question=question, chunk=chunk)
             label_result = self.labeler.label_text(
                 question=question,
                 text=chunk.text,
-                useful_probability=helpfulness.useful_probability,
-                threshold=helpfulness.threshold,
             )
             labeled_chunks.append(
                 UsefulLabeledChunk(
                     chunk=chunk,
-                    helpfulness=helpfulness,
                     label=label_result.label,
                     kept_tokens=label_result.kept_tokens,
                     dropped_tokens=label_result.dropped_tokens,
@@ -222,22 +218,27 @@ class SourceAnalysis:
         useful_chunks = [item for item in labeled_chunks if item.label == "useful"]
         useless_chunks = [item for item in labeled_chunks if item.label != "useful"]
         deduped_useful = self._dedupe_labeled_chunks(useful_chunks)
+        scored_useful = self._score_labeled_chunks(question=question, chunks=deduped_useful)
+        scored_useful.sort(
+            key=lambda item: self._helpfulness_score(item),
+            reverse=True,
+        )
         evidence_items = self._to_evidence_items(
-            deduped_useful[:max_evidence_items],
+            scored_useful[:max_evidence_items],
             max_chars_per_item=max_chars_per_item,
         )
         best_helpfulness = max(
-            (item.helpfulness.useful_probability for item in labeled_chunks),
+            (self._helpfulness_score(item) for item in scored_useful),
             default=0.0,
         )
-        stop_query = best_helpfulness >= self.helpfulness_threshold and len(deduped_useful) >= self.min_useful_chunks
+        stop_query = best_helpfulness >= self.helpfulness_threshold and len(scored_useful) >= self.min_useful_chunks
         diagnostics = {
-            "source_pipeline": "hard_filter->fetch->chunk->helpfulness_gate->efficientrag_labeler->seer_dedup",
+            "source_pipeline": "hard_filter->fetch->chunk->efficientrag_labeler->seer_dedup->helpfulness_scoring->evidence_conversion",
             "source_count": len(sources),
             "filtered_source_count": len(filtered_sources),
             "blocked_source_count": len(blocked_sources),
             "chunk_count": len(chunks),
-            "useful_chunk_count": len(deduped_useful),
+            "useful_chunk_count": len(scored_useful),
             "useless_chunk_count": len(useless_chunks),
             "best_helpfulness": best_helpfulness,
             "helpfulness_threshold": self.helpfulness_threshold,
@@ -248,7 +249,7 @@ class SourceAnalysis:
         self.last_evidence_items = evidence_items
         self.last_candidates = []
         self.last_rejected_candidates = []
-        self.last_useful_chunks = deduped_useful
+        self.last_useful_chunks = scored_useful
         self.last_useless_chunks = useless_chunks
         self.last_diagnostics = diagnostics
 
@@ -334,6 +335,21 @@ class SourceAnalysis:
             method=method,
         )
 
+    def _score_labeled_chunks(
+        self,
+        *,
+        question: str,
+        chunks: list[UsefulLabeledChunk],
+    ) -> list[UsefulLabeledChunk]:
+        for item in chunks:
+            item.helpfulness = self._score_helpfulness(question=question, chunk=item.chunk)
+        return chunks
+
+    def _helpfulness_score(self, item: UsefulLabeledChunk) -> float:
+        if item.helpfulness is None:
+            return 0.0
+        return item.helpfulness.useful_probability
+
     def _fallback_helpfulness(self, *, question: str, evidence: str) -> float:
         question_terms = self._keywords(question)
         evidence_terms = self._keywords(evidence)
@@ -344,7 +360,7 @@ class SourceAnalysis:
 
     def _dedupe_labeled_chunks(self, chunks: list[UsefulLabeledChunk]) -> list[UsefulLabeledChunk]:
         selected: list[UsefulLabeledChunk] = []
-        for item in sorted(chunks, key=lambda row: row.helpfulness.useful_probability, reverse=True):
+        for item in chunks:
             duplicate = any(
                 self.deduplicator.is_duplicate(
                     item.chunk.text,
@@ -366,6 +382,9 @@ class SourceAnalysis:
     ) -> list[EvidenceItem]:
         evidence_items: list[EvidenceItem] = []
         for index, item in enumerate(chunks, start=1):
+            helpfulness = item.helpfulness
+            useful_probability = helpfulness.useful_probability if helpfulness is not None else 0.0
+            helpfulness_method = helpfulness.method if helpfulness is not None else "not_scored"
             text = item.chunk.text[:max_chars_per_item].strip()
             if len(item.chunk.text) > max_chars_per_item:
                 text += " ..."
@@ -378,12 +397,13 @@ class SourceAnalysis:
                     title=item.chunk.title,
                     url=item.chunk.url,
                     matched_terms=item.kept_tokens[:12],
-                    helpfulness_score=item.helpfulness.useful_probability,
-                    evidence_quality=item.helpfulness.useful_probability,
+                    helpfulness_score=useful_probability,
+                    evidence_quality=useful_probability,
                     cleaning_reasons=[
-                        f"helpfulness:{item.helpfulness.useful_probability:.2f}",
                         f"label:{item.label}",
-                        item.helpfulness.method,
+                        "seer_dedup",
+                        f"helpfulness:{useful_probability:.2f}",
+                        helpfulness_method,
                     ],
                 )
             )
@@ -396,6 +416,7 @@ class SourceAnalysis:
             for token in re.findall(r"[a-z0-9][a-z0-9._-]{1,}", normalize_text(text).lower())
             if token not in stopwords and len(token) > 2
         }
+
 
 
 SEERBuildResult = SourceUsefulnessResult

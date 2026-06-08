@@ -97,7 +97,6 @@ class SourceFilter:
             canonical_url = self._canonical_url(source.url)
             if canonical_url and canonical_url in seen_urls:
                 self._mark_blocked(source, "duplicate_url")
-                source.duplicate_score = 1.0
                 continue
             if canonical_url:
                 seen_urls.add(canonical_url)
@@ -105,7 +104,6 @@ class SourceFilter:
             fingerprint = self._text_fingerprint(source)
             if fingerprint and self._is_duplicate_text(fingerprint, seen_fingerprints):
                 self._mark_blocked(source, "duplicate_text")
-                source.duplicate_score = 1.0
                 continue
             if fingerprint:
                 seen_fingerprints.append(fingerprint)
@@ -129,9 +127,6 @@ class SourceFilter:
         source.blocked = False
         source.block_reason = ""
         source.filter_reasons = []
-        source.leak_score = 0.0
-        source.duplicate_score = 0.0
-        source.question_echo_score = 0.0
         source.should_fetch_full_page = False
 
     def _mark_blocked(self, source: SearchSourceCandidate, reason: str) -> None:
@@ -146,12 +141,10 @@ class SourceFilter:
         if any(marker in domain for marker in self.BLOCKED_DOMAIN_MARKERS):
             return "blocked_domain"
         if any(marker in haystack for marker in self.BENCHMARK_LEAK_MARKERS):
-            source.leak_score = 1.0
             return "benchmark_or_answer_leak"
         if any(marker in haystack for marker in self.NO_RESULT_MARKERS):
             return "no_result_or_login_page"
         if "github.com" in domain and "gaia" in haystack:
-            source.leak_score = 1.0
             return "gaia_repository_source"
         if any(marker in source.url.lower() for marker in self.GENERIC_PAGE_MARKERS):
             source.filter_reasons.append("generic_page")
@@ -191,7 +184,6 @@ class SourceFilter:
         text_terms = self._keywords(haystack)
         novelty_terms = text_terms - question_terms
         if len(novelty_terms) <= 3:
-            source.question_echo_score = 1.0
             return True
         return False
 
@@ -216,7 +208,7 @@ class SourceFilter:
         for seen in seen_fingerprints:
             if fingerprint == seen:
                 return True
-            if SequenceMatcher(None, fingerprint, seen).ratio() >= 0.92:
+            if SequenceMatcher(None, fingerprint, seen).ratio() >= 0.9:
                 return True
         return False
 

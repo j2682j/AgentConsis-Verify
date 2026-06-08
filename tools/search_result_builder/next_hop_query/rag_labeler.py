@@ -65,8 +65,8 @@ class EfficientRAGLabelerAdapter:
         *,
         question: str,
         text: str,
-        useful_probability: float,
-        threshold: float,
+        useful_probability: float | None = None,
+        threshold: float | None = None,
     ) -> RAGLabelResult:
         """
         標註一段 evidence text 是否 useful。
@@ -83,10 +83,18 @@ class EfficientRAGLabelerAdapter:
         question_terms = set(self._ordered_keywords(question))
         text_terms = self._ordered_keywords(text)
         kept_tokens = [token for token in text_terms if token in question_terms][:12]
-        if not kept_tokens and useful_probability >= threshold:
+        if (
+            not kept_tokens
+            and useful_probability is not None
+            and threshold is not None
+            and useful_probability >= threshold
+        ):
             kept_tokens = text_terms[:12]
         dropped_tokens = [token for token in text_terms if token not in kept_tokens][:20]
-        label = "useful" if useful_probability >= threshold and kept_tokens else "useless"
+        if useful_probability is None or threshold is None:
+            label = "useful" if kept_tokens else "useless"
+        else:
+            label = "useful" if useful_probability >= threshold and kept_tokens else "useless"
         return RAGLabelResult(
             label=label,
             kept_tokens=kept_tokens,

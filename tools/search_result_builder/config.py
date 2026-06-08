@@ -74,9 +74,6 @@ class SearchSourceCandidate:
         - fetched: 是否已抓取完整頁面。
         - blocked: 是否被 source filter 擋下。
         - block_reason: 被擋下的原因。
-        - leak_score: 題目洩漏檢查分數。
-        - duplicate_score: 重複來源檢查分數。
-        - question_echo_score: 題目 echo 檢查分數。
         - should_fetch_full_page: 是否建議抓取完整頁面。
         - filter_reasons: filter / fetch 的判斷紀錄。
 
@@ -95,9 +92,6 @@ class SearchSourceCandidate:
     fetched: bool = False
     blocked: bool = False
     block_reason: str = ""
-    leak_score: float = 0.0
-    duplicate_score: float = 0.0
-    question_echo_score: float = 0.0
     should_fetch_full_page: bool = False
     filter_reasons: list[str] = field(default_factory=list)
 

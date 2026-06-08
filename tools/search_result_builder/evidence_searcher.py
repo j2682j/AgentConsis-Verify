@@ -8,7 +8,7 @@ from utils.network_utils import normalize_text
 
 from .config import CandidateAnswer, EvidenceOutput, SearchQueryPlan, SearchSignals, SearchSourceCandidate
 from .next_hop_query import NextHopQueryGenerator, RetrievalController
-from .query import SearchQueryPlanner
+from .query import QueryGenerator
 from .evidence_renderer import EvidenceRenderer
 from .source_analyze import SEERBuilder, SEERBuildResult
 
@@ -33,7 +33,7 @@ class EvidenceSearcher:
         self,
         *,
         tool_manager: Any,
-        query_planner: SearchQueryPlanner | None = None,
+        query_planner: QueryGenerator | None = None,
         seer_builder: SEERBuilder | None = None,
         retrieval_controller: RetrievalController | None = None,
         next_hop_query_generator: NextHopQueryGenerator | None = None,
@@ -43,7 +43,7 @@ class EvidenceSearcher:
         **_: Any,
     ) -> None:
         self.tool_manager = tool_manager
-        self.query_planner = query_planner or SearchQueryPlanner()
+        self.query_planner = query_planner or QueryGenerator()
         self.seer_builder = seer_builder or SEERBuilder()
         self.retrieval_controller = retrieval_controller or RetrievalController()
         self.next_hop_query_generator = next_hop_query_generator or NextHopQueryGenerator()
