@@ -1,8 +1,8 @@
 <div align="center">
 
-# SCP
+# AgentConsis-Verify
 
-**Self-Consistent Peer-scored multi-agent reasoning for GAIA**
+**Small Language Model – based Multi-Agent System with Self-Consistency and Score Selection**
 
 ![Python](https://img.shields.io/badge/Python-3.12%2B-blue)
 ![Benchmark](https://img.shields.io/badge/Benchmark-GAIA-purple)
@@ -11,9 +11,9 @@
 
 </div>
 
-## TL;DR
+## Description
 
-SCP is a local multi-agent reasoning framework for GAIA-style question answering.
+AgentConsis-Verify is a local multi-agent reasoning framework for GAIA-style question answering.
 It runs multiple small language model agents, asks them to solve the same task
 several times, aggregates self-consistency, optionally lets agents use tools
 during Stage 1, and then applies cross-agent reasoning-step judging in Stage 2.
@@ -44,9 +44,10 @@ python run_gaia.py --level 2 --max-samples 1 --enable-stage1-tool-use --log-name
 - Added Stage 2 pairwise judge scoring over reasoning steps.
 - Added rule-based answer validation and penalty calculation.
 - Added evidence-oriented search flow with embedding-delta query salience,
-  SEER-style source cleaning, full-page fetch, and default next-hop retrieval.
+  SEER-style source cleaning, full-page fetch, chunk labeling, and retrieval control.
 - Decoupled `SearchTool` into a backend adapter; filtering, fetching, and
   evidence construction now live under `search_result_builder`.
+- Added search pipeline diagnostics to per-task JSON export.
 
 ## Key Features
 
@@ -65,7 +66,7 @@ python run_gaia.py --level 2 --max-samples 1 --enable-stage1-tool-use --log-name
 
 ## Overview
 
-SCP is designed around the following question:
+AgentConsis-Verify is designed around the following question:
 
 > Can a group of small local agents improve task reliability by reasoning independently, comparing answers, and judging each other's reasoning steps?
 
@@ -77,11 +78,16 @@ The system is split into two main stages:
    - If tool use is enabled, an agent may request tools through a structured JSON format.
    - Answers are normalized and grouped to compute confidence.
 
-2. **Stage 2: Peer judging**
+2. **Stage 2: Reasoning Verifying**
    - Candidate reasoning steps are judged by other agents.
    - Judge agents return scores only.
    - Tool evidence can be included so judges can penalize unsupported or conflicting reasoning.
    - Final ranking combines confidence, judge score, and rule-based penalty.
+
+Tools are only used before or during Stage 1. After Stage 1 self-consistency
+aggregation is complete, SCP does not call search, calculator, solver, or
+attachment tools again. Stage 2 only judges the recorded answers, reasoning
+steps, and tool evidence.
 
 ## Architecture
 
@@ -92,14 +98,15 @@ Question
 Evidence Preparation
    |-- attachment handling
    |-- optional search preparation
+   |-- optional solver/calculator preparation
    |-- ContextPacket construction
    |
    v
 Stage 1 Runner
-   |-- Agent A x N runs
-   |-- Agent B x N runs
-   |-- Agent C x N runs
-   |-- Agent D x N runs
+   |-- Agent A x N runs, optional per-run tool trajectory
+   |-- Agent B x N runs, optional per-run tool trajectory
+   |-- Agent C x N runs, optional per-run tool trajectory
+   |-- Agent D x N runs, optional per-run tool trajectory
    |
    v
 Stage 1 Aggregation
@@ -127,7 +134,7 @@ Answer + JSON/Markdown Reports
 ## Repository Structure
 
 ```text
-SCP/
+AgentConsis-Verify/
 ├── benchmark/
 │   └── gaia/                 # GAIA dataset loader, runner, report/export helpers
 ├── context/                  # Prompt and context builders
@@ -220,9 +227,14 @@ PERPLEXITY_API_KEY=
 
 Supported search backends include `hybrid`, `advanced`, `searxng`, `tavily`,
 `serpapi`, `duckduckgo`, and `perplexity`. `SearchTool` only returns normalized
-raw search results. Source filtering, full-page fetch, helpfulness scoring,
-deduplication, next-hop retrieval, and prompt rendering are controlled by
-`tools/search_result_builder/`.
+raw search results. Source filtering, full-page fetch, chunk labeling,
+deduplication, retrieval control, next-hop query generation, and prompt
+rendering are controlled by `tools/search_result_builder/`.
+
+Helpfulness probability scoring is currently disabled in the active search
+pipeline. The project keeps the standalone helper implementation, but evidence
+conversion does not use helpfulness probability while the search flow is being
+simplified and the EfficientRAG labeler model is still pending.
 
 GAIA dataset access may require:
 
@@ -360,19 +372,36 @@ Currently supported Stage 1 tools include:
 Tool calls are cached by normalized tool name and arguments. If two runs ask for
 the same tool with the same arguments, SCP reuses the cached result.
 
+There are two tool-use windows:
+
+1. **Shared evidence preparation before Stage 1**
+   - `EvidenceRunner` may route the task to search, attachment handling,
+     deterministic solver, or calculator before any agent starts reasoning.
+   - The resulting evidence is shared with all Stage 1 agents.
+
+2. **Optional per-run Stage 1 tool trajectory**
+   - Enabled by `--enable-stage1-tool-use`.
+   - Each agent run may request tools up to `--max-stage1-tool-turns`.
+   - Tool requests must use the structured JSON format described above.
+
+After all Stage 1 runs are aggregated, SCP does not use tools again. Stage 2
+judges only consume the target answer, target reasoning, and recorded tool
+evidence.
+
 The shared search flow uses `EvidenceSearcher`:
 
 ```text
 question
--> question analysis
 -> embedding-delta query planning
 -> SearchTool backend call
 -> source hard filter
 -> full-page fetch
--> helpfulness gate
--> EfficientRAG labeler fallback / model labeler
+-> chunking
+-> EfficientRAG labeler fallback
 -> SEER n-gram dedup
--> optional next-hop query
+-> evidence conversion
+-> retrieval control
+-> optional EfficientRAG-filtered next-hop query
 -> structured evidence rendering
 ```
 
@@ -393,7 +422,7 @@ shape:
 
 `search_result_builder` owns the rest of the search data flow.
 
-Query planning uses `SearchQueryPlanner`, backed by
+Query planning uses `QueryGenerator`, backed by
 `MaskSalienceQueryGenerator`. The generator performs representation
 sensitivity analysis:
 
@@ -403,8 +432,9 @@ question
 -> delete one token/span
 -> recompute sentence embedding
 -> score by embedding delta
+-> select the top semantic-impact spans
 -> ask qwen3:4b for concise query candidates
--> rank by salient-span coverage
+-> clean and deduplicate generated queries while preserving order
 ```
 
 The current search pipeline components are:
@@ -414,11 +444,12 @@ The current search pipeline components are:
 | `query/` | Builds first-hop search queries from embedding-delta salient spans. |
 | `source_analyze/seer/source_filter.py` | Removes leaks, duplicates, low-value pages, and question echoes. |
 | `source_analyze/seer/page_content_fetcher.py` | Fetches full pages after source filtering. |
-| `source_analyze/seer/helpfulness_expert.py` | Scores whether evidence helps answer the question. |
-| `next_hop_query/rag_labeler.py` | Labels chunks as useful/useless. Currently uses deterministic fallback until the trained labeler is connected. |
+| `source_analyze/rag_labeler.py` | Labels chunks as useful/useless. Currently uses deterministic fallback until the trained labeler is connected. |
+| `source_analyze/seer/helpfulness_expert.py` | Standalone probability helper. Not used by the active pipeline right now. |
 | `source_analyze/seer/ngram_deduplicate.py` | Deduplicates useful evidence chunks. |
 | `next_hop_query/retrieval_controller.py` | Decides whether next-hop retrieval is needed. |
-| `next_hop_query/next_hop_query_generator.py` | Builds follow-up queries from evidence or question-analysis fallback. |
+| `next_hop_query/rag_filter.py` | Builds an EfficientRAG-style filtered follow-up query when retrieval control requests next-hop. |
+| `next_hop_query/next_hop_query_generator.py` | Builds follow-up queries from evidence and question signals. |
 | `evidence_renderer.py` | Renders compact structured context for agents. |
 
 The prompt sent to agents is intentionally compact:
@@ -438,8 +469,9 @@ Text: ...
 ```
 
 Candidate-answer extraction is currently not required for the agent prompt:
-agents receive structured evidence directly. Search diagnostics are temporarily
-disabled to keep exported results small while the pipeline is being simplified.
+agents receive structured evidence directly. Search diagnostics are exported in
+per-task JSON so each run can show source filtering, fetch, chunking, labeling,
+deduplication, retrieval control, and next-hop decisions.
 
 ## Scoring
 
@@ -453,54 +485,8 @@ Stage 1 confidence is based on normalized answer agreement across repeated runs:
 | 2 answers are the same | `0.67` |
 | 3 answers are different | `0.33` |
 
-### Stage 2 Judge Score
 
-Stage 2 judges each reasoning step with a score from `-1.0` to `1.0`:
 
-| Score | Meaning |
-| --- | --- |
-| `1.0` | Correct, useful, and supported by question/evidence/tool result. |
-| `0.5` | Mostly correct but incomplete or partially supported. |
-| `0.0` | Unclear, redundant, or impossible to judge. |
-| `-0.5` | Unsupported, skips an important check, or contains a weak conflict. |
-| `-1.0` | Contradicts evidence, invents evidence, misuses tool result, or supports a wrong/malformed answer. |
-
-Judge agents must return scores only:
-
-```json
-{
-  "step_scores": [
-    {"step": 1, "score": 1.0},
-    {"step": 2, "score": 0.5}
-  ]
-}
-```
-
-### Rule-based Penalty
-
-The penalty calculator can reduce a candidate score for issues such as:
-
-- malformed or missing final answer
-- tool-call JSON used as final answer
-- refusal-like answer such as `unknown` or `insufficient data`
-- failed tool calls
-- all tool calls failing
-- tool failure immediately before final answer
-
-The final ranking score is:
-
-```text
-total_score = confidence_score + avg_judge_score + penalty_score
-```
-
-## Early Stop
-
-When Stage 1 early-stop mode is enabled:
-
-- If the best candidate reaches `confidence_score = 1.0`, SCP can return it directly.
-- If the best candidate reaches `confidence_score = 0.67`, SCP asks the previous best agent to judge the candidate reasoning steps.
-- If the average judge score is greater than `0`, SCP accepts the candidate.
-- Otherwise SCP retries Stage 1 within the configured retry budget.
 
 ## Outputs
 
@@ -516,7 +502,8 @@ outputs/{log_name}/
 ```
 
 Per-task JSON files contain task metadata, predictions, scores, timing,
-token usage when available, tool summaries, and intermediate stage results.
+token usage when available, tool summaries, search pipeline diagnostics, and
+intermediate stage results.
 
 The Markdown report summarizes:
 
@@ -528,25 +515,7 @@ The Markdown report summarizes:
 - token usage
 - tool-use summary
 
-## Main Modules
 
-| Module | Responsibility |
-| --- | --- |
-| `core/network.py` | Top-level orchestration of evidence, Stage 1, Stage 2, and final selection. |
-| `core/evidence_runner.py` | Prepares attachments, search evidence, and context packets. |
-| `core/stage1_runner.py` | Runs parallel Stage 1 agent attempts. |
-| `core/stage1_trajectory_runner.py` | Runs iterative Stage 1 tool-use trajectories. |
-| `core/stage2_runner.py` | Runs cross-agent judge scoring. |
-| `core/slm_agent.py` | Calls local OpenAI-compatible SLM endpoints. |
-| `context/` | Builds prompts and agent context. |
-| `parsers/` | Parses reasoning steps, tool requests, final answers, and judge outputs. |
-| `score/` | Computes confidence, validation, penalties, and final scores. |
-| `tools/` | Provides backend adapters, calculation, attachment handling, and tool caching. |
-| `tools/search_tool.py` | Lightweight web search backend adapter. |
-| `tools/search_result_builder/query/` | Generates and ranks embedding-delta search query candidates. |
-| `tools/search_result_builder/source_analyze/` | Filters sources, fetches pages, scores helpfulness, labels chunks, and deduplicates evidence. |
-| `tools/search_result_builder/next_hop_query/` | Controls evidence sufficiency and builds next-hop queries. |
-| `tools/search_result_builder/evidence_renderer.py` | Renders compact structured evidence context for agents. |
 
 ## Development Notes
 
@@ -574,23 +543,7 @@ Useful checks:
 python run_gaia.py --help
 ```
 
-## Limitations
 
-- The project is experimental and optimized for iteration, not production serving.
-- Model quality depends strongly on the local SLMs and endpoint configuration.
-- Some GAIA tasks may require richer tool routing, better attachment understanding, or stronger semantic answer equivalence.
-- Web search quality depends on the configured backend and the quality of
-  evidence extracted by `search_result_builder`.
-- Embedding-delta query planning may call `qwen3:4b` and load
-  `SEARCH_SALIENCE_HF_MODEL` such as `BAAI/bge-m3`.
-- EfficientRAG labeler model integration is still pending; the current labeler
-  path uses a deterministic fallback.
-- Token usage is reported only when the model endpoint returns usage metadata.
 
-## Acknowledgements
 
-This README structure is inspired by the style of
-[LINs-lab/SupervisorAgent](https://github.com/LINs-lab/SupervisorAgent).
 
-SCP is developed as a local experimental framework for studying small-model
-multi-agent reasoning, self-consistency, tool use, and peer judging on GAIA.
