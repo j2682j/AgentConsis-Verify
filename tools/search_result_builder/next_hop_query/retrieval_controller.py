@@ -8,16 +8,16 @@ from ..config import CandidateAnswer, EvidenceItem
 @dataclass
 class RetrievalDecision:
     """
-    儲存 EfficientRAG retrieval controller 對目前 evidence 是否足夠的判斷。
+    保存 retrieval control 對是否需要 next-hop search 的判斷。
 
     Args:
-        - need_next_hop: 是否需要執行下一跳 search。
+        - need_next_hop: 是否需要再做下一跳搜尋。
         - reason: 判斷原因。
-        - confidence: 目前 retrieval 足夠性的信心分數。
-        - missing_info: 還缺少的資訊描述。
+        - confidence: retrieval control 的信心；目前有 evidence 時為 1。
+        - missing_info: 缺少的資訊類型。
 
     Returns:
-        - RetrievalDecision: 下一跳搜尋決策。
+        - RetrievalDecision: next-hop search 決策。
     """
 
     need_next_hop: bool
@@ -28,23 +28,16 @@ class RetrievalDecision:
 
 class RetrievalController:
     """
-    根據 SEER cleaned evidence 與 candidate answers 判斷是否需要 next-hop retrieval。
+    根據 evidence 是否存在，判斷是否需要 next-hop retrieval。
 
     Args:
-        - min_evidence_quality: 視為足夠 evidence 的最低品質分數。
-        - min_candidate_support: 視為候選答案有支撐的最低 support count。
+        - min_candidate_support: 候選答案需要的最低支撐數。
 
     Returns:
-        - RetrievalController: EfficientRAG retrieval sufficiency controller。
+        - RetrievalController: retrieval sufficiency controller。
     """
 
-    def __init__(
-        self,
-        *,
-        min_evidence_quality: float = 0.55,
-        min_candidate_support: int = 1,
-    ) -> None:
-        self.min_evidence_quality = min_evidence_quality
+    def __init__(self, *, min_candidate_support: int = 1) -> None:
         self.min_candidate_support = min_candidate_support
 
     def assess(
@@ -54,14 +47,14 @@ class RetrievalController:
         candidates: list[CandidateAnswer],
     ) -> RetrievalDecision:
         """
-        評估目前 retrieval 是否足夠，或是否要進行下一跳 search。
+        判斷目前 evidence 是否足夠進入後續流程。
 
         Args:
-            - evidence_items: SEER cleaning 後的 evidence。
-            - candidates: 從 evidence 抽出的候選答案。
+            - evidence_items: SourceAnalysis 輸出的 evidence。
+            - candidates: 可選候選答案，目前通常為空。
 
         Returns:
-            - RetrievalDecision: 是否需要 next-hop retrieval 的決策。
+            - RetrievalDecision: 是否需要 next-hop search。
         """
         if not evidence_items:
             return RetrievalDecision(
@@ -71,35 +64,25 @@ class RetrievalController:
                 missing_info=["evidence"],
             )
 
-        best_evidence_quality = max(
-            max(item.helpfulness_score, item.evidence_quality)
-            for item in evidence_items
-        )
         supported_candidates = [
             candidate
             for candidate in candidates
             if candidate.support_count >= self.min_candidate_support
         ]
-
-        if best_evidence_quality < self.min_evidence_quality:
-            return RetrievalDecision(
-                need_next_hop=True,
-                reason="low_evidence_quality",
-                confidence=best_evidence_quality,
-                missing_info=["high_quality_evidence"],
-            )
-
         if candidates and not supported_candidates:
             return RetrievalDecision(
                 need_next_hop=True,
                 reason="no_supported_candidate",
-                confidence=best_evidence_quality,
+                confidence=1.0,
                 missing_info=["candidate_answer"],
             )
 
         return RetrievalDecision(
             need_next_hop=False,
             reason="sufficient_evidence",
-            confidence=best_evidence_quality,
+            confidence=1.0,
             missing_info=[],
         )
+
+
+__all__ = ["RetrievalController", "RetrievalDecision"]

@@ -89,12 +89,18 @@ def extract_search_summary(network_summary: dict[str, Any]) -> dict[str, Any]:
         diagnostics = raw_result.get("candidate_diagnostics") or {}
         candidates = raw_result.get("candidates") or []
         top = candidates[0] if candidates and isinstance(candidates[0], dict) else {}
+        final_counts = diagnostics.get("final_counts", {}) if isinstance(diagnostics, dict) else {}
         return {
             "answer_type": diagnostics.get("answer_type", ""),
             "raw_candidate_count": diagnostics.get("raw_candidate_count", 0),
             "filtered_candidate_count": diagnostics.get("filtered_candidate_count", 0),
+            "initial_source_analysis": diagnostics.get("initial_source_analysis", {}),
+            "initial_retrieval_decision": diagnostics.get("initial_retrieval_decision", {}),
             "evidence_driven_search": diagnostics.get("evidence_driven_search", {}),
-            "candidate_count": len(candidates),
+            "final_counts": final_counts,
+            "candidate_count": final_counts.get("candidate_count", len(candidates)),
+            "source_count": final_counts.get("source_count", len(raw_result.get("sources") or [])),
+            "evidence_count": final_counts.get("evidence_count", len(raw_result.get("evidence_items") or [])),
             "top_candidate": diagnostics.get("top_candidate", top.get("answer", "")),
             "top_candidate_confidence": diagnostics.get("top_candidate_confidence", top.get("confidence", 0.0)),
             "top_candidate_support": diagnostics.get("top_candidate_support", top.get("support_count", 0)),

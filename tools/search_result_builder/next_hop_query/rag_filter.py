@@ -82,7 +82,7 @@ class EfficientRAGFilterAdapter:
         """
         question_tokens = self._ordered_keywords(question)[: self.max_question_tokens]
         evidence_tokens: list[str] = []
-        for item in sorted(evidence_items, key=lambda row: row.helpfulness_score, reverse=True):
+        for item in evidence_items:
             evidence_tokens.extend(item.matched_terms)
             evidence_tokens.extend(self._ordered_keywords(item.text)[:4])
             evidence_tokens = self._dedupe(evidence_tokens)
