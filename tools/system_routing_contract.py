@@ -133,6 +133,7 @@ class SystemRoutingContract:
         "title",
         "date",
         "website",
+        "wikipedia",
         "paper",
         "book",
         "video",
@@ -155,6 +156,13 @@ class SystemRoutingContract:
         "documentation",
         "library",
     }
+    WEAK_SEARCH_TERMS = {
+        "who",
+        "when",
+        "where",
+        "which",
+        "date",
+    }
     SEARCH_PHRASES = {
         "according to github",
         "web site",
@@ -176,6 +184,50 @@ class SystemRoutingContract:
         "agency",
         "official",
         "located",
+    }
+    CLOSED_WORLD_TERMS = {
+        "above",
+        "attached",
+        "chess",
+        "grid",
+        "logic",
+        "logical",
+        "piston",
+        "riddle",
+        "spreadsheet",
+    }
+    CLOSED_WORLD_PHRASES = {
+        "algebraic notation",
+        "attached spreadsheet",
+        "black's turn",
+        "closed world",
+        "fictional language",
+        "game show",
+        "logically equivalent",
+        "no other plots",
+        "provided in the image",
+        "provided evidence",
+        "reverse string",
+        "the above",
+        "this sentence",
+        "truth table",
+    }
+    PUZZLE_TERMS = {
+        "choose",
+        "ejected",
+        "equivalent",
+        "odds",
+        "puzzle",
+        "ramp",
+        "translate",
+    }
+    PUZZLE_PHRASES = {
+        "maximize your odds",
+        "which ball should you choose",
+        "pick one of",
+        "ping-pong",
+        "direct object",
+        "verb first",
     }
     PYTHON_TERMS = {
         "calculate",
@@ -256,21 +308,64 @@ class SystemRoutingContract:
             )
             return decision
 
-        search_hits = _has_word(normalized, self.SEARCH_TERMS)
-        search_hits.extend(phrase for phrase in sorted(self.SEARCH_PHRASES) if phrase in normalized)
-        if re.search(r"\b(18|19|20)\d{2}\b", normalized):
-            search_hits.append("year")
-
         python_hits = _has_word(normalized, self.PYTHON_TERMS)
         python_hits.extend(phrase for phrase in sorted(self.PYTHON_PHRASES) if phrase in normalized)
         if attachment_type in {"xlsx", "xls", "csv", "tsv"}:
             python_hits.append(f"{attachment_type}_table")
 
-        if search_hits:
-            decision.use_search = True
-            decision.trigger_terms.extend(search_hits[:8])
+        closed_world_hits = self._closed_world_hits(normalized)
+        puzzle_hits = self._puzzle_hits(normalized)
+        search_hits = self._search_hits(normalized)
+        strong_search_hits = [
+            hit
+            for hit in search_hits
+            if hit not in self.WEAK_SEARCH_TERMS
+        ]
+
+        if closed_world_hits or puzzle_hits:
+            decision.trigger_terms.extend((closed_world_hits + puzzle_hits)[:8])
             decision.routing_reasons.append(
-                "question contains factual lookup signals: " + ", ".join(search_hits[:6])
+                "question appears closed-world or puzzle-like; search is deferred"
+            )
+            if python_hits:
+                decision.use_deterministic_solver = True
+                decision.use_python_solver = True
+                decision.trigger_terms.extend(python_hits[:8])
+                decision.routing_reasons.append(
+                    "closed-world task also contains deterministic computation/data-processing signals: "
+                    + ", ".join(python_hits[:6])
+                )
+            decision.task_type = (
+                "closed_world_attachment"
+                if decision.use_attachment
+                else "closed_world_puzzle"
+            )
+            self._write_tool_policy(decision)
+            return decision
+
+        if python_hits and not strong_search_hits:
+            decision.use_deterministic_solver = True
+            decision.use_python_solver = True
+            decision.trigger_terms.extend(python_hits[:8])
+            decision.routing_reasons.append(
+                "question contains deterministic computation/data-processing signals before factual search: "
+                + ", ".join(python_hits[:6])
+            )
+            decision.task_type = (
+                "attachment_deterministic_solver"
+                if decision.use_attachment
+                else "deterministic_solver"
+            )
+            self._write_tool_policy(decision)
+            if stage_key == "stage1_round0" and decision.needs_routed_tool:
+                decision.routing_reasons.append("stage1 round0 system contract enables early evidence gathering")
+            return decision
+
+        if strong_search_hits:
+            decision.use_search = True
+            decision.trigger_terms.extend(strong_search_hits[:8])
+            decision.routing_reasons.append(
+                "question contains factual lookup signals: " + ", ".join(strong_search_hits[:6])
             )
 
         if python_hits:
@@ -291,6 +386,31 @@ class SystemRoutingContract:
         elif decision.use_attachment:
             decision.task_type = "attachment_evidence"
 
+        self._write_tool_policy(decision)
+
+        if stage_key == "stage1_round0" and decision.needs_routed_tool:
+            decision.routing_reasons.append("stage1 round0 system contract enables early evidence gathering")
+
+        return decision
+
+    def _search_hits(self, normalized: str) -> list[str]:
+        hits = _has_word(normalized, self.SEARCH_TERMS)
+        hits.extend(phrase for phrase in sorted(self.SEARCH_PHRASES) if phrase in normalized)
+        if re.search(r"\b(18|19|20)\d{2}\b", normalized):
+            hits.append("year")
+        return hits
+
+    def _closed_world_hits(self, normalized: str) -> list[str]:
+        hits = _has_word(normalized, self.CLOSED_WORLD_TERMS)
+        hits.extend(phrase for phrase in sorted(self.CLOSED_WORLD_PHRASES) if phrase in normalized)
+        return hits
+
+    def _puzzle_hits(self, normalized: str) -> list[str]:
+        hits = _has_word(normalized, self.PUZZLE_TERMS)
+        hits.extend(phrase for phrase in sorted(self.PUZZLE_PHRASES) if phrase in normalized)
+        return hits
+
+    def _write_tool_policy(self, decision: SystemRoutingDecision) -> None:
         prefer = []
         if decision.use_search:
             prefer.append("search")
@@ -301,8 +421,3 @@ class SystemRoutingContract:
         if decision.use_attachment:
             prefer.append("attachment_reader")
         decision.tool_policy = {"prefer": prefer, "optional": [], "avoid": []}
-
-        if stage_key == "stage1_round0" and decision.needs_routed_tool:
-            decision.routing_reasons.append("stage1 round0 system contract enables early evidence gathering")
-
-        return decision

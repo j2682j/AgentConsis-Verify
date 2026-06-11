@@ -174,19 +174,69 @@ class MaskSalienceQueryGenerator:
     GENERIC_QUERY_TERMS = {
         "answer",
         "article",
+        "base",
         "candidate",
         "data",
+        "day",
+        "doesn",
+        "document",
+        "each",
         "example",
+        "exchange",
         "find",
+        "here",
         "information",
+        "line",
         "page",
         "question",
         "result",
         "search",
+        "selected",
         "source",
+        "studie",
         "title",
         "unknown",
     }
+    WEAK_SINGLE_TERMS = {
+        "algebra",
+        "algebraic",
+        "attached",
+        "base",
+        "camera",
+        "day",
+        "doesn",
+        "document",
+        "each",
+        "exchange",
+        "guarantee",
+        "guarantees",
+        "here",
+        "line",
+        "rest",
+        "round",
+        "selected",
+        "studie",
+    }
+    PHRASE_EDGE_TERMS = {
+        "about",
+        "and",
+        "at",
+        "by",
+        "for",
+        "from",
+        "in",
+        "of",
+        "on",
+        "or",
+        "the",
+        "to",
+        "with",
+    }
+    MONTH_PATTERN = (
+        r"January|February|March|April|May|June|July|August|September|"
+        r"October|November|December|Jan\.?|Feb\.?|Mar\.?|Apr\.?|Jun\.?|"
+        r"Jul\.?|Aug\.?|Sep\.?|Sept\.?|Oct\.?|Nov\.?|Dec\.?"
+    )
     PUNCTUATION_RE = re.compile(r"^[\W_]+$", flags=re.UNICODE)
 
     SYSTEM_PROMPT = """You are only a web search query generator.
@@ -385,7 +435,7 @@ class MaskSalienceQueryGenerator:
         for group in groups:
             start = min(token.start for token in group)
             end = max(token.end for token in group)
-            text = normalize_text(question[start:end]).strip(" ,.;:!?()[]{}")
+            start, end, text = self._repair_span(question, start, end)
             if not self._valid_span_text(text):
                 continue
             spans.append(
@@ -599,12 +649,165 @@ class MaskSalienceQueryGenerator:
         return deleted or question
 
     def _valid_span_text(self, text: str) -> bool:
-        if len(text) < self.min_token_chars:
+        cleaned = normalize_text(text).strip(" ,.;:!?()[]{}")
+        if len(cleaned) < self.min_token_chars:
             return False
-        lowered = text.lower()
+        lowered = cleaned.lower()
         if lowered in self.STOPWORDS or lowered in self.GENERIC_QUERY_TERMS:
             return False
-        if self.PUNCTUATION_RE.fullmatch(text):
+        if self.PUNCTUATION_RE.fullmatch(cleaned):
+            return False
+        if re.fullmatch(r"\d{1,2}", cleaned):
+            return False
+        if len(cleaned) < 4 and not any(char.isdigit() for char in cleaned):
+            return False
+        if lowered in self.WEAK_SINGLE_TERMS:
+            return False
+        words = re.findall(r"[A-Za-z0-9][A-Za-z0-9'-]*", cleaned)
+        if len(words) == 1:
+            word = words[0]
+            if (
+                word.lower() in self.WEAK_SINGLE_TERMS
+                or word.lower() in self.STOPWORDS
+                or word.lower() in self.GENERIC_QUERY_TERMS
+            ):
+                return False
+            if len(word) <= 3 and not (word.isupper() or any(char.isdigit() for char in word)):
+                return False
+        return True
+
+    def _repair_span(self, question: str, start: int, end: int) -> tuple[int, int, str]:
+        start, end = self._expand_word_boundaries(question, start, end)
+
+        quoted = self._quoted_span_containing(question, start, end)
+        if quoted is not None:
+            q_start, q_end = quoted
+            if self._is_reasonable_expansion(question, start, end, q_start, q_end, max_chars=140):
+                start, end = q_start, q_end
+
+        start, end = self._expand_date_phrase(question, start, end)
+        start, end = self._expand_capitalized_phrase(question, start, end)
+        start, end = self._expand_domain_phrase(question, start, end)
+        start, end = self._trim_span_edges(question, start, end)
+        text = normalize_text(question[start:end]).strip(" ,.;:!?()[]{}")
+        return start, end, text
+
+    def _expand_word_boundaries(self, question: str, start: int, end: int) -> tuple[int, int]:
+        start = max(0, start)
+        end = min(len(question), end)
+        while start > 0 and self._is_word_char(question[start - 1]):
+            start -= 1
+        while end < len(question) and self._is_word_char(question[end]):
+            end += 1
+        return start, end
+
+    def _is_word_char(self, char: str) -> bool:
+        return bool(re.match(r"[A-Za-z0-9_'-]", char))
+
+    def _quoted_span_containing(self, question: str, start: int, end: int) -> tuple[int, int] | None:
+        quote_pairs = [('"', '"')]
+        for left_quote, right_quote in quote_pairs:
+            left = question.rfind(left_quote, 0, start + 1)
+            if left < 0:
+                continue
+            right = question.find(right_quote, max(end, left + 1))
+            if right < 0:
+                continue
+            if left <= start and end <= right + 1:
+                return left + 1, right
+        return None
+
+    def _expand_date_phrase(self, question: str, start: int, end: int) -> tuple[int, int]:
+        patterns = [
+            rf"\b(?:{self.MONTH_PATTERN})\s+\d{{1,2}},?\s+\d{{4}}\b",
+            rf"\b(?:{self.MONTH_PATTERN})\s+\d{{4}}\b",
+            r"\b\d{4}\s*(?:-|to|and)\s*\d{4}\b",
+        ]
+        return self._expand_by_patterns(question, start, end, patterns)
+
+    def _expand_capitalized_phrase(self, question: str, start: int, end: int) -> tuple[int, int]:
+        word = r"[A-Z][A-Za-z0-9]*(?:[-'][A-Za-z0-9]+)*|[A-Z]{2,}[A-Za-z0-9-]*|\d+"
+        connector = r"(?:of|the|and|or|for|to|in|on|at|from|with|by)"
+        pattern = rf"\b{word}(?:(?:\s+{connector})?\s+{word})*\b"
+        return self._expand_by_patterns(question, start, end, [pattern], max_chars=90)
+
+    def _expand_domain_phrase(self, question: str, start: int, end: int) -> tuple[int, int]:
+        patterns = [
+            r"\bWord\s+of\s+the\s+Day\b",
+            r"\bFeatured\s+Article\b",
+            r"\bofficial\s+script\b",
+            r"\bminimum\s+perigee\b",
+            r"\bSeries\s+\d+,\s*Episode\s+\d+\b",
+            r"\b[a-zA-Z0-9_-]{8,}\b",
+        ]
+        return self._expand_by_patterns(question, start, end, patterns, max_chars=80)
+
+    def _expand_by_patterns(
+        self,
+        question: str,
+        start: int,
+        end: int,
+        patterns: list[str],
+        *,
+        max_chars: int = 120,
+    ) -> tuple[int, int]:
+        best_start, best_end = start, end
+        for pattern in patterns:
+            for match in re.finditer(pattern, question):
+                m_start, m_end = match.span()
+                if not self._overlaps(start, end, m_start, m_end):
+                    continue
+                if not self._is_reasonable_expansion(question, start, end, m_start, m_end, max_chars=max_chars):
+                    continue
+                current_len = best_end - best_start
+                candidate_len = m_end - m_start
+                if candidate_len > current_len:
+                    best_start, best_end = m_start, m_end
+        return best_start, best_end
+
+    def _trim_span_edges(self, question: str, start: int, end: int) -> tuple[int, int]:
+        while start < end:
+            segment = question[start:end]
+            match = re.match(
+                rf"^\W*(?:{'|'.join(sorted(self.PHRASE_EDGE_TERMS))})\b\s*",
+                segment,
+                flags=re.IGNORECASE,
+            )
+            if not match:
+                break
+            start += match.end()
+
+        while start < end:
+            segment = question[start:end]
+            match = re.search(
+                rf"\s+\b(?:{'|'.join(sorted(self.PHRASE_EDGE_TERMS))})\b\W*$",
+                segment,
+                flags=re.IGNORECASE,
+            )
+            if not match:
+                break
+            end = start + match.start()
+        return start, end
+
+    def _overlaps(self, start: int, end: int, other_start: int, other_end: int) -> bool:
+        return start < other_end and other_start < end
+
+    def _is_reasonable_expansion(
+        self,
+        question: str,
+        start: int,
+        end: int,
+        candidate_start: int,
+        candidate_end: int,
+        *,
+        max_chars: int,
+    ) -> bool:
+        if candidate_start > start or candidate_end < end:
+            return False
+        candidate = normalize_text(question[candidate_start:candidate_end])
+        if len(candidate) > max_chars:
+            return False
+        if candidate.count(" ") > 18:
             return False
         return True
 

@@ -378,6 +378,9 @@ There are two tool-use windows:
    - `EvidenceRunner` may route the task to search, attachment handling,
      deterministic solver, or calculator before any agent starts reasoning.
    - The resulting evidence is shared with all Stage 1 agents.
+   - Routing first checks closed-world, deterministic, attachment, and puzzle
+     signals before factual search. Weak question words such as `who`, `which`,
+     `when`, and `where` do not trigger search by themselves.
 
 2. **Optional per-run Stage 1 tool trajectory**
    - Enabled by `--enable-stage1-tool-use`.
@@ -542,7 +545,6 @@ Useful checks:
 ```bash
 python run_gaia.py --help
 ```
-
 
 
 

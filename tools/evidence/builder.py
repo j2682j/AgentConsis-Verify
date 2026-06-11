@@ -4,7 +4,7 @@ from typing import Any
 
 from tools.attachment_reader import AttachmentEvidenceBuilder
 from tools.system_routing_contract import SystemRoutingContract
-from utils.network_utils import should_use_calculator, should_use_search
+from utils.network_utils import should_use_calculator
 
 
 class EvidenceBuilder:
@@ -180,7 +180,6 @@ class EvidenceBuilder:
         )
         routing = decision.to_dict()
         routing["use_calculator"] = bool(routing.get("use_calculator") or should_use_calculator(question))
-        routing["use_search"] = bool(routing.get("use_search") or should_use_search(question))
         return routing
 
     def _empty_routing(self) -> dict[str, Any]:
