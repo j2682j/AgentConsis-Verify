@@ -435,10 +435,14 @@ question
 -> delete one token/span
 -> recompute sentence embedding
 -> score by embedding delta
--> select the top semantic-impact spans
+-> select the top 5 semantic-impact spans for search-enabled tasks
 -> ask qwen3:4b for concise query candidates
 -> clean and deduplicate generated queries while preserving order
 ```
+
+Closed-world, deterministic, attachment, and puzzle-like tasks are filtered by
+routing before search query planning, so top-5 span expansion is only used when
+the system has already decided that factual search evidence is appropriate.
 
 The current search pipeline components are:
 
@@ -545,7 +549,6 @@ Useful checks:
 ```bash
 python run_gaia.py --help
 ```
-
 
 
 

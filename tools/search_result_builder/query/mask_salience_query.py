@@ -270,7 +270,7 @@ class MaskSalienceQueryGenerator:
         query_model_name: str = "qwen3:4b",
         max_input_tokens: int = 256,
         max_salient_tokens: int = 12,
-        max_salient_spans: int = 3,
+        max_salient_spans: int = 5,
         max_query_candidates: int = 3,
         min_token_chars: int = 2,
         merge_gap_chars: int = 2,
