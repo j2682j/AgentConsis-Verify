@@ -107,6 +107,8 @@ class EvidenceSearcher:
         candidates = list(self.source_analysis.last_candidates)
 
         initial_decision = self.retrieval_controller.assess(
+            question=question,
+            search_signals=search_signals,
             evidence_items=evidence_items,
             candidates=candidates,
         )

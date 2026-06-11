@@ -1,10 +1,10 @@
 from .mask_salience_query import (
     MaskSalienceQueryGenerator,
     SalienceQueryCandidate,
-    SalientSpan,
-    TokenSalient,
 )
-from .query_generator import QueryGenerator, QueryGenerator
+from .query_generator import QueryGenerator
+from .semantic_impact import TokenSalient
+from .span_repair import SalientSpan
 
 __all__ = [
     "MaskSalienceQueryGenerator",
