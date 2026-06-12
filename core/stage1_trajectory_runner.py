@@ -25,7 +25,12 @@ class Stage1TrajectoryRunner:
         - EachAgentReply: 包含 trajectory、tool_calls、tool_results 與 final answer。
     """
 
-    ALLOWED_TOOLS = {"search", "python_calculator"}
+    ALLOWED_TOOLS = {
+        "attachment_reader",
+        "deterministic_solver",
+        "python_calculator",
+        "search",
+    }
 
     def __init__(
         self,
@@ -50,6 +55,7 @@ class Stage1TrajectoryRunner:
         question: str,
         evidence_packets: list[Any],
         run_index: int,
+        attachment: dict[str, Any] | None = None,
     ) -> tuple[EachAgentReply, int, int]:
         """
         執行單一 Agent 的 tool-use reasoning 回合，直到產生 final answer 或達到工具上限。
@@ -79,6 +85,7 @@ class Stage1TrajectoryRunner:
                 question=question,
                 evidence_packets=evidence_packets,
                 tool_trace=self._format_tool_trace(tool_results),
+                attachment=attachment,
             )
             raw_reply, prompt_tokens, completion_tokens = agent.invoke_with_usage(messages)
             prompt_tokens_total += prompt_tokens
@@ -96,7 +103,12 @@ class Stage1TrajectoryRunner:
 
             if parsed["type"] == "tool_request" and turn_index <= self.max_tool_turns:
                 tool_name = self._normalize_tool_name(parsed.get("tool_name", ""))
-                tool_args = self._normalize_tool_args(tool_name, parsed.get("tool_args", {}))
+                tool_args = self._normalize_tool_args(
+                    tool_name,
+                    parsed.get("tool_args", {}),
+                    question=question,
+                    attachment=attachment,
+                )
                 reasoning_step = str(parsed.get("reasoning_step", "") or "").strip()
                 if reasoning_step:
                     reasoning_steps.append(reasoning_step)
@@ -198,9 +210,20 @@ class Stage1TrajectoryRunner:
         name = str(tool_name or "").strip()
         if name in {"calculator", "python"}:
             return "python_calculator"
+        if name in {"deterministic", "solver"}:
+            return "deterministic_solver"
+        if name in {"attachment", "file_reader", "reader"}:
+            return "attachment_reader"
         return name
 
-    def _normalize_tool_args(self, tool_name: str, tool_args: dict[str, Any]) -> dict[str, Any]:
+    def _normalize_tool_args(
+        self,
+        tool_name: str,
+        tool_args: dict[str, Any],
+        *,
+        question: str = "",
+        attachment: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         """
         正規化工具參數，補齊 search 預設欄位並處理 query/input 別名。
 
@@ -216,6 +239,26 @@ class Stage1TrajectoryRunner:
             if "input" not in args and "query" in args:
                 args["input"] = args["query"]
             args.setdefault("mode", "text")
+        elif tool_name == "python_calculator":
+            if "input" not in args and "expression" in args:
+                args["input"] = args["expression"]
+        elif tool_name == "deterministic_solver":
+            if "input" not in args:
+                args["input"] = args.get("question") or args.get("query") or question
+        elif tool_name == "attachment_reader":
+            if "question" not in args:
+                args["question"] = args.get("input") or args.get("query") or question
+            if "file_path" not in args:
+                for key in ("path", "attachment_path"):
+                    if key in args:
+                        args["file_path"] = args[key]
+                        break
+            if "file_path" not in args and isinstance(attachment, dict):
+                file_path = attachment.get("file_path") or attachment.get("path")
+                if file_path:
+                    args["file_path"] = file_path
+            if "attachment" not in args and isinstance(attachment, dict) and attachment:
+                args["attachment"] = attachment
         return args
 
     def _format_tool_trace(self, tool_results: list[dict[str, Any]]) -> str:

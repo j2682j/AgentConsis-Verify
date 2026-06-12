@@ -56,11 +56,13 @@ class Network:
         max_stage1_workers: int | None = None,
         max_stage2_workers: int | None = None,
         stage2_max_tokens: int = 512,
+        enable_stage2_score: bool = True,
         enable_stage1_early_stop: bool = False,
         enable_stage1_tool_use: bool = False,
         max_stage1_tool_turns: int = 2,
         previous_best_agent_id: str | None = None,
         stage1_early_stop_max_retries: int = 1,
+        enable_evidence_prepare: bool = True,
         enable_compact_search_evidence: bool = False,
         enable_evidence_driven_search: bool = True,
         search_result: str = "",
@@ -74,11 +76,13 @@ class Network:
         self.max_stage1_workers = max_stage1_workers
         self.max_stage2_workers = max_stage2_workers
         self.stage2_max_tokens = stage2_max_tokens
+        self.enable_stage2_score = enable_stage2_score
         self.enable_stage1_early_stop = enable_stage1_early_stop
         self.enable_stage1_tool_use = enable_stage1_tool_use
         self.max_stage1_tool_turns = max(0, max_stage1_tool_turns)
         self.previous_best_agent_id = previous_best_agent_id
         self.stage1_early_stop_max_retries = max(0, stage1_early_stop_max_retries)
+        self.enable_evidence_prepare = enable_evidence_prepare
         self.enable_compact_search_evidence = enable_compact_search_evidence
         self.enable_evidence_driven_search = enable_evidence_driven_search
         self.search_result = search_result
@@ -106,6 +110,7 @@ class Network:
             agents=self.agents,
             get_agent=self._get_slm_agent,
             record_token_usage=self._record_token_usage,
+            attachment=self.attachment,
             stage1_runs_per_agent=self.stage1_runs_per_agent,
             max_workers=self.max_stage1_workers,
             enable_tool_use=self.enable_stage1_tool_use,
@@ -134,7 +139,7 @@ class Network:
         """
         response_started_at = time.perf_counter()
         self._reset_token_usage()
-        evidence = self.evidence_runner.run()
+        evidence = self.evidence_runner.run() if self.enable_evidence_prepare else self._empty_evidence_bundle()
 
         stage1_attempts = 0
         early_stop_reason = ""
@@ -165,12 +170,17 @@ class Network:
                 break
 
         active_results = [result for result in stage1_results if result.active]
-        stage2_skipped = early_stop_winner is not None
-        judge_results = (
-            early_stop_judge_results
-            if stage2_skipped
-            else self.stage2_runner.run(active_results)
-        )
+        stage1_early_stop_used = early_stop_winner is not None
+        stage2_skipped = stage1_early_stop_used or not self.enable_stage2_score
+        if stage1_early_stop_used:
+            judge_results = early_stop_judge_results
+            stage2_skip_reason = "stage1_early_stop"
+        elif not self.enable_stage2_score:
+            judge_results = []
+            stage2_skip_reason = "stage2_score_disabled"
+        else:
+            judge_results = self.stage2_runner.run(active_results)
+            stage2_skip_reason = ""
         if direct_consensus_winner is not None:
             penalty_results = []
             self._write_direct_consensus_scores(stage1_results)
@@ -203,7 +213,9 @@ class Network:
                 "max_stage1_workers": self.stage1_runner.worker_count(),
                 "max_stage2_workers": self.stage2_runner.worker_count(active_results),
                 "stage2_max_tokens": self.stage2_max_tokens,
+                "enable_stage2_score": self.enable_stage2_score,
                 "enable_stage1_tool_use": self.enable_stage1_tool_use,
+                "enable_evidence_prepare": self.enable_evidence_prepare,
                 "enable_compact_search_evidence": self.enable_compact_search_evidence,
                 "query_planner": "signal",
                 "enable_evidence_driven_search": self.enable_evidence_driven_search,
@@ -212,9 +224,10 @@ class Network:
                 "previous_best_agent_id": self.previous_best_agent_id or "",
                 "stage1_early_stop_max_retries": self.stage1_early_stop_max_retries,
                 "stage1_attempts": stage1_attempts,
-                "stage1_early_stop": stage2_skipped,
-                "stage1_early_stop_reason": early_stop_reason if stage2_skipped else "",
+                "stage1_early_stop": stage1_early_stop_used,
+                "stage1_early_stop_reason": early_stop_reason if stage1_early_stop_used else "",
                 "stage2_skipped": stage2_skipped,
+                "stage2_skip_reason": stage2_skip_reason,
                 "cross_agent_consensus_used": direct_consensus_winner is not None,
                 "cross_agent_consensus_supporting_agents": direct_consensus_supporting_agents,
                 "cross_agent_consensus_answer": (
@@ -231,6 +244,21 @@ class Network:
                 "penalty_results": penalty_results,
             },
         )
+
+    def _empty_evidence_bundle(self) -> dict[str, Any]:
+        return {
+            "search_result": "",
+            "attachment_result": "",
+            "solver_result": "",
+            "routing": {
+                "evidence_prepare_enabled": False,
+                "use_search": False,
+                "use_attachment": False,
+                "use_deterministic_solver": False,
+                "use_python_solver": False,
+            },
+            "tool_usage": [],
+        }
 
     def _confidence_one_answer_consensus(
         self,

@@ -45,6 +45,7 @@ class Stage1Runner:
         agents: list[AgentConfig],
         get_agent: Callable[[AgentConfig], SLM_Agent],
         record_token_usage: Callable[..., None],
+        attachment: dict[str, Any] | None = None,
         stage1_runs_per_agent: int = 3,
         max_workers: int | None = None,
         enable_tool_use: bool = False,
@@ -59,6 +60,7 @@ class Stage1Runner:
         self.agents = agents
         self.get_agent = get_agent
         self.record_token_usage = record_token_usage
+        self.attachment = attachment or {}
         self.stage1_runs_per_agent = stage1_runs_per_agent
         self.max_workers = max_workers
         self.enable_tool_use = enable_tool_use
@@ -218,6 +220,7 @@ class Stage1Runner:
                 question=self.question,
                 evidence_packets=self.evidence_to_context_packets(evidence),
                 run_index=run_index,
+                attachment=self.attachment,
             )
             self.record_token_usage(
                 stage="stage1",

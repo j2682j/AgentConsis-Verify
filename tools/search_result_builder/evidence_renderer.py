@@ -29,27 +29,13 @@ class EvidenceRenderer:
         Returns:
             - str: Prompt-ready search evidence context.
         """
-        lines = [
-            "Original Question:",
-            output.question,
-            "",
-            "Query:",
-        ]
-
-        if output.queries:
-            for plan in output.queries:
-                lines.append(f"[{plan.query_id}] {plan.query}")
-        else:
-            lines.append("None")
-
-        lines.extend(["", "Evidence:"])
+        lines = ["Evidence:"]
         if output.evidence_items:
             for item in output.evidence_items[:max_evidence_items]:
                 lines.extend(
                     [
                         f"[{item.evidence_id}]",
                         f"Source: {item.title or item.source_id}",
-                        f"Query: {item.query_id}",
                         f"Text: {item.text}",
                     ]
                 )

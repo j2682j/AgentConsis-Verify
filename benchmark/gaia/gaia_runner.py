@@ -139,8 +139,10 @@ def run_sample(
     model_specs: str | None,
     temperature: float,
     stage2_max_tokens: int,
+    enable_stage2_score: bool,
     enable_stage1_early_stop: bool,
     enable_stage1_tool_use: bool,
+    enable_evidence_prepare: bool,
     enable_compact_search_evidence: bool,
     enable_evidence_driven_search: bool,
     max_stage1_tool_turns: int,
@@ -155,8 +157,10 @@ def run_sample(
         tool_manager=tool_manager,
         stage1_runs_per_agent=stage1_runs_per_agent,
         stage2_max_tokens=stage2_max_tokens,
+        enable_stage2_score=enable_stage2_score,
         enable_stage1_early_stop=enable_stage1_early_stop,
         enable_stage1_tool_use=enable_stage1_tool_use,
+        enable_evidence_prepare=enable_evidence_prepare,
         enable_compact_search_evidence=enable_compact_search_evidence,
         enable_evidence_driven_search=enable_evidence_driven_search,
         max_stage1_tool_turns=max_stage1_tool_turns,
@@ -431,7 +435,9 @@ def write_markdown_report(results: dict[str, Any], output_path: str | Path) -> P
                 "**Network Metadata**",
                 "",
                 f"- Stage1 early stop enabled: {network_metadata.get('enable_stage1_early_stop', False)}",
+                f"- Stage2 score enabled: {network_metadata.get('enable_stage2_score', True)}",
                 f"- Stage1 tool use enabled: {network_metadata.get('enable_stage1_tool_use', False)}",
+                f"- Evidence prepare enabled: {network_metadata.get('enable_evidence_prepare', True)}",
                 f"- Compact search evidence enabled: {network_metadata.get('enable_compact_search_evidence', False)}",
                 f"- Query planner: {network_metadata.get('query_planner', 'signal')}",
                 f"- Evidence-driven search enabled: {network_metadata.get('enable_evidence_driven_search', False)}",
@@ -441,6 +447,7 @@ def write_markdown_report(results: dict[str, Any], output_path: str | Path) -> P
                 f"- Stage1 early stop max retries: {network_metadata.get('stage1_early_stop_max_retries', 0)}",
                 f"- Previous best agent: {network_metadata.get('previous_best_agent_id', '') or '-'}",
                 f"- Stage2 skipped: {network_metadata.get('stage2_skipped', False)}",
+                f"- Stage2 skip reason: {network_metadata.get('stage2_skip_reason', '') or '-'}",
                 f"- Early stop reason: {network_metadata.get('stage1_early_stop_reason', '') or '-'}",
                 "",
             ]
@@ -622,7 +629,9 @@ def run_gaia_evaluation(args: argparse.Namespace) -> dict[str, Any]:
     print(f"[INFO] split={args.split} level={args.level or 'all'} samples={len(items)}")
     print(f"[INFO] stage1_runs_per_agent={args.stage1_runs_per_agent}")
     print(f"[INFO] stage2_max_tokens={args.stage2_max_tokens}")
+    print(f"[INFO] enable_stage2_score={not args.without_stage2_score}")
     print(f"[INFO] enable_stage1_tool_use={args.enable_stage1_tool_use}")
+    print(f"[INFO] evidence_prepare={args.evidence_prepare}")
     print(f"[INFO] compact_search_evidence={args.compact_search_evidence}")
     print("[INFO] query_planner=signal")
     print(f"[INFO] enable_evidence_driven_search={args.enable_evidence_driven_search}")
@@ -644,8 +653,10 @@ def run_gaia_evaluation(args: argparse.Namespace) -> dict[str, Any]:
             model_specs=args.models,
             temperature=args.temperature,
             stage2_max_tokens=args.stage2_max_tokens,
+            enable_stage2_score=not args.without_stage2_score,
             enable_stage1_early_stop=args.enable_stage1_early_stop,
             enable_stage1_tool_use=args.enable_stage1_tool_use,
+            enable_evidence_prepare=args.evidence_prepare,
             enable_compact_search_evidence=args.compact_search_evidence,
             enable_evidence_driven_search=args.enable_evidence_driven_search,
             max_stage1_tool_turns=args.max_stage1_tool_turns,
@@ -690,7 +701,15 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--max-samples", type=int, default=1)
     parser.add_argument("--stage1-runs-per-agent", type=int, default=3)
     parser.add_argument("--stage2-max-tokens", type=int, default=512)
+    parser.add_argument(
+        "--without--stage2--score",
+        "--without-stage2-score",
+        dest="without_stage2_score",
+        action="store_true",
+        help="Skip Stage2 judge scoring and rank agents by Stage1 confidence plus penalties.",
+    )
     parser.add_argument("--enable-stage1-tool-use", action="store_true")
+    parser.add_argument("--evidence-prepare", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--compact-search-evidence", action="store_true")
     parser.add_argument("--enable-evidence-driven-search", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--max-stage1-tool-turns", type=int, default=2)

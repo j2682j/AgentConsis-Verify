@@ -57,11 +57,16 @@ class ToolManager:
             - None。
         """
         from .calculator import CalculatorTool
+        from .attachment_reader_tool import AttachmentReaderTool
         from .deterministic_solver_tool import DeterministicSolverTool
 
         calculator = CalculatorTool()
         self.register_tool(calculator)
         self.enabled_tools.add(calculator.name)
+
+        attachment_reader = AttachmentReaderTool()
+        self.register_tool(attachment_reader)
+        self.enabled_tools.add(attachment_reader.name)
 
         deterministic_solver = DeterministicSolverTool()
         self.register_tool(deterministic_solver)
