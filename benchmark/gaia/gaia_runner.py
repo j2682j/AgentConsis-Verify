@@ -30,7 +30,7 @@ DEFAULT_AGENT_SPECS = [
     ("nemotron", "nemotron-mini:4b"),
     ("minicpm", "minicpm3:4b"),
     ("qwen", "qwen3:4b"),
-    ("gemma", "gemma3:4b"),
+    ("gemma", "gemma4:e4b"),
 ]
 
 

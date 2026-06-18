@@ -12,8 +12,7 @@ MODEL_ID_MAP = {
     "nemotron-mini:4b": os.getenv("Nemotron_MODEL_ID"),
     "minicpm3:4b": os.getenv("Minicpm_MODEL_ID"),
     "qwen3:4b": os.getenv("Qwen_MODEL_ID"),
-    "gemma3:4b": os.getenv("Gemma_MODEL_ID"),
-    "gpt-oss:20b": os.getenv("GPT_OSS_MODEL_ID"),
+    "gemma4:e4b": os.getenv("Gemma_MODEL_ID")
 }
 
 
@@ -84,12 +83,9 @@ class SLM_Agent:
     ):
         model_env_key_map = {
             "nemotron-mini:4b": "Nemotron_MODEL_ID",
-            "phi4-mini:3.8b": "Phi_MODEL_ID",
             "qwen3:4b": "Qwen_MODEL_ID",
-            "gemma3:4b": "Gemma_MODEL_ID",
+            "gemma4:e4b": "Gemma_MODEL_ID",
             "minicpm3:4b": "Minicpm_MODEL_ID",
-            "minicpm3_4b:latest": "Minicpm_MODEL_ID",
-            "gpt-oss:20b": "GPT_OSS_MODEL_ID",
         }
 
         env_key = model_env_key_map.get(model_name)
