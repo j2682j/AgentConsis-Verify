@@ -369,8 +369,33 @@ Currently supported Stage 1 tools include:
 | `search` | Call a configured web search backend and return normalized raw results. |
 | `python_calculator` | Compute deterministic arithmetic or small calculations. |
 
-Tool calls are cached by normalized tool name and arguments. If two runs ask for
-the same tool with the same arguments, SCP reuses the cached result.
+Tool calls are cached by normalized tool name and arguments. Identical parallel
+requests use single-flight execution, so only one backend call runs. Repeated
+successful requests return `already_available`; repeated failed requests return
+`duplicate_blocked` and require changed arguments or another capability.
+
+Every tool result exposes a shared status contract:
+
+```text
+status, error_code, retryable, retry_hint, evidence_valid
+```
+
+Nested attachment failures and unsupported deterministic tasks are propagated
+as failures instead of being wrapped as successful dictionary outputs.
+
+Tools also register capability metadata, parameter schemas, compatible
+attachment types, determinism, and side-effect information. Stage 1 reads the
+enabled tools directly from the registry rather than using a fixed allowlist.
+`ToolGapDetector` compares question requirements against these capabilities and
+reports missing functions such as `grid.word_search`, `graph.shortest_path`,
+`geometry.coordinate_distance`, `conversion.sexagesimal`, or
+`table.statistics`.
+
+The deterministic solver currently implements those five capability families:
+Boggle-style eight-direction DFS, graph BFS and hop counting, Euclidean or
+Haversine coordinate distance, sexagesimal conversion, and table
+filtering/aggregation. Unsupported capabilities remain visible as gaps instead
+of being routed to an unrelated handler.
 
 There are two tool-use windows:
 
@@ -454,9 +479,8 @@ The current search pipeline components are:
 | `source_analyze/rag_labeler.py` | Labels chunks as useful/useless. Currently uses deterministic fallback until the trained labeler is connected. |
 | `source_analyze/seer/helpfulness_expert.py` | Standalone probability helper. Not used by the active pipeline right now. |
 | `source_analyze/seer/ngram_deduplicate.py` | Deduplicates useful evidence chunks. |
-| `next_hop_query/retrieval_controller.py` | Decides whether next-hop retrieval is needed. |
-| `next_hop_query/rag_filter.py` | Builds an EfficientRAG-style filtered follow-up query when retrieval control requests next-hop. |
-| `next_hop_query/next_hop_query_generator.py` | Builds follow-up queries from evidence and question signals. |
+| `next_hop_query/retrieval_controller.py` | Uses spaCy NER coverage, encoder semantic relevance, and constraint coverage to decide whether next-hop retrieval is needed. |
+| `next_hop_query/rag_filter.py` | Builds up to two EfficientRAG filter queries from separate evidence groups; H1 and H2 are searched in parallel. |
 | `evidence_renderer.py` | Renders compact structured context for agents. |
 
 The prompt sent to agents is intentionally compact:
@@ -475,10 +499,20 @@ Query: Q1
 Text: ...
 ```
 
-Candidate-answer extraction is currently not required for the agent prompt:
-agents receive structured evidence directly. Search diagnostics are exported in
-per-task JSON so each run can show source filtering, fetch, chunking, labeling,
-deduplication, retrieval control, and next-hop decisions.
+The search pipeline does not extract intermediate candidate answers. Agents
+receive structured evidence directly, while per-task JSON exports source
+filtering, fetch, chunking, labeling, deduplication, retrieval control, and
+next-hop diagnostics.
+
+All evidence sufficiency decisions, both after the initial search and after the
+parallel H1/H2 batch, use spaCy NER coverage, encoder semantic relevance, and
+constraint coverage. SourceAnalysis only filters and converts evidence; useful
+chunk counts do not act as a separate stop condition.
+
+After H1 and H2 complete, their evidence is consolidated before the final
+sufficiency decision. Cross-query duplicates are removed with SEER n-gram
+similarity, then the retained evidence is reranked with the same weighted
+signals: NER coverage, encoder relevance, and constraint coverage.
 
 ## Scoring
 
@@ -549,6 +583,3 @@ Useful checks:
 ```bash
 python run_gaia.py --help
 ```
-
-
-

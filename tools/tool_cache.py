@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import json
-from threading import Lock
+from threading import Event, Lock
 from typing import Any
+
+from .tool_result import failure_result
 
 
 class ToolCache:
@@ -27,6 +29,7 @@ class ToolCache:
             - None。
         """
         self._cache: dict[str, dict[str, Any]] = {}
+        self._inflight: dict[str, Event] = {}
         self._lock = Lock()
 
     def get_or_execute(
@@ -54,33 +57,85 @@ class ToolCache:
         key = self._cache_key(tool_name, tool_args)
         with self._lock:
             cached = self._cache.get(key)
+            inflight = self._inflight.get(key)
+            if cached is None and inflight is None:
+                inflight = Event()
+                self._inflight[key] = inflight
+                is_owner = True
+            else:
+                is_owner = False
         if cached is not None:
-            result = dict(cached)
-            result["cache_hit"] = True
-            return result
+            return self._duplicate_result(cached)
+        if not is_owner:
+            assert inflight is not None
+            inflight.wait()
+            with self._lock:
+                cached = self._cache.get(key)
+            if cached is not None:
+                return self._duplicate_result(cached)
 
-        if tool_manager is None or not hasattr(tool_manager, "execute_tool"):
-            result = {
-                "ok": False,
-                "tool_name": tool_name,
-                "output_text": "",
-                "raw_result": None,
-                "error": "tool_manager with execute_tool is not available",
-                "cache_hit": False,
-            }
-        else:
-            result = dict(
-                tool_manager.execute_tool(
+        try:
+            if tool_manager is None or not hasattr(tool_manager, "execute_tool"):
+                result = failure_result(
                     tool_name,
-                    tool_args,
-                    agent_id=agent_id,
-                    stage=stage,
+                    status="fatal",
+                    error_code="tool_manager_unavailable",
+                    error_message="tool_manager with execute_tool is not available",
                 )
+            else:
+                result = dict(
+                    tool_manager.execute_tool(
+                        tool_name,
+                        tool_args,
+                        agent_id=agent_id,
+                        stage=stage,
+                    )
+                )
+        except Exception as exc:
+            result = failure_result(
+                tool_name,
+                status="retryable_failure",
+                error_code="tool_manager_exception",
+                error_message=f"{type(exc).__name__}: {exc}",
+                retryable=True,
+                retry_hint="Change the arguments or choose another tool before retrying.",
             )
+        finally:
             result["cache_hit"] = False
+            result["duplicate_request"] = False
 
         with self._lock:
             self._cache[key] = dict(result)
+            event = self._inflight.pop(key, None)
+            if event is not None:
+                event.set()
+        return result
+
+    def _duplicate_result(self, cached: dict[str, Any]) -> dict[str, Any]:
+        result = dict(cached)
+        result["cache_hit"] = True
+        result["duplicate_request"] = True
+        if cached.get("ok") and cached.get("evidence_valid"):
+            result["status"] = "already_available"
+            result["retryable"] = False
+            result["retry_hint"] = "Use the existing tool result; do not request it again."
+            return result
+
+        previous_error = str(
+            cached.get("error_message") or cached.get("error") or "previous request failed"
+        )
+        result.update(
+            {
+                "ok": False,
+                "status": "duplicate_blocked",
+                "error_code": "duplicate_failed_request",
+                "error_message": previous_error,
+                "error": previous_error,
+                "retryable": False,
+                "retry_hint": "Change the arguments or choose another tool capability.",
+                "evidence_valid": False,
+            }
+        )
         return result
 
     def _cache_key(self, tool_name: str, tool_args: dict[str, Any]) -> str:

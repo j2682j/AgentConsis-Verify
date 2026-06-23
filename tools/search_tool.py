@@ -92,6 +92,9 @@ class SearchTool(Tool):
         super().__init__(
             name="search",
             description="Web search backend adapter returning normalized raw search results.",
+            capabilities={"web.search", "web.factual_lookup"},
+            deterministic=False,
+            side_effects=False,
         )
         self.backend = (backend or os.getenv("SEARCH_BACKEND") or "hybrid").lower()
         self.tavily_key = tavily_key or os.getenv("TAVILY_API_KEY")

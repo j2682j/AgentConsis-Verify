@@ -3,7 +3,17 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from .handlers import ListHandler, MathHandler, StringHandler, TableHandler, UnitHandler
+from .handlers import (
+    CoordinateHandler,
+    GraphHandler,
+    GridWordHandler,
+    ListHandler,
+    MathHandler,
+    SexagesimalHandler,
+    StringHandler,
+    TableHandler,
+    UnitHandler,
+)
 from .schemas import DeterministicReadiness, DeterministicSolverResult
 
 
@@ -25,6 +35,8 @@ class DeterministicSolver:
         r"title case|remove spaces|character count|word count|table|spreadsheet|cell|"
         r"row|column|csv|median|average|mean|sum|total|maximum|minimum|max|min|"
         r"how many characters|how many words"
+        r"|boggle|word search|shortest path|shortest route|graph|coordinates?|"
+        r"latitude|longitude|sexagesimal|degrees|dms|filter"
         r")\b",
         re.IGNORECASE,
     )
@@ -40,6 +52,10 @@ class DeterministicSolver:
             - None?
         """
         self.handlers = [
+            GridWordHandler(),
+            GraphHandler(),
+            CoordinateHandler(),
+            SexagesimalHandler(),
             TableHandler(),
             UnitHandler(),
             MathHandler(),
@@ -134,6 +150,24 @@ class DeterministicSolver:
             or re.search(r"\b(sum|total|average|mean|median|largest|smallest|maximum|minimum)\b", text, re.IGNORECASE)
         )
         has_unit_conversion = bool(re.search(r"\bconvert\b.+\bto\b", text, re.IGNORECASE))
+        has_grid_payload = bool(
+            re.search(r"\b(boggle|word search|letter grid)\b", text, re.IGNORECASE)
+            and '"grid"' in text
+            and '"words"' in text
+        )
+        has_graph_payload = bool(
+            re.search(r"\b(shortest path|shortest route|graph|stations?|stops?)\b", text, re.IGNORECASE)
+            and (
+                '"edges"' in text
+                or bool(re.search(r"\b[A-Za-z]\w*\s*(?:->|-)\s*[A-Za-z]\w*\b", text))
+            )
+        )
+        has_coordinates = len(
+            re.findall(r"\(\s*[-+]?\d+(?:\.\d+)?\s*,\s*[-+]?\d+(?:\.\d+)?\s*\)", text)
+        ) >= 2
+        has_sexagesimal = bool(
+            re.search(r"\bdegrees?\b.*\bminutes?\b.*\bseconds?\b", text, re.IGNORECASE)
+        )
         has_deterministic_signal = bool(self.DETERMINISTIC_SIGNAL_RE.search(text))
         has_external_signal = bool(self.EXTERNAL_FACTUAL_RE.search(text))
 
@@ -145,6 +179,10 @@ class DeterministicSolver:
                 has_local_list,
                 has_math_expression,
                 has_unit_conversion,
+                has_grid_payload,
+                has_graph_payload,
+                has_coordinates,
+                has_sexagesimal,
                 has_table_data,
                 has_attachment_structured,
                 has_candidate,
@@ -167,7 +205,17 @@ class DeterministicSolver:
             )
 
         has_complete_question_data = any(
-            [has_question_table, has_quoted_string, has_local_list, has_math_expression, has_unit_conversion]
+            [
+                has_question_table,
+                has_quoted_string,
+                has_local_list,
+                has_math_expression,
+                has_unit_conversion,
+                has_grid_payload,
+                has_graph_payload,
+                has_coordinates,
+                has_sexagesimal,
+            ]
         )
         return DeterministicReadiness(
             is_deterministic,

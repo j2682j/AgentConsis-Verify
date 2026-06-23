@@ -197,6 +197,38 @@ class ToolRegistry:
         """
         return list(self._tools.values())
 
+    def find_by_capability(self, capability: str) -> list[Tool]:
+        required = str(capability or "").strip().lower()
+        if not required:
+            return []
+        return [
+            tool
+            for tool in self._tools.values()
+            if any(
+                self._capability_matches(registered, required)
+                for registered in getattr(tool, "capabilities", set())
+            )
+        ]
+
+    def capability_index(self) -> dict[str, list[str]]:
+        index: dict[str, list[str]] = {}
+        for tool in self._tools.values():
+            for capability in sorted(getattr(tool, "capabilities", set())):
+                index.setdefault(capability, []).append(tool.name)
+        return index
+
+    def tool_metadata(self, name: str) -> dict[str, Any]:
+        tool = self.get_tool(name)
+        return tool.capability_metadata() if tool is not None else {}
+
+    def _capability_matches(self, registered: str, required: str) -> bool:
+        registered_key = str(registered).strip().lower()
+        if registered_key == required:
+            return True
+        if registered_key.endswith(".*"):
+            return required.startswith(registered_key[:-1])
+        return False
+
     def clear(self) -> None:
         """
         清空所有工具與函式工具註冊。

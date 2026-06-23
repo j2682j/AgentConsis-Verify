@@ -37,7 +37,16 @@ class Tool:
         - Tool: 可被 ToolManager 註冊與執行的工具基底物件。
     """
 
-    def __init__(self, *, name: str, description: str = "") -> None:
+    def __init__(
+        self,
+        *,
+        name: str,
+        description: str = "",
+        capabilities: set[str] | list[str] | tuple[str, ...] | None = None,
+        attachment_types: set[str] | list[str] | tuple[str, ...] | None = None,
+        deterministic: bool = False,
+        side_effects: bool = False,
+    ) -> None:
         """
         ??????????????
         
@@ -49,6 +58,31 @@ class Tool:
         """
         self.name = name
         self.description = description
+        self.capabilities = set(capabilities or [])
+        self.attachment_types = {
+            str(item).lower().lstrip(".") for item in (attachment_types or [])
+        }
+        self.deterministic = deterministic
+        self.side_effects = side_effects
+
+    def capability_metadata(self) -> dict[str, Any]:
+        return {
+            "name": self.name,
+            "description": self.description,
+            "capabilities": sorted(self.capabilities),
+            "attachment_types": sorted(self.attachment_types),
+            "deterministic": self.deterministic,
+            "side_effects": self.side_effects,
+            "parameters": [
+                {
+                    "name": parameter.name,
+                    "type": parameter.type,
+                    "description": parameter.description,
+                    "required": parameter.required,
+                }
+                for parameter in self.get_parameters()
+            ],
+        }
 
     def run(self, parameters: dict[str, Any]) -> Any:
         """

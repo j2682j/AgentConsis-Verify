@@ -25,13 +25,6 @@ class Stage1TrajectoryRunner:
         - EachAgentReply: 包含 trajectory、tool_calls、tool_results 與 final answer。
     """
 
-    ALLOWED_TOOLS = {
-        "attachment_reader",
-        "deterministic_solver",
-        "python_calculator",
-        "search",
-    }
-
     def __init__(
         self,
         *,
@@ -79,6 +72,8 @@ class Stage1TrajectoryRunner:
         completion_tokens_total = 0
         reasoning_steps: list[str] = []
         raw_reply = ""
+        available_tools = self._available_tools()
+        tool_gap = self._tool_gap(question, attachment)
 
         for turn_index in range(1, self.max_tool_turns + 2):
             messages = self.context_builder.build(
@@ -86,6 +81,8 @@ class Stage1TrajectoryRunner:
                 evidence_packets=evidence_packets,
                 tool_trace=self._format_tool_trace(tool_results),
                 attachment=attachment,
+                available_tools=available_tools,
+                tool_gap=tool_gap,
             )
             raw_reply, prompt_tokens, completion_tokens = agent.invoke_with_usage(messages)
             prompt_tokens_total += prompt_tokens
@@ -120,23 +117,13 @@ class Stage1TrajectoryRunner:
                 }
                 tool_calls.append(tool_call)
 
-                if tool_name not in self.ALLOWED_TOOLS:
-                    tool_result = {
-                        "ok": False,
-                        "tool_name": tool_name,
-                        "output_text": "",
-                        "raw_result": None,
-                        "error": f"tool '{tool_name}' is not allowed in stage1 tool mode",
-                        "cache_hit": False,
-                    }
-                else:
-                    tool_result = self.tool_cache.get_or_execute(
-                        tool_manager=self.tool_manager,
-                        tool_name=tool_name,
-                        tool_args=tool_args,
-                        agent_id=config.agent_id,
-                        stage=f"stage1_tool_turn_{turn_index}",
-                    )
+                tool_result = self.tool_cache.get_or_execute(
+                    tool_manager=self.tool_manager,
+                    tool_name=tool_name,
+                    tool_args=tool_args,
+                    agent_id=config.agent_id,
+                    stage=f"stage1_tool_turn_{turn_index}",
+                )
                 tool_results.append(tool_result)
                 trajectory.append(
                     {
@@ -261,6 +248,29 @@ class Stage1TrajectoryRunner:
                 args["attachment"] = attachment
         return args
 
+    def _available_tools(self) -> str:
+        if self.tool_manager is None:
+            return "No enabled tools."
+        formatter = getattr(self.tool_manager, "describe_enabled_tools", None)
+        if callable(formatter):
+            return str(formatter())
+        return "No enabled tools."
+
+    def _tool_gap(
+        self,
+        question: str,
+        attachment: dict[str, Any] | None,
+    ) -> str:
+        if self.tool_manager is None:
+            return "Tool manager unavailable."
+        formatter = getattr(self.tool_manager, "format_tool_gap", None)
+        if not callable(formatter):
+            return "Capability analysis unavailable."
+        extension = ""
+        if isinstance(attachment, dict):
+            extension = str(attachment.get("extension", "") or "").lstrip(".")
+        return str(formatter(question, attachment_type=extension or None))
+
     def _format_tool_trace(self, tool_results: list[dict[str, Any]]) -> str:
         """
         將已取得的工具結果格式化成下一回合 prompt 的 Tool_Trace。
@@ -277,7 +287,10 @@ class Stage1TrajectoryRunner:
         for index, result in enumerate(tool_results, 1):
             lines.append(
                 f"Tool result {index}: {result.get('tool_name', '')} "
-                f"ok={result.get('ok', False)} cache_hit={result.get('cache_hit', False)}"
+                f"status={result.get('status', '')} ok={result.get('ok', False)} "
+                f"evidence_valid={result.get('evidence_valid', False)} "
+                f"cache_hit={result.get('cache_hit', False)} "
+                f"duplicate_request={result.get('duplicate_request', False)}"
             )
             output = str(result.get("output_text", "") or "").strip()
             if output:
@@ -285,6 +298,9 @@ class Stage1TrajectoryRunner:
             error = result.get("error")
             if error:
                 lines.append(f"Error: {error}")
+            retry_hint = str(result.get("retry_hint", "") or "").strip()
+            if retry_hint:
+                lines.append(f"Next action: {retry_hint}")
         return "\n".join(lines)
 
 

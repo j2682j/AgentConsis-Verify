@@ -45,8 +45,10 @@ class MediaAttachmentReader:
                 }
             ],
             "stream": False,
+            "think": False,
             "options": {
                 "temperature": 0,
+                "num_predict": 1024,
             },
         }
         request = urllib.request.Request(
@@ -69,6 +71,8 @@ class MediaAttachmentReader:
         content = str(message.get("content", "") or "").strip()
         if not content:
             content = str(data.get("response", "") or "").strip()
+        if not content:
+            content = str(message.get("thinking", "") or "").strip()
         if not content:
             raise RuntimeError("Ollama vision response did not include text content")
 
@@ -135,4 +139,3 @@ class MediaAttachmentReader:
             "Transcript:\n"
             f"{transcript}"
         )
-

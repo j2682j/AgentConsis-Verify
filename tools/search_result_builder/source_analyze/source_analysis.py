@@ -6,7 +6,7 @@ from typing import Any
 
 from utils.network_utils import normalize_text
 
-from ..config import CandidateAnswer, EvidenceItem, SearchSourceCandidate
+from ..config import EvidenceItem, SearchSourceCandidate
 from .rag_labeler import EfficientRAGLabelerAdapter
 from .seer.ngram_deduplicate import NgramDeduplicator
 from .seer.page_content_fetcher import PageContentFetcher
@@ -64,13 +64,10 @@ class UsefulLabeledChunk:
 @dataclass
 class SourceUsefulnessResult:
     """
-    保存 SourceAnalysis 回傳給 EvidenceSearcher 的結果摘要。
+    保存 SourceAnalysis 回傳給 EvidenceSearcher 的來源處理結果。
 
     Args:
         - sources: 通過 hard filter 的 sources。
-        - stop_query: 是否已有足夠 useful chunks 可進入 Retrieval Control。
-        - best_helpfulness: 保留欄位；helpfulness 關閉時固定為 0。
-        - threshold: 保留欄位；helpfulness 關閉時不參與判斷。
         - fetched_pages: full-page fetch 數量。
 
     Returns:
@@ -78,9 +75,6 @@ class SourceUsefulnessResult:
     """
 
     sources: list[SearchSourceCandidate]
-    stop_query: bool = False
-    best_helpfulness: float = 0.0
-    threshold: float = 0.0
     fetched_pages: int = 0
 
 
@@ -93,8 +87,6 @@ class SourceAnalysis:
         - page_content_fetcher: full-page fetcher。
         - labeler: EfficientRAG labeler adapter。
         - deduplicator: SEER n-gram deduplicator。
-        - helpfulness_threshold: 保留欄位；目前 helpfulness scoring 關閉。
-        - min_useful_chunks: 視為可停止 query 的最低 useful chunk 數量。
         - min_chunk_chars: chunk 最小字元數。
         - duplicate_threshold: useful chunks 去重門檻。
 
@@ -109,8 +101,6 @@ class SourceAnalysis:
         page_content_fetcher: PageContentFetcher | None = None,
         labeler: EfficientRAGLabelerAdapter | None = None,
         deduplicator: NgramDeduplicator | None = None,
-        helpfulness_threshold: float = 0.6,
-        min_useful_chunks: int = 1,
         min_chunk_chars: int = 40,
         duplicate_threshold: float = 0.82,
     ) -> None:
@@ -118,14 +108,10 @@ class SourceAnalysis:
         self.page_content_fetcher = page_content_fetcher or PageContentFetcher()
         self.labeler = labeler or EfficientRAGLabelerAdapter()
         self.deduplicator = deduplicator or NgramDeduplicator()
-        self.helpfulness_threshold = helpfulness_threshold
-        self.min_useful_chunks = max(1, min_useful_chunks)
         self.min_chunk_chars = min_chunk_chars
         self.duplicate_threshold = duplicate_threshold
         self.last_blocked_sources: list[SearchSourceCandidate] = []
         self.last_evidence_items: list[EvidenceItem] = []
-        self.last_candidates: list[CandidateAnswer] = []
-        self.last_rejected_candidates: list[dict[str, str]] = []
         self.last_useful_chunks: list[UsefulLabeledChunk] = []
         self.last_useless_chunks: list[UsefulLabeledChunk] = []
         self.last_diagnostics: dict[str, Any] = {}
@@ -140,7 +126,6 @@ class SourceAnalysis:
         max_pages: int,
         max_evidence_items: int = 8,
         max_chars_per_item: int = 420,
-        max_candidates: int = 10,
     ) -> SourceUsefulnessResult:
         """
         對 search sources 執行 filter、fetch、chunk、label、dedup 與 evidence conversion。
@@ -153,12 +138,9 @@ class SourceAnalysis:
             - max_pages: 最多抓取多少完整頁面。
             - max_evidence_items: 最多輸出多少 EvidenceItem。
             - max_chars_per_item: 每個 EvidenceItem 最大文字長度。
-            - max_candidates: 保留相容欄位，目前不使用。
-
         Returns:
             - SourceUsefulnessResult: source analysis 結果。
         """
-        del max_candidates
         filtered_sources = self.source_filter.filter_sources(
             sources,
             question=question,
@@ -180,7 +162,6 @@ class SourceAnalysis:
             deduped_useful[:max_evidence_items],
             max_chars_per_item=max_chars_per_item,
         )
-        stop_query = len(deduped_useful) >= self.min_useful_chunks
         diagnostics = {
             "source_pipeline": "hard_filter->fetch->chunk->efficientrag_labeler->seer_dedup->evidence_conversion",
             "source_count": len(sources),
@@ -190,22 +171,17 @@ class SourceAnalysis:
             "useful_chunk_count": len(deduped_useful),
             "useless_chunk_count": len(useless_chunks),
             "helpfulness_scoring": "disabled",
-            "stop_query": stop_query,
+            "sufficiency_decision": "delegated_to_retrieval_controller",
         }
 
         self.last_blocked_sources = blocked_sources
         self.last_evidence_items = evidence_items
-        self.last_candidates = []
-        self.last_rejected_candidates = []
         self.last_useful_chunks = deduped_useful
         self.last_useless_chunks = useless_chunks
         self.last_diagnostics = diagnostics
 
         return SourceUsefulnessResult(
             sources=filtered_sources,
-            stop_query=stop_query,
-            best_helpfulness=0.0,
-            threshold=0.0,
             fetched_pages=fetched_pages,
         )
 

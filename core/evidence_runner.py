@@ -41,6 +41,7 @@ class EvidenceRunner:
         deterministic_solver: DeterministicSolver | None = None,
         compact_search_evidence: bool = False,
         enable_evidence_driven_search: bool = True,
+        max_parallel_next_hop_queries: int = 2,
     ) -> None:
         self.question = question
         self.attachment = attachment or {}
@@ -52,6 +53,7 @@ class EvidenceRunner:
         self.deterministic_solver = deterministic_solver or DeterministicSolver()
         self.compact_search_evidence = compact_search_evidence
         self.enable_evidence_driven_search = enable_evidence_driven_search
+        self.max_parallel_next_hop_queries = max(0, max_parallel_next_hop_queries)
 
     def run(self) -> dict[str, Any]:
         """
@@ -227,6 +229,7 @@ class EvidenceRunner:
             searcher = EvidenceSearcher(
                 tool_manager=self.tool_manager,
                 enable_evidence_driven_search=self.enable_evidence_driven_search,
+                max_parallel_next_hop_queries=self.max_parallel_next_hop_queries,
             )
             output = searcher.search(
                 self.question,

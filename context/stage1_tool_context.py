@@ -31,16 +31,18 @@ Attachment_Metadata:
 Tool_Trace:
 {tool_trace}
 
-Available tools:
-- search: use for external factual lookup. tool_args: {{"input": "query", "mode": "text"}}
-- python_calculator: use for arithmetic or deterministic calculation. tool_args: {{"expression": "math expression"}}
-- deterministic_solver: use for closed-world deterministic tasks, tables, strings, lists, and unit conversion. tool_args: {{"input": "question"}}
-- attachment_reader: use to read a task attachment when attachment metadata is present. tool_args: {{"question": "question", "file_path": "path"}}
+Available_Tools:
+{available_tools}
+
+Capability_Gap:
+{tool_gap}
 
 Instructions:
 - If you need one tool, return exactly this JSON shape:
 {{"type": "tool_request", "reasoning_step": "step N. why this tool is needed", "tool_name": "search", "tool_args": {{"input": "query", "mode": "text"}}}}
 - Replace tool_name and tool_args with the correct available tool when needed.
+- Do not invent a tool name that is not listed in Available_Tools.
+- If Capability_Gap lists a missing capability, do not repeat an unsupported request.
 - If you can answer, return exactly this JSON shape:
 {{"type": "final_answer", "reasoning": "step 1. ...\\nstep 2. ...", "final_answer": "short final answer only"}}
 - Reasoning must use explicit numbered steps.
@@ -54,6 +56,11 @@ class Stage1ToolContextBuilder(Stage1ContextBuilder):
         structured = super().structure(packets, **kwargs)
         structured["system"] = STAGE1_TOOL_SYSTEM_PROMPT
         structured["tool_trace"] = kwargs.get("tool_trace", self.config.none_text)
+        structured["available_tools"] = kwargs.get(
+            "available_tools",
+            self.config.none_text,
+        )
+        structured["tool_gap"] = kwargs.get("tool_gap", self.config.none_text)
         structured["attachment_metadata"] = self._format_attachment_metadata(
             kwargs.get("attachment")
         )
@@ -77,6 +84,22 @@ class Stage1ToolContextBuilder(Stage1ContextBuilder):
             )
             or self.config.none_text
         )
+        compressed["available_tools"] = (
+            self._compress_multiline_text(
+                str(structured.get("available_tools", "")),
+                max_lines=30,
+                max_chars=5000,
+            )
+            or self.config.none_text
+        )
+        compressed["tool_gap"] = (
+            self._compress_multiline_text(
+                str(structured.get("tool_gap", "")),
+                max_lines=12,
+                max_chars=1800,
+            )
+            or self.config.none_text
+        )
         return compressed
 
     def render(self, compressed: dict[str, Any], **_: Any) -> list[dict[str, str]]:
@@ -87,6 +110,8 @@ class Stage1ToolContextBuilder(Stage1ContextBuilder):
             search_result=compressed["search_result"],
             attachment_metadata=compressed["attachment_metadata"],
             tool_trace=compressed["tool_trace"],
+            available_tools=compressed["available_tools"],
+            tool_gap=compressed["tool_gap"],
         )
         return [
             {"role": "system", "content": str(compressed["system"])},

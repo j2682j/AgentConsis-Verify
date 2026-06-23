@@ -65,6 +65,7 @@ class Network:
         enable_evidence_prepare: bool = True,
         enable_compact_search_evidence: bool = False,
         enable_evidence_driven_search: bool = True,
+        max_parallel_next_hop_queries: int = 2,
         search_result: str = "",
         attachment_result: str = "",
     ) -> None:
@@ -85,6 +86,7 @@ class Network:
         self.enable_evidence_prepare = enable_evidence_prepare
         self.enable_compact_search_evidence = enable_compact_search_evidence
         self.enable_evidence_driven_search = enable_evidence_driven_search
+        self.max_parallel_next_hop_queries = max(0, max_parallel_next_hop_queries)
         self.search_result = search_result
         self.attachment_result = attachment_result
 
@@ -104,6 +106,7 @@ class Network:
             attachment_result=self.attachment_result,
             compact_search_evidence=self.enable_compact_search_evidence,
             enable_evidence_driven_search=self.enable_evidence_driven_search,
+            max_parallel_next_hop_queries=self.max_parallel_next_hop_queries,
         )
         self.stage1_runner = Stage1Runner(
             question=self.question,
@@ -219,6 +222,7 @@ class Network:
                 "enable_compact_search_evidence": self.enable_compact_search_evidence,
                 "query_planner": "signal",
                 "enable_evidence_driven_search": self.enable_evidence_driven_search,
+                "max_parallel_next_hop_queries": self.max_parallel_next_hop_queries,
                 "max_stage1_tool_turns": self.max_stage1_tool_turns,
                 "enable_stage1_early_stop": self.enable_stage1_early_stop,
                 "previous_best_agent_id": self.previous_best_agent_id or "",

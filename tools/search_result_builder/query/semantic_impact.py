@@ -231,6 +231,27 @@ class SemanticImpactScorer:
         kept.sort(key=lambda item: (item.score, len(item.text)), reverse=True)
         return kept[: self.max_salient_tokens]
 
+    def semantic_similarities(self, reference: str, texts: list[str]) -> list[float]:
+        """
+        計算參考文字與多段文字的 encoder cosine similarity。
+
+        Args:
+            - reference: 作為比較基準的文字。
+            - texts: 要與基準比較的文字列表。
+
+        Returns:
+            - list[float]: 與 texts 順序相同的 cosine similarity。
+        """
+        if not texts:
+            return []
+        self._load_hf_model()
+        embeddings = self._embed_texts([reference, *texts])
+        reference_embedding = embeddings[0]
+        return [
+            float((reference_embedding * embedding).sum().detach().cpu().item())
+            for embedding in embeddings[1:]
+        ]
+
     def _load_hf_model(self) -> None:
         if self.tokenizer is not None and self.model is not None:
             return

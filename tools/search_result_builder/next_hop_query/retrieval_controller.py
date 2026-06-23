@@ -2,115 +2,120 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
+from typing import Any
 
 from utils.network_utils import normalize_text
 
-from ..config import CandidateAnswer, EvidenceItem, SearchSignals
+from ..config import EvidenceItem, SearchSignals
+from ..query.semantic_impact import SemanticImpactScorer
+
+_SPACY_CACHE: dict[str, Any] = {}
 
 
 @dataclass
 class RetrievalDecision:
     """
-    Store the retrieval sufficiency decision for next-hop search.
+    保存第一次搜尋的證據充足性判定。
 
     Args:
-        - need_next_hop: Whether another retrieval hop is required.
-        - reason: Main decision reason.
-        - confidence: Evidence sufficiency confidence from 0.0 to 1.0.
-        - missing_info: Missing or weak information signals.
-        - scores: Component scores used by the controller.
+        - need_next_hop: 是否需要執行下一跳搜尋。
+        - reason: 主要判定原因。
+        - confidence: 證據充足性分數。
+        - missing_info: 未達最低門檻的訊號。
+        - scores: NER、語意相關性與限制覆蓋分數。
 
     Returns:
-        - RetrievalDecision: Next-hop search decision.
+        - RetrievalDecision: Retrieval control 判定結果。
     """
 
     need_next_hop: bool
     reason: str
     confidence: float = 0.0
     missing_info: list[str] = field(default_factory=list)
-    scores: dict[str, float] = field(default_factory=dict)
+    scores: dict[str, Any] = field(default_factory=dict)
 
 
 class RetrievalController:
     """
-    Decide whether first-hop evidence is sufficient or a next-hop search is needed.
+    使用 NER coverage、encoder relevance 與 constraint coverage 判斷證據是否充足。
 
     Args:
-        - min_candidate_support: Minimum support count for a candidate answer.
-        - sufficiency_threshold: Minimum weighted sufficiency score to stop retrieval.
-        - min_target_coverage: Minimum target-term coverage required when target terms exist.
-        - min_novel_terms: Minimum evidence terms not already present in the question.
-        - min_evidence_chars: Minimum combined evidence length.
+        - semantic_scorer: 共用的 encoder embedding scorer。
+        - nlp: 可注入的 spaCy language pipeline。
+        - spacy_model: 預設載入的 spaCy 模型。
+        - sufficiency_threshold: 三項訊號加權後的停止門檻。
+        - min_entity_coverage: 題目實體最低覆蓋率。
+        - min_semantic_relevance: 問題與證據最低語意相關性。
+        - min_constraint_coverage: 年份、來源與答案角色最低覆蓋率。
+        - semantic_top_k: 語意相關性採用的最高分 evidence 數量。
 
     Returns:
-        - RetrievalController: Rule-based retrieval sufficiency controller.
+        - RetrievalController: 第一次搜尋的證據充足性控制器。
     """
 
-    STOPWORDS = {
-        "the",
-        "and",
-        "for",
-        "with",
-        "from",
-        "what",
-        "which",
-        "who",
-        "when",
-        "where",
-        "why",
-        "how",
-        "answer",
-        "question",
-        "this",
-        "that",
-        "are",
-        "was",
-        "were",
-        "does",
-        "did",
-        "can",
-        "could",
-        "would",
-        "should",
-        "please",
-        "provide",
+    ENTITY_LABELS = {"PERSON", "ORG", "GPE", "LOC", "DATE"}
+    ANSWER_ROLE_LABELS = {
+        "person": {"PERSON"},
+        "organization": {"ORG"},
+        "place": {"GPE", "LOC", "FAC"},
+        "date": {"DATE", "TIME"},
+        "number": {"CARDINAL", "QUANTITY", "PERCENT", "MONEY", "ORDINAL"},
+    }
+    SOURCE_TERMS = {
+        "article",
+        "book",
+        "database",
+        "journal",
+        "newspaper",
+        "official",
+        "paper",
+        "publication",
+        "report",
+        "source",
+        "study",
+        "website",
     }
 
     def __init__(
         self,
         *,
-        min_candidate_support: int = 1,
-        sufficiency_threshold: float = 0.55,
-        min_target_coverage: float = 0.4,
-        min_novel_terms: int = 3,
-        min_evidence_chars: int = 250,
+        semantic_scorer: SemanticImpactScorer | None = None,
+        nlp: Any | None = None,
+        spacy_model: str = "en_core_web_md",
+        sufficiency_threshold: float = 0.65,
+        min_entity_coverage: float = 0.75,
+        min_semantic_relevance: float = 0.45,
+        min_constraint_coverage: float = 0.75,
+        semantic_top_k: int = 3,
     ) -> None:
-        self.min_candidate_support = min_candidate_support
+        self.semantic_scorer = semantic_scorer or SemanticImpactScorer()
+        self.nlp = nlp
+        self.spacy_model = spacy_model
         self.sufficiency_threshold = sufficiency_threshold
-        self.min_target_coverage = min_target_coverage
-        self.min_novel_terms = min_novel_terms
-        self.min_evidence_chars = min_evidence_chars
+        self.min_entity_coverage = min_entity_coverage
+        self.min_semantic_relevance = min_semantic_relevance
+        self.min_constraint_coverage = min_constraint_coverage
+        self.semantic_top_k = max(1, semantic_top_k)
 
     def assess(
         self,
         *,
         evidence_items: list[EvidenceItem],
-        candidates: list[CandidateAnswer],
         question: str = "",
         search_signals: SearchSignals | None = None,
     ) -> RetrievalDecision:
         """
-        Assess whether current evidence is enough to stop retrieval.
+        判斷目前證據是否足以停止搜尋。
 
         Args:
-            - evidence_items: Evidence chunks produced by SourceAnalysis.
-            - candidates: Candidate answers produced by the search pipeline.
-            - question: Original question.
-            - search_signals: Search signals, especially semantic-impact target terms.
+            - evidence_items: SourceAnalysis 產生的 evidence chunks。
+            - question: 原始問題。
+            - search_signals: 搜尋訊號，目前保留於介面供診斷使用。
 
         Returns:
-            - RetrievalDecision: Whether next-hop search is required.
+            - RetrievalDecision: 是否需要 next-hop 與三項判定分數。
         """
+        del search_signals
         if not evidence_items:
             return RetrievalDecision(
                 need_next_hop=True,
@@ -120,64 +125,52 @@ class RetrievalController:
                 scores=self._empty_scores(),
             )
 
-        supported_candidates = [
-            candidate
-            for candidate in candidates
-            if candidate.support_count >= self.min_candidate_support
+        evidence_texts = [
+            normalize_text(" ".join(part for part in (item.title, item.text) if part))
+            for item in evidence_items
         ]
-        if candidates and not supported_candidates:
-            return RetrievalDecision(
-                need_next_hop=True,
-                reason="no_supported_candidate",
-                confidence=0.0,
-                missing_info=["candidate_answer"],
-                scores=self._empty_scores(evidence_presence=1.0),
-            )
+        evidence_texts = [text for text in evidence_texts if text]
+        combined_evidence = normalize_text(" ".join(evidence_texts))
 
-        evidence_text = self._combined_evidence_text(evidence_items)
-        evidence_presence = min(1.0, len(evidence_items) / 2.0)
-        length_score = min(1.0, len(evidence_text) / max(1, self.min_evidence_chars))
-        target_coverage = self._target_term_coverage(
-            evidence_text=evidence_text,
-            search_signals=search_signals,
+        entity_coverage, entity_details = self._entity_coverage(question, combined_evidence)
+        semantic_relevance, semantic_details = self._semantic_relevance(question, evidence_texts)
+        constraint_coverage, constraint_details = self._constraint_coverage(
+            question,
+            combined_evidence,
         )
-        answer_signal = self._answer_signal_score(
-            question=question,
-            evidence_text=evidence_text,
-            search_signals=search_signals,
-        )
-        novelty_score, novel_terms = self._novelty_score(question=question, evidence_text=evidence_text)
-        useful_density = self._useful_density(evidence_items)
 
-        sufficiency_score = (
-            0.25 * evidence_presence
-            + 0.20 * length_score
-            + 0.25 * target_coverage
-            + 0.15 * answer_signal
-            + 0.10 * novelty_score
-            + 0.05 * useful_density
+        sufficiency_score = round(
+            max(
+                0.0,
+                min(
+                    1.0,
+                    0.30 * entity_coverage
+                    + 0.40 * semantic_relevance
+                    + 0.30 * constraint_coverage,
+                ),
+            ),
+            6,
         )
-        sufficiency_score = round(max(0.0, min(sufficiency_score, 1.0)), 6)
-
         missing_info: list[str] = []
-        if search_signals and search_signals.target_terms and target_coverage < self.min_target_coverage:
-            missing_info.append("target_term_coverage")
-        if self._infer_answer_type(question, search_signals) != "unknown" and answer_signal <= 0.0:
-            missing_info.append("answer_signal")
-        if novel_terms < self.min_novel_terms:
-            missing_info.append("evidence_novelty")
+        if entity_details["required_count"] > 0 and entity_coverage < self.min_entity_coverage:
+            missing_info.append("entity_coverage")
+        if semantic_relevance < self.min_semantic_relevance:
+            missing_info.append("semantic_relevance")
+        if (
+            constraint_details["required_count"] > 0
+            and constraint_coverage < self.min_constraint_coverage
+        ):
+            missing_info.append("constraint_coverage")
 
-        scores = {
+        scores: dict[str, Any] = {
             "sufficiency_score": sufficiency_score,
-            "evidence_presence": round(evidence_presence, 6),
-            "evidence_length": round(length_score, 6),
-            "target_term_coverage": round(target_coverage, 6),
-            "answer_signal": round(answer_signal, 6),
-            "evidence_novelty": round(novelty_score, 6),
-            "useful_density": round(useful_density, 6),
-            "novel_terms": float(novel_terms),
+            "entity_coverage": round(entity_coverage, 6),
+            "semantic_relevance": round(semantic_relevance, 6),
+            "constraint_coverage": round(constraint_coverage, 6),
+            "entity_details": entity_details,
+            "semantic_details": semantic_details,
+            "constraint_details": constraint_details,
         }
-
         if sufficiency_score < self.sufficiency_threshold or missing_info:
             return RetrievalDecision(
                 need_next_hop=True,
@@ -186,7 +179,6 @@ class RetrievalController:
                 missing_info=missing_info,
                 scores=scores,
             )
-
         return RetrievalDecision(
             need_next_hop=False,
             reason="sufficient_evidence",
@@ -195,139 +187,249 @@ class RetrievalController:
             scores=scores,
         )
 
-    def _combined_evidence_text(self, evidence_items: list[EvidenceItem]) -> str:
-        parts: list[str] = []
-        for item in evidence_items:
-            parts.extend([item.title, item.text, " ".join(item.matched_terms)])
-        return normalize_text(" ".join(part for part in parts if part))
-
-    def _target_term_coverage(
+    def rank_evidence(
         self,
         *,
-        evidence_text: str,
-        search_signals: SearchSignals | None,
-    ) -> float:
-        target_terms = [
-            normalize_text(term)
-            for term in (search_signals.target_terms if search_signals else [])
-            if normalize_text(term)
+        question: str,
+        evidence_items: list[EvidenceItem],
+    ) -> tuple[list[EvidenceItem], list[dict[str, Any]]]:
+        """
+        使用充足性判定的三項訊號重新排序 evidence。
+
+        Args:
+            - question: 原始問題。
+            - evidence_items: H1/H2 合併並去重後的 evidence。
+
+        Returns:
+            - list[EvidenceItem]: 依綜合相關性由高至低排序的 evidence。
+            - list[dict[str, Any]]: 每個 evidence 的排序分數明細。
+        """
+        if not evidence_items:
+            return [], []
+
+        evidence_texts = [
+            normalize_text(" ".join(part for part in (item.title, item.text) if part))
+            for item in evidence_items
         ]
-        if not target_terms:
-            return 1.0
+        try:
+            similarities = self.semantic_scorer.semantic_similarities(question, evidence_texts)
+        except Exception:
+            similarities = [0.0] * len(evidence_items)
+
+        ranked: list[tuple[float, int, EvidenceItem, dict[str, Any]]] = []
+        for index, (item, text) in enumerate(zip(evidence_items, evidence_texts)):
+            entity_coverage, _ = self._entity_coverage(question, text)
+            constraint_coverage, _ = self._constraint_coverage(question, text)
+            semantic_relevance = (
+                max(0.0, min(1.0, float(similarities[index])))
+                if index < len(similarities)
+                else 0.0
+            )
+            score = round(
+                0.30 * entity_coverage
+                + 0.40 * semantic_relevance
+                + 0.30 * constraint_coverage,
+                6,
+            )
+            item.evidence_quality = score
+            if "cross_hop_rerank" not in item.cleaning_reasons:
+                item.cleaning_reasons.append("cross_hop_rerank")
+            details = {
+                "evidence_id": item.evidence_id,
+                "query_id": item.query_id,
+                "source_id": item.source_id,
+                "score": score,
+                "entity_coverage": round(entity_coverage, 6),
+                "semantic_relevance": round(semantic_relevance, 6),
+                "constraint_coverage": round(constraint_coverage, 6),
+            }
+            ranked.append((score, -index, item, details))
+
+        ranked.sort(key=lambda entry: (entry[0], entry[1]), reverse=True)
+        return (
+            [entry[2] for entry in ranked],
+            [entry[3] for entry in ranked],
+        )
+
+    def _entity_coverage(self, question: str, evidence_text: str) -> tuple[float, dict[str, Any]]:
+        nlp = self._get_nlp()
+        if nlp is None:
+            return 1.0, {
+                "available": False,
+                "required_count": 0,
+                "matched_count": 0,
+                "required": [],
+                "matched": [],
+                "missing": [],
+            }
+
+        required = self._entities(question, labels=self.ENTITY_LABELS)
+        if not required:
+            return 1.0, {
+                "available": True,
+                "required_count": 0,
+                "matched_count": 0,
+                "required": [],
+                "matched": [],
+                "missing": [],
+            }
 
         evidence_key = self._match_key(evidence_text)
-        covered = 0
-        for term in target_terms:
-            term_key = self._match_key(term)
-            if not term_key:
-                continue
-            if term_key.strip() in evidence_key:
-                covered += 1
-                continue
-            term_tokens = self._keywords(term)
-            if term_tokens and any(token in self._keywords(evidence_text) for token in term_tokens):
-                covered += 1
-        return covered / max(1, len(target_terms))
+        matched = [entity for entity in required if self._entity_in_text(entity, evidence_key)]
+        missing = [entity for entity in required if entity not in matched]
+        return len(matched) / len(required), {
+            "available": True,
+            "required_count": len(required),
+            "matched_count": len(matched),
+            "required": required,
+            "matched": matched,
+            "missing": missing,
+        }
 
-    def _answer_signal_score(
+    def _semantic_relevance(
         self,
-        *,
+        question: str,
+        evidence_texts: list[str],
+    ) -> tuple[float, dict[str, Any]]:
+        if not evidence_texts:
+            return 0.0, {"top_k": 0, "similarities": [], "error": ""}
+        try:
+            similarities = self.semantic_scorer.semantic_similarities(question, evidence_texts)
+        except Exception as exc:
+            return 0.0, {
+                "top_k": 0,
+                "similarities": [],
+                "error": f"{type(exc).__name__}: {exc}",
+            }
+
+        bounded = [max(0.0, min(1.0, float(score))) for score in similarities]
+        ranked = sorted(bounded, reverse=True)
+        selected = ranked[: min(self.semantic_top_k, len(ranked))]
+        score = sum(selected) / len(selected) if selected else 0.0
+        return score, {
+            "top_k": len(selected),
+            "similarities": [round(value, 6) for value in bounded],
+            "selected": [round(value, 6) for value in selected],
+            "error": "",
+        }
+
+    def _constraint_coverage(
+        self,
         question: str,
         evidence_text: str,
-        search_signals: SearchSignals | None,
-    ) -> float:
-        answer_type = self._infer_answer_type(question, search_signals)
-        if answer_type == "unknown":
-            return 1.0
-        patterns = {
-            "date": [
-                r"\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s+\d{1,2},?\s+(?:18|19|20)\d{2}\b",
-                r"\b(?:18|19|20)\d{2}\b",
-            ],
-            "number": [
-                r"\b\d+(?:,\d{3})*(?:\.\d+)?\b",
-                r"\b\d+(?:\.\d+)?\s*(?:km|mi|miles|hours|minutes|percent|%)\b",
-            ],
-            "person": [
-                r"\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,3}\b",
-            ],
-            "place": [
-                r"\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,3}\b",
-            ],
-            "url": [
-                r"https?://\S+",
-                r"\b[a-z0-9-]+\.(?:com|org|net|edu|gov|io|ai|co)\b",
-            ],
-            "code": [
-                r"\b[A-Z]{2,}[-_A-Z0-9]*\b",
-                r"\b[a-zA-Z_][a-zA-Z0-9_]*(?:\.[a-zA-Z_][a-zA-Z0-9_]*)+\b",
-            ],
+    ) -> tuple[float, dict[str, Any]]:
+        constraints: list[tuple[str, str, bool]] = []
+        evidence_key = self._match_key(evidence_text)
+
+        for year in self._dedupe(re.findall(r"\b(?:18|19|20)\d{2}\b", question)):
+            constraints.append(("year", year, year in evidence_text))
+
+        lowered_question = normalize_text(question).lower()
+        for source_term in sorted(self.SOURCE_TERMS):
+            if re.search(rf"\b{re.escape(source_term)}\b", lowered_question):
+                constraints.append(
+                    ("source", source_term, f" {source_term} " in evidence_key)
+                )
+
+        answer_role = self._infer_answer_role(question)
+        if answer_role:
+            labels = self.ANSWER_ROLE_LABELS[answer_role]
+            role_matched = bool(self._entities(evidence_text, labels=labels))
+            constraints.append(("answer_role", answer_role, role_matched))
+
+        if not constraints:
+            return 1.0, {
+                "required_count": 0,
+                "matched_count": 0,
+                "required": [],
+                "missing": [],
+            }
+
+        matched = [f"{kind}:{value}" for kind, value, covered in constraints if covered]
+        missing = [f"{kind}:{value}" for kind, value, covered in constraints if not covered]
+        return len(matched) / len(constraints), {
+            "required_count": len(constraints),
+            "matched_count": len(matched),
+            "required": [f"{kind}:{value}" for kind, value, _ in constraints],
+            "matched": matched,
+            "missing": missing,
         }
-        lowered = evidence_text.lower()
-        return 1.0 if any(re.search(pattern, lowered, flags=re.IGNORECASE) for pattern in patterns[answer_type]) else 0.0
 
-    def _novelty_score(self, *, question: str, evidence_text: str) -> tuple[float, int]:
-        question_terms = set(self._keywords(question))
-        evidence_terms = set(self._keywords(evidence_text))
-        novel_terms = evidence_terms - question_terms
-        count = len(novel_terms)
-        return min(1.0, count / max(1, self.min_novel_terms)), count
+    def _get_nlp(self) -> Any | None:
+        if self.nlp is not None:
+            return self.nlp
+        cached = _SPACY_CACHE.get(self.spacy_model)
+        if cached is not None:
+            self.nlp = cached
+            return cached
+        try:
+            import spacy
 
-    def _useful_density(self, evidence_items: list[EvidenceItem]) -> float:
-        if not evidence_items:
-            return 0.0
-        average = sum(len(item.matched_terms) for item in evidence_items) / len(evidence_items)
-        return min(1.0, average / 3.0)
+            self.nlp = spacy.load(self.spacy_model)
+        except Exception:
+            try:
+                import spacy
 
-    def _infer_answer_type(
-        self,
-        question: str,
-        search_signals: SearchSignals | None,
-    ) -> str:
-        if search_signals and search_signals.answer_type and search_signals.answer_type != "unknown":
-            return search_signals.answer_type
+                self.nlp = spacy.load("en_core_web_sm")
+            except Exception:
+                self.nlp = None
+        if self.nlp is not None:
+            _SPACY_CACHE[self.spacy_model] = self.nlp
+        return self.nlp
+
+    def _entities(self, text: str, *, labels: set[str]) -> list[str]:
+        nlp = self._get_nlp()
+        if nlp is None or not normalize_text(text):
+            return []
+        entities = [
+            normalize_text(entity.text)
+            for entity in nlp(text).ents
+            if entity.label_ in labels and normalize_text(entity.text)
+        ]
+        return self._dedupe(entities)
+
+    def _entity_in_text(self, entity: str, evidence_key: str) -> bool:
+        key = self._match_key(entity).strip()
+        return bool(key and f" {key} " in evidence_key)
+
+    def _infer_answer_role(self, question: str) -> str:
         lowered = normalize_text(question).lower()
-        if any(marker in lowered for marker in ("when", "date", "year", "month", "day")):
-            return "date"
-        if any(marker in lowered for marker in ("how many", "how much", "number", "distance", "percentage", "percent")):
-            return "number"
-        if any(marker in lowered for marker in ("website", "url", "domain")):
-            return "url"
         if re.search(r"\bwho\b", lowered):
             return "person"
-        if any(marker in lowered for marker in ("where", "city", "country", "location", "place")):
+        if any(marker in lowered for marker in ("which organization", "which company", "what organization")):
+            return "organization"
+        if any(marker in lowered for marker in ("where", "which city", "which country", "what place")):
             return "place"
-        if any(marker in lowered for marker in ("code", "symbol", "identifier", "ec number", "zip code")):
-            return "code"
-        return "unknown"
-
-    def _keywords(self, text: str) -> list[str]:
-        seen: set[str] = set()
-        result: list[str] = []
-        for token in re.findall(r"[a-z0-9][a-z0-9._-]{1,}", normalize_text(text).lower()):
-            if token in self.STOPWORDS or len(token) <= 2 or token in seen:
-                continue
-            seen.add(token)
-            result.append(token)
-        return result
+        if any(marker in lowered for marker in ("when", "what date", "which year")):
+            return "date"
+        if any(marker in lowered for marker in ("how many", "how much", "what percentage")):
+            return "number"
+        return ""
 
     def _match_key(self, text: str) -> str:
         cleaned = re.sub(r"[^a-z0-9]+", " ", normalize_text(text).lower())
         return f" {' '.join(cleaned.split())} "
 
-    def _empty_scores(self, **overrides: float) -> dict[str, float]:
-        scores = {
+    def _dedupe(self, values: list[str]) -> list[str]:
+        result: list[str] = []
+        seen: set[str] = set()
+        for value in values:
+            key = self._match_key(value).strip()
+            if key and key not in seen:
+                result.append(value)
+                seen.add(key)
+        return result
+
+    def _empty_scores(self) -> dict[str, Any]:
+        return {
             "sufficiency_score": 0.0,
-            "evidence_presence": 0.0,
-            "evidence_length": 0.0,
-            "target_term_coverage": 0.0,
-            "answer_signal": 0.0,
-            "evidence_novelty": 0.0,
-            "useful_density": 0.0,
-            "novel_terms": 0.0,
+            "entity_coverage": 0.0,
+            "semantic_relevance": 0.0,
+            "constraint_coverage": 0.0,
+            "entity_details": {},
+            "semantic_details": {},
+            "constraint_details": {},
         }
-        scores.update(overrides)
-        return scores
 
 
 __all__ = ["RetrievalController", "RetrievalDecision"]

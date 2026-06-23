@@ -58,6 +58,8 @@ class CalculatorTool(Tool):
         super().__init__(
             name="python_calculator",
             description="Evaluate safe mathematical expressions such as 2+3*4, sqrt(16), or sin(pi/2).",
+            capabilities={"math.arithmetic", "math.expression"},
+            deterministic=True,
         )
 
     def run(self, parameters: Dict[str, Any]) -> str:
@@ -68,18 +70,18 @@ class CalculatorTool(Tool):
             - parameters: 包含 input 或 expression 的工具參數。
 
         Returns:
-            - str: 計算結果文字；失敗時回傳錯誤訊息。
+            - str: 計算結果文字。
         """
         expression = parameters.get("input", "") or parameters.get("expression", "")
         if not expression:
-            return "缺少數學表達式"
+            raise ValueError("missing mathematical expression")
 
         try:
             node = ast.parse(expression, mode="eval")
             result = self._eval_node(node.body)
             return str(result)
         except Exception as exc:
-            return f"計算失敗: {exc}"
+            raise ValueError(f"calculation failed: {exc}") from exc
 
     def _eval_node(self, node):
         """

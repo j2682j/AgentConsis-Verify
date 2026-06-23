@@ -22,6 +22,33 @@ class AttachmentReaderTool(Tool):
         super().__init__(
             name="attachment_reader",
             description="Read a task attachment and return extracted evidence context.",
+            capabilities={
+                "attachment.read",
+                "attachment.archive",
+                "attachment.table",
+                "attachment.document",
+                "attachment.media",
+            },
+            attachment_types={
+                "csv",
+                "docx",
+                "jpg",
+                "jpeg",
+                "json",
+                "mp3",
+                "mp4",
+                "pdf",
+                "png",
+                "pptx",
+                "tsv",
+                "txt",
+                "wav",
+                "xls",
+                "xlsx",
+                "xml",
+                "zip",
+            },
+            deterministic=False,
         )
         self.builder = builder or AttachmentEvidenceBuilder()
 

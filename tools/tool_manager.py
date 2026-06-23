@@ -3,6 +3,8 @@ from __future__ import annotations
 from typing import Any
 
 from .registry import ToolRegistry
+from .tool_gap_detector import ToolGapDetector
+from .tool_result import ToolExecutionResult, failure_result
 
 
 class ToolManager:
@@ -31,6 +33,7 @@ class ToolManager:
         self.enabled_tools: set[str] = set()
         self.tool_traces: list[dict[str, Any]] = []
         self.register_default_tools()
+        self.gap_detector = ToolGapDetector(self.registry)
 
     def register_tool(self, tool: Any, auto_expand: bool = True) -> None:
         """
@@ -93,6 +96,60 @@ class ToolManager:
         """
         self.enabled_tools = set(tool_names)
 
+    def is_tool_enabled(self, tool_name: str) -> bool:
+        return tool_name in self.enabled_tools and self.registry.get_tool(tool_name) is not None
+
+    def describe_enabled_tools(self) -> str:
+        lines: list[str] = []
+        for tool_name in sorted(self.enabled_tools):
+            tool = self.registry.get_tool(tool_name)
+            if tool is None:
+                continue
+            parameters = ", ".join(
+                f"{item.name}:{item.type}{'*' if item.required else ''}"
+                for item in tool.get_parameters()
+            )
+            capabilities = ", ".join(sorted(tool.capabilities)) or "none"
+            lines.append(
+                f"- {tool.name}: {tool.description} "
+                f"capabilities=[{capabilities}] args=[{parameters or 'none'}]"
+            )
+        return "\n".join(lines) if lines else "No enabled tools."
+
+    def detect_tool_gap(
+        self,
+        question: str,
+        *,
+        attachment_type: str | None = None,
+        requested_tool_name: str = "",
+    ) -> dict[str, Any]:
+        return self.gap_detector.detect(
+            question,
+            attachment_type=attachment_type,
+            enabled_tools=self.enabled_tools,
+            requested_tool_name=requested_tool_name,
+        ).to_dict()
+
+    def format_tool_gap(
+        self,
+        question: str,
+        *,
+        attachment_type: str | None = None,
+    ) -> str:
+        report = self.detect_tool_gap(question, attachment_type=attachment_type)
+        required = [
+            item.get("capability", "")
+            for item in report.get("required", [])
+            if item.get("capability")
+        ]
+        matched = report.get("matched", {})
+        missing = report.get("missing", [])
+        return (
+            f"Required capabilities: {required or ['none']}\n"
+            f"Matched capabilities: {matched or {}}\n"
+            f"Missing capabilities: {missing or ['none']}"
+        )
+
     def execute_tool(
         self,
         tool_name: str,
@@ -113,25 +170,35 @@ class ToolManager:
             - dict[str, Any]: 包含 ok、tool_name、output_text、raw_result 與 error 的工具結果。
         """
         if tool_name not in self.enabled_tools:
-            result = {
-                "ok": False,
-                "tool_name": tool_name,
-                "output_text": "",
-                "raw_result": None,
-                "error": f"tool '{tool_name}' is not enabled",
-            }
+            gap = self.detect_tool_gap(
+                str(parameters.get("input") or parameters.get("question") or ""),
+                requested_tool_name=tool_name,
+            )
+            result = failure_result(
+                tool_name,
+                status="unsupported",
+                error_code="tool_not_enabled",
+                error_message=f"tool '{tool_name}' is not enabled",
+                retry_hint="Choose a tool listed as enabled.",
+                raw_result={"tool_gap": gap},
+            )
             self._record_trace(tool_name, parameters, result, agent_id, stage)
             return result
 
         tool = self.tools.get(tool_name) or self.registry.get_tool(tool_name)
         if tool is None:
-            result = {
-                "ok": False,
-                "tool_name": tool_name,
-                "output_text": "",
-                "raw_result": None,
-                "error": f"tool '{tool_name}' not found",
-            }
+            gap = self.detect_tool_gap(
+                str(parameters.get("input") or parameters.get("question") or ""),
+                requested_tool_name=tool_name,
+            )
+            result = failure_result(
+                tool_name,
+                status="unsupported",
+                error_code="tool_not_found",
+                error_message=f"tool '{tool_name}' not found",
+                retry_hint="Choose a registered tool or report a missing capability.",
+                raw_result={"tool_gap": gap},
+            )
             self._record_trace(tool_name, parameters, result, agent_id, stage)
             return result
 
@@ -139,13 +206,14 @@ class ToolManager:
             raw = tool.run(parameters)
             result = self.normalize_result(tool_name, raw)
         except Exception as exc:
-            result = {
-                "ok": False,
-                "tool_name": tool_name,
-                "output_text": "",
-                "raw_result": None,
-                "error": str(exc),
-            }
+            result = failure_result(
+                tool_name,
+                status="retryable_failure",
+                error_code="tool_exception",
+                error_message=f"{type(exc).__name__}: {exc}",
+                retryable=True,
+                retry_hint="Retry only after changing the input or selecting another tool.",
+            )
 
         self._record_trace(tool_name, parameters, result, agent_id, stage)
         return result
@@ -162,20 +230,132 @@ class ToolManager:
             - dict[str, Any]: 標準化後的工具結果。
         """
         if isinstance(raw_result, dict):
-            return {
-                "ok": True,
-                "tool_name": tool_name,
-                "output_text": str(raw_result),
-                "raw_result": raw_result,
-                "error": None,
-            }
-        return {
-            "ok": True,
-            "tool_name": tool_name,
-            "output_text": str(raw_result),
-            "raw_result": raw_result,
-            "error": None,
-        }
+            return self._normalize_dict_result(tool_name, raw_result)
+        output_text = str(raw_result or "").strip()
+        return ToolExecutionResult(
+            ok=bool(output_text),
+            tool_name=tool_name,
+            status="success" if output_text else "partial",
+            output_text=output_text,
+            raw_result=raw_result,
+            evidence_valid=bool(output_text),
+        ).to_dict()
+
+    def _normalize_dict_result(
+        self,
+        tool_name: str,
+        raw_result: dict[str, Any],
+    ) -> dict[str, Any]:
+        if {"status", "ok", "evidence_valid"}.issubset(raw_result):
+            result = dict(raw_result)
+            result.setdefault("tool_name", tool_name)
+            result.setdefault("output_text", str(raw_result.get("raw_result", "") or ""))
+            result.setdefault("error_message", str(result.get("error", "") or ""))
+            result["error"] = result.get("error_message") or None
+            return result
+
+        if tool_name == "attachment_reader":
+            return self._normalize_attachment_result(raw_result)
+        if tool_name == "deterministic_solver":
+            return self._normalize_solver_result(raw_result)
+        if tool_name == "search":
+            return self._normalize_search_result(raw_result)
+
+        output_text = str(raw_result)
+        return ToolExecutionResult(
+            ok=True,
+            tool_name=tool_name,
+            status="success",
+            output_text=output_text,
+            raw_result=raw_result,
+            evidence_valid=bool(output_text.strip()),
+        ).to_dict()
+
+    def _normalize_attachment_result(self, raw_result: dict[str, Any]) -> dict[str, Any]:
+        context = str(raw_result.get("context", "") or "").strip()
+        nested_usage = [
+            item for item in raw_result.get("tool_usage", []) or [] if isinstance(item, dict)
+        ]
+        nested_failures = [item for item in nested_usage if not item.get("ok", False)]
+        metadata = raw_result.get("metadata") if isinstance(raw_result.get("metadata"), dict) else {}
+        reader = str(metadata.get("reader", "") or "")
+        valid_context = bool(
+            context
+            and context.lower() not in {"none", "extracted content:\nnone"}
+            and reader != "error_reader"
+        )
+        if nested_failures or not valid_context:
+            messages = [
+                str(item.get("error", "") or "").strip()
+                for item in nested_failures
+                if str(item.get("error", "") or "").strip()
+            ]
+            error_message = "; ".join(messages) or "attachment produced no usable evidence"
+            return failure_result(
+                "attachment_reader",
+                status="retryable_failure",
+                error_code="attachment_read_failed",
+                error_message=error_message,
+                retryable=True,
+                retry_hint="Use another compatible attachment reader or reduce media input size.",
+                raw_result=raw_result,
+            )
+        return ToolExecutionResult(
+            ok=True,
+            tool_name="attachment_reader",
+            status="success",
+            output_text=context,
+            raw_result=raw_result,
+            evidence_valid=True,
+        ).to_dict()
+
+    def _normalize_solver_result(self, raw_result: dict[str, Any]) -> dict[str, Any]:
+        used = bool(raw_result.get("used_deterministic_solver"))
+        answer = str(raw_result.get("answer_text") or raw_result.get("answer") or "").strip()
+        if not used or not answer:
+            error_message = str(raw_result.get("error", "") or "no deterministic handler matched")
+            return failure_result(
+                "deterministic_solver",
+                status="unsupported",
+                error_code="deterministic_handler_not_found",
+                error_message=error_message,
+                retry_hint="Use another registered capability or report a deterministic tool gap.",
+                raw_result=raw_result,
+            )
+        return ToolExecutionResult(
+            ok=True,
+            tool_name="deterministic_solver",
+            status="success",
+            output_text=answer,
+            raw_result=raw_result,
+            evidence_valid=True,
+        ).to_dict()
+
+    def _normalize_search_result(self, raw_result: dict[str, Any]) -> dict[str, Any]:
+        results = raw_result.get("results") if isinstance(raw_result.get("results"), list) else []
+        notices = [str(item) for item in raw_result.get("notices", []) or []]
+        if not results:
+            return ToolExecutionResult(
+                ok=True,
+                tool_name="search",
+                status="partial",
+                output_text=str(raw_result),
+                raw_result=raw_result,
+                error_code="search_no_results",
+                error_message="search returned no results",
+                retryable=True,
+                retry_hint="Change the query terms before retrying.",
+                evidence_valid=False,
+            ).to_dict()
+        return ToolExecutionResult(
+            ok=True,
+            tool_name="search",
+            status="success",
+            output_text=str(raw_result),
+            raw_result=raw_result,
+            error_message="; ".join(notices),
+            evidence_valid=True,
+        ).to_dict()
 
     def _record_trace(
         self,
@@ -205,6 +385,11 @@ class ToolManager:
                 "agent_id": agent_id,
                 "stage": stage,
                 "ok": result.get("ok", False),
+                "status": result.get("status", ""),
+                "error_code": result.get("error_code", ""),
+                "evidence_valid": result.get("evidence_valid", False),
+                "retryable": result.get("retryable", False),
+                "retry_hint": result.get("retry_hint", ""),
                 "output_text": result.get("output_text", ""),
                 "error": result.get("error"),
             }

@@ -130,34 +130,6 @@ class EvidenceItem:
 
 
 @dataclass
-class CandidateAnswer:
-    """
-    保存 search flow 可能抽出的候選答案。
-
-    目前 Agent prompt 不直接使用 candidate answer；此結構主要保留給
-    next-hop query 或後續實驗使用。
-
-    Args:
-        - answer: 候選答案文字。
-        - answer_type: 候選答案型別。
-        - support_count: 支撐 evidence 數量。
-        - confidence: 候選答案信心分數。
-        - evidence_ids: 支撐該候選的 evidence ids。
-        - source_ids: 支撐該候選的 source ids。
-
-    Returns:
-        - CandidateAnswer: 候選答案資料。
-    """
-
-    answer: str
-    answer_type: str = "entity"
-    support_count: int = 0
-    confidence: float = 0.0
-    evidence_ids: list[str] = field(default_factory=list)
-    source_ids: list[str] = field(default_factory=list)
-
-
-@dataclass
 class EvidenceOutput:
     """
     保存 EvidenceSearcher 的完整輸出。
@@ -168,9 +140,8 @@ class EvidenceOutput:
         - sources: source analysis 後保留的 sources。
         - evidence_items: useful evidence chunks。
         - summary: 給 Agent 使用的 prompt-ready evidence context。
-        - candidates: 候選答案，目前通常不輸出到 Agent prompt。
         - search_signals: 搜尋控制訊號，目前來自 embedding salient spans。
-        - candidate_diagnostics: source analysis 診斷資訊。
+        - diagnostics: source analysis 與 retrieval control 診斷資訊。
         - tool_usage: search tool 使用紀錄。
         - blocked_sources: 被 hard filter 擋下的 sources。
 
@@ -183,15 +154,13 @@ class EvidenceOutput:
     sources: list[SearchSourceCandidate]
     evidence_items: list[EvidenceItem]
     summary: str
-    candidates: list[CandidateAnswer] = field(default_factory=list)
     search_signals: SearchSignals | None = None
-    candidate_diagnostics: dict[str, Any] = field(default_factory=dict)
+    diagnostics: dict[str, Any] = field(default_factory=dict)
     tool_usage: list[dict[str, Any]] = field(default_factory=list)
     blocked_sources: list[SearchSourceCandidate] = field(default_factory=list)
 
 
 __all__ = [
-    "CandidateAnswer",
     "EvidenceItem",
     "EvidenceOutput",
     "SearchQueryPlan",

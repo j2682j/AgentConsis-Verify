@@ -31,6 +31,27 @@ class DeterministicSolverTool(Tool):
         super().__init__(
             name="deterministic_solver",
             description="Solve deterministic closed-world math, string, list, table, and unit tasks.",
+            capabilities={
+                "list.count",
+                "list.nth",
+                "list.sort",
+                "conversion.sexagesimal",
+                "geometry.coordinate_distance",
+                "graph.shortest_path",
+                "graph.station_count",
+                "graph.traversal",
+                "grid.word_search",
+                "math.arithmetic",
+                "math.statistics",
+                "string.count",
+                "string.transform",
+                "table.cell_lookup",
+                "table.filter",
+                "table.statistics",
+                "unit.linear_conversion",
+                "unit.temperature_conversion",
+            },
+            deterministic=True,
         )
         self.solver = DeterministicSolver()
 

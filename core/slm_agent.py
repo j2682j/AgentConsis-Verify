@@ -1,7 +1,8 @@
 """本地 OpenAI-compatible SLM/Ollama 呼叫封裝。"""
 
+import json
 import os
-from typing import Iterator, Optional
+from typing import Any, Iterator, Optional
 
 from openai import OpenAI
 
@@ -90,10 +91,15 @@ class SLM_Agent:
 
         env_key = model_env_key_map.get(model_name)
         self.model = os.getenv(env_key) if env_key else None
+        self.model_name = model_name or ""
         self.temperature = temperature
         self.max_tokens = max_tokens
         self.timeout = timeout or int(os.getenv("OLLAMA_TIMEOUT", "60"))
         self.kwargs = kwargs
+        self.reasoning_effort = (
+            kwargs.get("reasoning_effort")
+            or ("low" if "gpt-oss" in self.model_name.lower() else None)
+        )
 
         self.api_key = api_key or os.getenv("OLLAMA_API_KEY")
         self.base_url = base_url or os.getenv("OLLAMA_BASE_URL")
@@ -114,6 +120,61 @@ class SLM_Agent:
             base_url=self.base_url,
             timeout=self.timeout,
         )
+
+    @staticmethod
+    def _message_content(message: Any) -> str:
+        """
+        將 OpenAI-compatible assistant message 正規化成 SCP parser 可處理的文字。
+
+        部分 reasoning model（例如 gpt-oss）會把工具請求放在 message.tool_calls，
+        同時讓 message.content 保持空字串。此處將第一個 native tool call 轉成
+        Stage1TrajectoryRunner 預期的 tool_request JSON。
+        """
+        tool_calls = getattr(message, "tool_calls", None) or []
+        if tool_calls:
+            tool_call = tool_calls[0]
+            function = getattr(tool_call, "function", None)
+            tool_name = str(getattr(function, "name", "") or "").strip()
+            raw_arguments = getattr(function, "arguments", None)
+            if isinstance(raw_arguments, dict):
+                tool_args = raw_arguments
+            else:
+                try:
+                    parsed_arguments = json.loads(str(raw_arguments or "{}"))
+                    tool_args = parsed_arguments if isinstance(parsed_arguments, dict) else {}
+                except (TypeError, ValueError, json.JSONDecodeError):
+                    tool_args = {}
+
+            reasoning = str(getattr(message, "reasoning", "") or "").strip()
+            reasoning_step = reasoning or f"step 1. Request the {tool_name or 'requested'} tool."
+            return json.dumps(
+                {
+                    "type": "tool_request",
+                    "reasoning_step": reasoning_step,
+                    "tool_name": tool_name,
+                    "tool_args": tool_args,
+                },
+                ensure_ascii=False,
+            )
+
+        content = str(getattr(message, "content", "") or "")
+        if content:
+            return content
+
+        # Preserve reasoning-only responses instead of silently returning an
+        # empty string. The parser may still reject an unfinished answer, but
+        # callers retain enough information to diagnose token exhaustion.
+        return str(getattr(message, "reasoning", "") or "")
+
+    def _chat_completion_kwargs(self, overrides: dict[str, Any]) -> dict[str, Any]:
+        """Build shared chat-completion options with model-specific defaults."""
+        options = dict(self.kwargs)
+        options.update(overrides)
+        options.setdefault("temperature", self.temperature)
+        options.setdefault("max_tokens", self.max_tokens)
+        if self.reasoning_effort:
+            options.setdefault("reasoning_effort", self.reasoning_effort)
+        return options
 
     def think(
         self,
@@ -137,8 +198,13 @@ class SLM_Agent:
             response = self._client.chat.completions.create(
                 model=self.model,
                 messages=messages,
-                temperature=temperature if temperature is not None else self.temperature,
-                max_tokens=self.max_tokens,
+                **self._chat_completion_kwargs(
+                    {
+                        "temperature": (
+                            temperature if temperature is not None else self.temperature
+                        )
+                    }
+                ),
                 stream=False,
             )
             if verbose:
@@ -163,13 +229,13 @@ class SLM_Agent:
             response = self._client.chat.completions.create(
                 model=self.model,
                 messages=messages,
-                temperature=kwargs.get("temperature", self.temperature),
-                max_tokens=kwargs.get("max_tokens", self.max_tokens),
-                **{k: v for k, v in kwargs.items() if k not in ["temperature", "max_tokens"]},
+                **self._chat_completion_kwargs(kwargs),
             )
-            return response.choices[0].message.content
-        except Exception:
-            raise AgentsException("SLM chat 呼叫失敗")
+            return self._message_content(response.choices[0].message)
+        except Exception as exc:
+            raise AgentsException(
+                f"SLM chat 呼叫失敗: {type(exc).__name__}: {exc}"
+            ) from exc
 
     def invoke_with_usage(self, messages: list[dict[str, str]], **kwargs) -> tuple[str, int, int]:
         """
@@ -188,11 +254,9 @@ class SLM_Agent:
             response = self._client.chat.completions.create(
                 model=self.model,
                 messages=messages,
-                temperature=kwargs.get("temperature", self.temperature),
-                max_tokens=kwargs.get("max_tokens", self.max_tokens),
-                **{k: v for k, v in kwargs.items() if k not in ["temperature", "max_tokens"]},
+                **self._chat_completion_kwargs(kwargs),
             )
-            content = response.choices[0].message.content
+            content = self._message_content(response.choices[0].message)
             prompt_tokens = (
                 response.usage.prompt_tokens
                 if response.usage and hasattr(response.usage, "prompt_tokens")
@@ -208,8 +272,10 @@ class SLM_Agent:
             if completion_tokens <= 0:
                 completion_tokens = estimate_text_tokens(content)
             return content, prompt_tokens, completion_tokens
-        except Exception:
-            raise AgentsException("SLM 呼叫或 usage 解析失敗")
+        except Exception as exc:
+            raise AgentsException(
+                f"SLM 呼叫或 usage 解析失敗: {type(exc).__name__}: {exc}"
+            ) from exc
 
     def stream_invoke(self, messages: list[dict[str, str]], **kwargs) -> Iterator[str]:
         """
