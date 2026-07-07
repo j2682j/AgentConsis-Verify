@@ -1,3 +1,3 @@
-from .evidence_searcher import EvidenceSearcher
+from .retrieval_control import WebRetrievalControl
 
-__all__ = ["EvidenceSearcher"]
+__all__ = ["WebRetrievalControl"]

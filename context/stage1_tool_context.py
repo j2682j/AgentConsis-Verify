@@ -37,15 +37,21 @@ Available_Tools:
 Capability_Gap:
 {tool_gap}
 
+Tool_Turn_Policy:
+{tool_turn_policy}
+
 Instructions:
 - If you need one tool, return exactly this JSON shape:
 {{"type": "tool_request", "reasoning_step": "step N. why this tool is needed", "tool_name": "search", "tool_args": {{"input": "query", "mode": "text"}}}}
 - Replace tool_name and tool_args with the correct available tool when needed.
 - Do not invent a tool name that is not listed in Available_Tools.
 - If Capability_Gap lists a missing capability, do not repeat an unsupported request.
+- Follow Tool_Turn_Policy. When it requests final_answer, do not request another tool.
 - If you can answer, return exactly this JSON shape:
-{{"type": "final_answer", "reasoning": "step 1. ...\\nstep 2. ...", "final_answer": "short final answer only"}}
-- Reasoning must use explicit numbered steps.
+{{"type": "final_answer", "reasoning_steps": ["step 1. ...", "step 2. ..."], "final_answer": "short final answer only", "confidence": 0.0, "used_evidence_ids": ["E1"], "answer_type": "number | date | person | organization | location | title | list | short_text | boolean | unknown", "tool_request": null}}
+- reasoning_steps must contain 3 to 5 explicit numbered steps.
+- Each reasoning step must be 25 words or fewer.
+- Do not restate evidence or tool output verbatim; cite Evidence IDs or tool result numbers.
 - Do not include markdown or text outside JSON."""
 
 
@@ -61,6 +67,10 @@ class Stage1ToolContextBuilder(Stage1ContextBuilder):
             self.config.none_text,
         )
         structured["tool_gap"] = kwargs.get("tool_gap", self.config.none_text)
+        structured["tool_turn_policy"] = kwargs.get(
+            "tool_turn_policy",
+            self.config.none_text,
+        )
         structured["attachment_metadata"] = self._format_attachment_metadata(
             kwargs.get("attachment")
         )
@@ -100,7 +110,15 @@ class Stage1ToolContextBuilder(Stage1ContextBuilder):
             )
             or self.config.none_text
         )
-        return compressed
+        compressed["tool_turn_policy"] = (
+            self._compress_multiline_text(
+                str(structured.get("tool_turn_policy", "")),
+                max_lines=12,
+                max_chars=1600,
+            )
+            or self.config.none_text
+        )
+        return self._apply_context_budget(compressed)
 
     def render(self, compressed: dict[str, Any], **_: Any) -> list[dict[str, str]]:
         user_content = STAGE1_TOOL_USER_PROMPT.format(
@@ -112,6 +130,7 @@ class Stage1ToolContextBuilder(Stage1ContextBuilder):
             tool_trace=compressed["tool_trace"],
             available_tools=compressed["available_tools"],
             tool_gap=compressed["tool_gap"],
+            tool_turn_policy=compressed["tool_turn_policy"],
         )
         return [
             {"role": "system", "content": str(compressed["system"])},

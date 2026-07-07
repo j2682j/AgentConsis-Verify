@@ -109,11 +109,12 @@ class Stage1Runner:
                             reasoning="",
                             final_answer="",
                             parse_completed=False,
-                            tool_context=self.format_tool_context(evidence),
-                            prompt_tokens=0,
-                            completion_tokens=0,
-                            total_tokens=0,
-                        )
+                        tool_context=self.format_tool_context(evidence),
+                        prompt_tokens=0,
+                        completion_tokens=0,
+                        total_tokens=0,
+                        context_budget={},
+                    )
                     runs_by_agent[config.agent_id].append(reply)
 
         results: list[AgentReasoningSummary] = []
@@ -229,7 +230,7 @@ class Stage1Runner:
             )
             return reply
 
-        messages = self.context_builder.build(
+        messages, context_budget = self.context_builder.build_with_diagnostics(
             question=self.question,
             evidence_packets=self.evidence_to_context_packets(evidence),
         )
@@ -237,6 +238,13 @@ class Stage1Runner:
         reasoning = ""
         final_answer = ""
         parse_completed = False
+        structured_output: dict[str, Any] = {}
+        schema_valid = False
+        schema_errors: list[str] = []
+        repair_applied = False
+        repair_actions: list[str] = []
+        eligible_for_winner = False
+        validity_labels: list[str] = []
         prompt_tokens = 0
         completion_tokens = 0
         try:
@@ -249,9 +257,18 @@ class Stage1Runner:
             parsed = self.parser.parse(raw_reply, expected_weight_count=0)
             reasoning = str(parsed.get("reasoning", "")).strip()
             final_answer = str(parsed.get("final_answer", "")).strip()
-            parse_completed = bool(final_answer)
+            parse_completed = bool(parsed.get("parse_completed"))
+            structured_output = dict(parsed.get("structured_output") or {})
+            schema_valid = bool(parsed.get("schema_valid"))
+            schema_errors = list(parsed.get("schema_errors") or [])
+            repair_applied = bool(parsed.get("repair_applied"))
+            repair_actions = list(parsed.get("repair_actions") or [])
+            eligible_for_winner = bool(parsed.get("eligible_for_winner"))
+            validity_labels = list(parsed.get("validity_labels") or [])
         except Exception as exc:
             raw_reply = raw_reply or f"[stage1_error] {type(exc).__name__}: {exc}"
+            schema_errors = [type(exc).__name__]
+            validity_labels = ["parse_exception"]
 
         return EachAgentReply(
             agent_id=config.agent_id,
@@ -265,6 +282,14 @@ class Stage1Runner:
             prompt_tokens=prompt_tokens,
             completion_tokens=completion_tokens,
             total_tokens=prompt_tokens + completion_tokens,
+            structured_output=structured_output,
+            schema_valid=schema_valid,
+            schema_errors=schema_errors,
+            repair_applied=repair_applied,
+            repair_actions=repair_actions,
+            eligible_for_winner=eligible_for_winner,
+            validity_labels=validity_labels,
+            context_budget=context_budget,
         )
 
 

@@ -38,6 +38,16 @@ class EachAgentReply:
     tool_calls: list[dict] = field(default_factory=list)
     tool_results: list[dict] = field(default_factory=list)
     trajectory: list[dict] = field(default_factory=list)
+    structured_output: dict = field(default_factory=dict)
+    schema_valid: bool = False
+    schema_errors: list[str] = field(default_factory=list)
+    repair_applied: bool = False
+    repair_actions: list[str] = field(default_factory=list)
+    eligible_for_winner: bool = True
+    validity_labels: list[str] = field(default_factory=list)
+    final_answer_source: str = "original"
+    repair_metadata: dict = field(default_factory=dict)
+    context_budget: dict = field(default_factory=dict)
 
     
 @dataclass
@@ -52,6 +62,13 @@ class AgentReasoningSummary:
     compressed_reasoning: str
     confidence_score: float
     active: bool
+    valid_run_count: int = 0
+    invalid_run_count: int = 0
+    abstention_run_count: int = 0
+    eligible_run_count: int = 0
+    run_validity_labels: list[str] = field(default_factory=list)
+    winner_selection_eligible: bool = True
+    winner_selection_status: str = "answerable"
 
 @dataclass
 class JudgeScoreByReasoning:

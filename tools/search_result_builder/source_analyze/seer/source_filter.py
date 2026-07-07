@@ -2,11 +2,12 @@ from __future__ import annotations
 
 """Hard source filtering without hand-crafted ranking scores."""
 
+import os
 import re
 from difflib import SequenceMatcher
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
-from utils.network_utils import normalize_text
+from utils.network_utils import normalize_text, semantic_similarity_score
 
 from ...config import SearchSourceCandidate
 
@@ -32,6 +33,9 @@ class SourceFilter:
     )
     BENCHMARK_LEAK_MARKERS = (
         "assistants/gaia",
+        "agentscope",
+        "albertvillanova/answers",
+        "huggingface.co/datasets",
         "inspect_evals",
         "gaia benchmark",
         "gaia-benchmark",
@@ -66,6 +70,73 @@ class SourceFilter:
         "/signin",
         "/signup",
     )
+    TASK_ID_RE = re.compile(
+        r"\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b",
+        re.IGNORECASE,
+    )
+    BENCHMARK_PATH_MARKERS = (
+        "assistants/gaia",
+        "agentscope",
+        "huggingface.co/datasets",
+        "webvoyager/data/gaia",
+        "gaia-benchmark",
+        "gaia_subset",
+        "gaia-subset",
+        "inspect_evals",
+        "harbor-datasets",
+        "albertvillanova/answers",
+        "open deep researcher",
+    )
+    TASK_TRACE_MARKERS = (
+        '"task_id"',
+        "'task_id'",
+        "task_id:",
+        '"final_answer"',
+        "'final_answer'",
+        "final_answer:",
+        '"expected_answer"',
+        "'expected_answer'",
+        "expected_answer:",
+        "ground truth",
+    )
+    DIALOGUE_TRACE_MARKERS = (
+        "role: user",
+        "role: assistant",
+        '"role": "user"',
+        '"role":"user"',
+        '"role": "assistant"',
+        '"role":"assistant"',
+        "initial plan",
+        "we need answer",
+        "final answer",
+    )
+
+    def __init__(
+        self,
+        *,
+        max_urls_per_domain: int = 3,
+        min_sources: int = 5,
+        semantic_echo_threshold: float | None = None,
+        lexical_echo_threshold: float | None = None,
+        max_new_information_ratio: float | None = None,
+    ) -> None:
+        self.max_urls_per_domain = max(1, max_urls_per_domain)
+        self.min_sources = max(0, min_sources)
+        self.semantic_echo_threshold = (
+            semantic_echo_threshold
+            if semantic_echo_threshold is not None
+            else float(os.getenv("SEARCH_SEMANTIC_ECHO_THRESHOLD", "0.90"))
+        )
+        self.lexical_echo_threshold = (
+            lexical_echo_threshold
+            if lexical_echo_threshold is not None
+            else float(os.getenv("SEARCH_LEXICAL_ECHO_THRESHOLD", "0.25"))
+        )
+        self.max_new_information_ratio = (
+            max_new_information_ratio
+            if max_new_information_ratio is not None
+            else float(os.getenv("SEARCH_MAX_ECHO_NEW_INFORMATION_RATIO", "0.65"))
+        )
 
     def filter_sources(
         self,
@@ -89,21 +160,36 @@ class SourceFilter:
         """
         del query_text_by_id
         filtered: list[SearchSourceCandidate] = []
+        soft_blocked: list[SearchSourceCandidate] = []
         seen_urls: set[str] = set()
         seen_fingerprints: list[str] = []
+        domain_counts: dict[str, int] = {}
 
         for source in sources:
             self._reset_source_marks(source)
             canonical_url = self._canonical_url(source.url)
+            domain = self._source_domain(source, canonical_url)
+            source.domain = domain
             if canonical_url and canonical_url in seen_urls:
                 self._mark_blocked(source, "duplicate_url")
                 continue
             if canonical_url:
                 seen_urls.add(canonical_url)
 
+            safety_reason = self._source_safety_block_reason(
+                source,
+                question=question,
+                include_raw_content=False,
+            )
+            if safety_reason:
+                self._mark_blocked(source, safety_reason)
+                continue
+
             fingerprint = self._text_fingerprint(source)
             if fingerprint and self._is_duplicate_text(fingerprint, seen_fingerprints):
                 self._mark_blocked(source, "duplicate_text")
+                if self._is_soft_block(source.block_reason):
+                    soft_blocked.append(source)
                 continue
             if fingerprint:
                 seen_fingerprints.append(fingerprint)
@@ -114,14 +200,74 @@ class SourceFilter:
                 continue
 
             if self._is_question_echo_only(source, question):
-                self._mark_blocked(source, "question_echo_only")
+                self._append_reason(source, "question_echo_only")
+
+            if self._is_question_semantic_echo(source, question):
+                self._append_reason(source, "question_semantic_echo")
+
+            if domain and domain_counts.get(domain, 0) >= self.max_urls_per_domain:
+                self._mark_blocked(source, "domain_result_limit")
+                if self._is_soft_block(source.block_reason):
+                    soft_blocked.append(source)
                 continue
 
             filtered.append(source)
+            if domain:
+                domain_counts[domain] = domain_counts.get(domain, 0) + 1
+
+        if len(filtered) < self.min_sources:
+            self._rescue_soft_blocked_sources(
+                filtered=filtered,
+                soft_blocked=soft_blocked,
+                domain_counts=domain_counts,
+            )
 
         filtered.sort(key=lambda item: (item.query_id, item.rank, item.source_id))
         self._mark_fetch_candidates(filtered, fetch_limit=fetch_limit)
         return filtered
+
+    def apply_post_fetch_safety(
+        self,
+        sources: list[SearchSourceCandidate],
+        *,
+        question: str = "",
+    ) -> list[SearchSourceCandidate]:
+        """
+        在 full-page fetch 後檢查全文內容是否包含 benchmark leak 或答案爬取痕跡。
+
+        Args:
+            - sources: 已經通過 pre-fetch filter 的來源。
+            - question: 原始問題，用於記錄 echo / new-information 訊號。
+
+        Returns:
+            - list[SearchSourceCandidate]: 移除不安全來源後的來源。
+        """
+        kept: list[SearchSourceCandidate] = []
+        for source in sources:
+            if source.blocked:
+                continue
+            safety_reason = self._source_safety_block_reason(
+                source,
+                question=question,
+                include_raw_content=True,
+            )
+            if safety_reason:
+                self._mark_blocked(source, safety_reason)
+                continue
+            kept.append(source)
+        return kept
+
+    def canonical_url(self, url: str) -> str:
+        """
+        將 URL 正規化，供跨搜尋輪次共用去重鍵。
+
+        Args:
+            - url: 原始 URL。
+
+        Returns:
+            - str: 移除 fragment 與追蹤參數後的 canonical URL。
+        """
+        return self._canonical_url(url)
 
     def _reset_source_marks(self, source: SearchSourceCandidate) -> None:
         source.blocked = False
@@ -132,7 +278,49 @@ class SourceFilter:
     def _mark_blocked(self, source: SearchSourceCandidate, reason: str) -> None:
         source.blocked = True
         source.block_reason = reason
-        source.filter_reasons.append(reason)
+        self._append_reason(source, reason)
+
+    def _append_reason(self, source: SearchSourceCandidate, reason: str) -> None:
+        if reason not in source.filter_reasons:
+            source.filter_reasons.append(reason)
+
+    def _unblock_rescued(self, source: SearchSourceCandidate) -> None:
+        original_reason = source.block_reason
+        source.blocked = False
+        source.block_reason = ""
+        source.filter_reasons.append(f"rescued_soft_block:{original_reason}")
+
+    def _is_soft_block(self, reason: str) -> bool:
+        return reason in {
+            "duplicate_text",
+            "question_echo_only",
+            "question_semantic_echo",
+            "domain_result_limit",
+        }
+
+    def _rescue_soft_blocked_sources(
+        self,
+        *,
+        filtered: list[SearchSourceCandidate],
+        soft_blocked: list[SearchSourceCandidate],
+        domain_counts: dict[str, int],
+    ) -> None:
+        needed = max(0, self.min_sources - len(filtered))
+        if not needed:
+            return
+        for source in sorted(soft_blocked, key=lambda item: (item.query_id, item.rank, item.source_id)):
+            if needed <= 0:
+                break
+            if not source.url or not self._is_soft_block(source.block_reason):
+                continue
+            domain = source.domain or self._source_domain(source, self._canonical_url(source.url))
+            if domain and domain_counts.get(domain, 0) >= self.max_urls_per_domain + 1:
+                continue
+            self._unblock_rescued(source)
+            filtered.append(source)
+            if domain:
+                domain_counts[domain] = domain_counts.get(domain, 0) + 1
+            needed -= 1
 
     def _block_reason(self, source: SearchSourceCandidate) -> str:
         domain = source.domain.lower()
@@ -140,7 +328,7 @@ class SourceFilter:
 
         if any(marker in domain for marker in self.BLOCKED_DOMAIN_MARKERS):
             return "blocked_domain"
-        if any(marker in haystack for marker in self.BENCHMARK_LEAK_MARKERS):
+        if any(marker in haystack for marker in self.BENCHMARK_PATH_MARKERS):
             return "benchmark_or_answer_leak"
         if any(marker in haystack for marker in self.NO_RESULT_MARKERS):
             return "no_result_or_login_page"
@@ -149,6 +337,84 @@ class SourceFilter:
         if any(marker in source.url.lower() for marker in self.GENERIC_PAGE_MARKERS):
             source.filter_reasons.append("generic_page")
         return ""
+
+    def _source_safety_block_reason(
+        self,
+        source: SearchSourceCandidate,
+        *,
+        question: str,
+        include_raw_content: bool,
+    ) -> str:
+        text = self._safety_text(source, include_raw_content=include_raw_content)
+        lowered = text.lower()
+        phase = "post_fetch" if include_raw_content else "pre_fetch"
+
+        self._record_question_overlap_signals(source, question, text, phase=phase)
+
+        if self.TASK_ID_RE.search(text):
+            self._append_reason(source, f"{phase}:task_id_like_uuid")
+            return "benchmark_task_id_leak"
+        if any(marker in lowered for marker in self.BENCHMARK_PATH_MARKERS):
+            self._append_reason(source, f"{phase}:benchmark_path_marker")
+            return "benchmark_or_answer_leak"
+        if self._has_task_trace(lowered):
+            self._append_reason(source, f"{phase}:task_trace_marker")
+            return "benchmark_task_trace_leak"
+        if self._has_dialogue_trace(lowered):
+            self._append_reason(source, f"{phase}:dialogue_trace_marker")
+            return "benchmark_dialogue_trace_leak"
+        return ""
+
+    def _safety_text(
+        self,
+        source: SearchSourceCandidate,
+        *,
+        include_raw_content: bool,
+    ) -> str:
+        parts = [source.title, source.url, source.domain, source.snippet]
+        if include_raw_content:
+            parts.append(source.raw_content[:12000])
+        return normalize_text(" ".join(str(part or "") for part in parts))
+
+    def _has_task_trace(self, lowered: str) -> bool:
+        trace_hits = sum(1 for marker in self.TASK_TRACE_MARKERS if marker in lowered)
+        json_like = "{" in lowered and "}" in lowered and (":" in lowered or "," in lowered)
+        gaia_like = "gaia" in lowered or "task_id" in lowered
+        return trace_hits >= 2 and (json_like or gaia_like)
+
+    def _has_dialogue_trace(self, lowered: str) -> bool:
+        role_trace = (
+            ("role: user" in lowered or '"role": "user"' in lowered or '"role":"user"' in lowered)
+            and (
+                "role: assistant" in lowered
+                or '"role": "assistant"' in lowered
+                or '"role":"assistant"' in lowered
+            )
+        )
+        reasoning_trace = (
+            ("initial plan" in lowered or "we need answer" in lowered)
+            and ("final answer" in lowered or "expected answer" in lowered)
+        )
+        return role_trace or reasoning_trace
+
+    def _record_question_overlap_signals(
+        self,
+        source: SearchSourceCandidate,
+        question: str,
+        source_text: str,
+        *,
+        phase: str,
+    ) -> None:
+        question_terms = self._keywords(question)
+        source_terms = self._keywords(source_text)
+        if not question_terms or not source_terms:
+            return
+        lexical_overlap = len(question_terms & source_terms) / max(1, len(question_terms))
+        new_information_ratio = len(source_terms - question_terms) / max(1, len(source_terms))
+        if lexical_overlap >= self.lexical_echo_threshold:
+            self._append_reason(source, f"{phase}:question_overlap={lexical_overlap:.3f}")
+        if new_information_ratio <= self.max_new_information_ratio:
+            self._append_reason(source, f"{phase}:low_new_information={new_information_ratio:.3f}")
 
     def _mark_fetch_candidates(
         self,
@@ -187,6 +453,54 @@ class SourceFilter:
             return True
         return False
 
+    def _is_question_semantic_echo(self, source: SearchSourceCandidate, question: str) -> bool:
+        question_text = normalize_text(question)
+        source_text = self._content_text(source)
+        if not question_text or not source_text:
+            return False
+
+        question_terms = self._keywords(question_text)
+        source_terms = self._keywords(source_text)
+        if not question_terms or not source_terms:
+            return False
+
+        lexical_overlap = len(question_terms & source_terms) / max(1, len(question_terms))
+        new_information_ratio = len(source_terms - question_terms) / max(1, len(source_terms))
+        semantic_similarity = self._semantic_similarity(question_text, source_text)
+
+        source.filter_reasons.append(f"semantic_echo={semantic_similarity:.3f}")
+        source.filter_reasons.append(f"lexical_overlap={lexical_overlap:.3f}")
+        source.filter_reasons.append(f"new_information_ratio={new_information_ratio:.3f}")
+
+        semantic_echo = semantic_similarity >= self.semantic_echo_threshold
+        lexical_echo = lexical_overlap >= self.lexical_echo_threshold
+        low_new_information = new_information_ratio <= self.max_new_information_ratio
+
+        # A result is treated as question echo only when it is both very close
+        # to the question and contributes little new lexical information.
+        if semantic_echo and lexical_echo and low_new_information:
+            return True
+
+        # Some benchmark leaks include small wrappers around the copied
+        # question. This fallback catches near-exact lexical copies even when
+        # the embedding model is unavailable or conservative.
+        if (
+            lexical_overlap >= self.lexical_echo_threshold
+            and new_information_ratio <= self.max_new_information_ratio
+        ):
+            return True
+
+        return False
+
+    def _semantic_similarity(self, question: str, source_text: str) -> float:
+        try:
+            score = semantic_similarity_score(question, source_text[:1600])
+        except Exception:
+            return 0.0
+        if score is None:
+            return 0.0
+        return float(score)
+
     def _keywords(self, text: str) -> set[str]:
         tokens = re.findall(r"[a-z0-9][a-z0-9._-]{1,}", normalize_text(text).lower())
         stopwords = {"the", "and", "for", "with", "from", "what", "which", "who", "when", "where", "why", "how"}
@@ -194,6 +508,9 @@ class SourceFilter:
 
     def _haystack(self, source: SearchSourceCandidate) -> str:
         return normalize_text(" ".join([source.title, source.url, source.snippet, source.raw_content[:1200]]))
+
+    def _content_text(self, source: SearchSourceCandidate) -> str:
+        return normalize_text(" ".join([source.title, source.snippet, source.raw_content[:1200]]))
 
     def _text_fingerprint(self, source: SearchSourceCandidate) -> str:
         text = normalize_text(" ".join([source.title, source.snippet])).lower()
@@ -231,6 +548,17 @@ class SourceFilter:
                 "",
             )
         )
+
+    def _source_domain(
+        self,
+        source: SearchSourceCandidate,
+        canonical_url: str,
+    ) -> str:
+        domain = normalize_text(source.domain).lower()
+        if domain:
+            return domain
+        parsed = urlparse(canonical_url or source.url)
+        return parsed.netloc.lower()
 
 
 __all__ = ["SourceFilter"]

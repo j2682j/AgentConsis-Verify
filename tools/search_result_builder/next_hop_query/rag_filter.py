@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -10,18 +11,23 @@ from utils.network_utils import normalize_text
 from ..config import EvidenceItem
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
-PROJECT_FILTER_CHECKPOINT = (
-    PROJECT_ROOT
-    / "models"
-    / "filter"
-    / "hotpotQA"
-    / "filter_20260601_211420"
-    / "checkpoint-36303"
-)
+PROJECT_FILTER_CHECKPOINT = PROJECT_ROOT / "models" / "filter_mixed_v1" / "filter_mixed_v1"
 FILTER_MAX_LENGTH = 128
 CLS_TOKEN = "[CLS]"
 SEP_TOKEN = "[SEP]"
 _MODEL_CACHE: dict[tuple[str, str], tuple[Any, Any, str]] = {}
+
+
+def _resolve_filter_checkpoint(path: str | Path | None = None) -> Path:
+    checkpoint = Path(path) if path else PROJECT_FILTER_CHECKPOINT
+    if (checkpoint / "config.json").exists():
+        return checkpoint
+
+    nested = checkpoint / checkpoint.name
+    if (nested / "config.json").exists():
+        return nested
+
+    return checkpoint
 
 
 @dataclass
@@ -92,8 +98,10 @@ class EfficientRAGFilterAdapter:
     ) -> None:
         self.max_question_tokens = max_question_tokens
         self.max_evidence_tokens = max_evidence_tokens
-        self.filter_checkpoint = filter_checkpoint or str(PROJECT_FILTER_CHECKPOINT)
-        self.device = device
+        self.filter_checkpoint = str(
+            _resolve_filter_checkpoint(filter_checkpoint)
+        )
+        self.device = device or os.getenv("SEARCH_FILTER_DEVICE", "cpu")
         self.max_filter_info_items = max(1, max_filter_info_items)
         self.max_filter_info_chars = max(80, max_filter_info_chars)
         self._tokenizer: Any | None = None
@@ -111,7 +119,7 @@ class EfficientRAGFilterAdapter:
 
         Args:
             - question: 原始問題。
-            - evidence_items: SourceAnalysis 產生的 useful evidence items。
+            - evidence_items: evidence conversion 產生的 useful evidence items。
 
         Returns:
             - RAGFilterResult: next-hop query 結果。
@@ -213,6 +221,15 @@ class EfficientRAGFilterAdapter:
         checkpoint = str(Path(self.filter_checkpoint))
         if not Path(checkpoint).exists():
             raise FileNotFoundError(f"EfficientRAG filter checkpoint not found: {checkpoint}")
+
+        try:
+            import sentencepiece  # noqa: F401
+        except ImportError as exc:
+            raise RuntimeError(
+                "EfficientRAG filter requires SentencePiece. "
+                "Install it in the active Python environment with "
+                "`python -m pip install sentencepiece`, then restart the process."
+            ) from exc
 
         import torch
         from transformers import AutoModelForTokenClassification, AutoTokenizer

@@ -16,6 +16,22 @@ class Stage1Aggregator:
         - Stage1Aggregator: 負責 Stage1 self-consistency 聚合的物件。
     """
 
+    ABSTENTION_LABELS = {
+        "empty_final_answer",
+        "refusal_like_final_answer",
+        "uncertain_final_answer",
+        "tool_request_pending",
+    }
+    INVALID_LABELS = {
+        "invalid_final_answer",
+        "invalid_tool_reply",
+        "parse_exception",
+        "schema_invalid",
+        "tool_call_as_final_answer",
+        "tool_trajectory_no_final_answer",
+        "too_verbose_final_answer",
+    }
+
     def summarize(
         self,
         config: AgentConfig,
@@ -31,7 +47,14 @@ class Stage1Aggregator:
         Returns:
             - AgentReasoningSummary: 包含最佳答案群、壓縮 reasoning、confidence 與 active 狀態。
         """
-        valid_runs = [run for run in runs if run.parse_completed and run.final_answer.strip()]
+        validity = self.summarize_run_validity(runs)
+        valid_runs = [
+            run
+            for run in runs
+            if run.parse_completed
+            and run.final_answer.strip()
+            and getattr(run, "eligible_for_winner", True)
+        ]
         if not valid_runs:
             config.confidence_score = 0.0
             return AgentReasoningSummary(
@@ -42,6 +65,7 @@ class Stage1Aggregator:
                 compressed_reasoning="",
                 confidence_score=0.0,
                 active=False,
+                **validity,
             )
 
         groups = self.group_runs_by_equivalent_answer(valid_runs)
@@ -57,7 +81,100 @@ class Stage1Aggregator:
             compressed_reasoning=compress_reasoning(best_group),
             confidence_score=confidence_score,
             active=True,
+            **validity,
         )
+
+    def summarize_run_validity(self, runs: list[EachAgentReply]) -> dict:
+        """
+        Summarize Stage1 run validity without assigning numeric scores.
+        """
+        labels = self._run_validity_labels(runs)
+        eligible_runs = [
+            run
+            for run in runs
+            if run.parse_completed
+            and run.final_answer.strip()
+            and getattr(run, "eligible_for_winner", True)
+        ]
+        abstention_runs = [
+            run
+            for run in runs
+            if self._has_any_label(run, self.ABSTENTION_LABELS)
+        ]
+        invalid_runs = [
+            run
+            for run in runs
+            if (
+                not getattr(run, "schema_valid", True)
+                or self._has_any_label(run, self.INVALID_LABELS)
+            )
+            and not self._has_any_label(run, self.ABSTENTION_LABELS)
+        ]
+
+        eligible_count = len(eligible_runs)
+        abstention_count = len(abstention_runs)
+        invalid_count = len(invalid_runs)
+        valid_count = eligible_count
+        winner_status = self._winner_selection_status(
+            total_run_count=len(runs),
+            eligible_run_count=eligible_count,
+            abstention_run_count=abstention_count,
+            invalid_run_count=invalid_count,
+        )
+        return {
+            "valid_run_count": valid_count,
+            "invalid_run_count": invalid_count,
+            "abstention_run_count": abstention_count,
+            "eligible_run_count": eligible_count,
+            "run_validity_labels": labels,
+            "winner_selection_eligible": eligible_count >= 1,
+            "winner_selection_status": winner_status,
+        }
+
+    def _winner_selection_status(
+        self,
+        *,
+        total_run_count: int,
+        eligible_run_count: int,
+        abstention_run_count: int,
+        invalid_run_count: int,
+    ) -> str:
+        if eligible_run_count >= 2:
+            return "answerable"
+        if eligible_run_count == 1:
+            return "mixed_low_coverage" if total_run_count > 1 else "answerable"
+        if total_run_count <= 0:
+            return "no_stage1_runs"
+        if abstention_run_count >= total_run_count:
+            return "all_runs_abstained"
+        if invalid_run_count >= total_run_count:
+            return "all_runs_invalid"
+        return "no_final_answer"
+
+    def _run_validity_labels(self, runs: list[EachAgentReply]) -> list[str]:
+        seen: set[str] = set()
+        labels: list[str] = []
+        for run in runs:
+            for label in getattr(run, "validity_labels", []) or []:
+                label = str(label or "").strip()
+                if label and label not in seen:
+                    seen.add(label)
+                    labels.append(label)
+            for error in getattr(run, "schema_errors", []) or []:
+                if error and "schema_invalid" not in seen:
+                    seen.add("schema_invalid")
+                    labels.append("schema_invalid")
+        return labels
+
+    def _has_any_label(self, run: EachAgentReply, labels: set[str]) -> bool:
+        run_labels = {
+            str(label or "").strip()
+            for label in getattr(run, "validity_labels", []) or []
+            if str(label or "").strip()
+        }
+        if not getattr(run, "schema_valid", True):
+            run_labels.add("schema_invalid")
+        return bool(run_labels & labels)
 
     def group_runs_by_equivalent_answer(
         self,

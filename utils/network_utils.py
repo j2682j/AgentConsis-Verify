@@ -166,8 +166,11 @@ def extract_math_answer(text: Any) -> Optional[str]:
 def normalize_number(value: str) -> str:
     """normalize_number 的主要實作。"""
     try:
-        dec = Decimal(value)
-        return format(dec.normalize(), "f").rstrip("0").rstrip(".") or "0"
+        dec = Decimal(str(value).replace(",", ""))
+        normalized = format(dec, "f")
+        if "." in normalized:
+            normalized = normalized.rstrip("0").rstrip(".")
+        return normalized or "0"
     except (InvalidOperation, ValueError):
         return value.strip()
 

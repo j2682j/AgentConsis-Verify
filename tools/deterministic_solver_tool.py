@@ -4,7 +4,7 @@ import json
 from typing import Any
 
 from .base import Tool, ToolParameter
-from .deterministic_solver import DeterministicSolver
+from .deterministic_handlers import DeterministicHandlerRouter, HandlerResult
 
 
 class DeterministicSolverTool(Tool):
@@ -53,7 +53,7 @@ class DeterministicSolverTool(Tool):
             },
             deterministic=True,
         )
-        self.solver = DeterministicSolver()
+        self.router = DeterministicHandlerRouter()
 
     def run(self, parameters: dict[str, Any]) -> dict[str, Any]:
         """
@@ -65,13 +65,58 @@ class DeterministicSolverTool(Tool):
         Returns:
             - dict[str, Any]: DeterministicSolverResult.to_dict() 的結果。
         """
-        result = self.solver.solve(
-            str(parameters.get("input") or parameters.get("question") or ""),
-            attachment_context=parameters.get("attachment_context"),
-            table_data=parameters.get("table_data"),
-            best_candidate=parameters.get("best_candidate"),
+        question = str(parameters.get("input") or parameters.get("question") or "")
+        result = self.router.run(
+            question=question,
+            attachment=parameters.get("attachment") if isinstance(parameters.get("attachment"), dict) else {},
+            attachment_result=str(parameters.get("attachment_context") or ""),
+            search_result=str(parameters.get("search_context") or ""),
+            handler_name=str(parameters.get("handler_name") or parameters.get("handler") or ""),
+            metadata={
+                "table_data": parameters.get("table_data"),
+                "best_candidate": parameters.get("best_candidate"),
+            },
         )
-        return result.to_dict()
+        return self._to_solver_payload(result)
+
+    def _to_solver_payload(self, result: HandlerResult) -> dict[str, Any]:
+        structured = dict(result.structured_result or {})
+        task_type = str(structured.get("task_type") or result.handler_name or "unsupported")
+        confidence = float(
+            structured.get("confidence")
+            or result.confidence
+            or (0.95 if result.ok else 0.0)
+        )
+        missing_inputs = list(result.missing_inputs or [])
+        next_action_hint = result.next_action_hint or (
+            "Recover missing deterministic inputs: " + ", ".join(missing_inputs)
+            if missing_inputs
+            else ""
+        )
+        return {
+            "used_deterministic_solver": bool(result.ok),
+            "task_type": task_type,
+            "answer": result.answer,
+            "answer_text": result.answer,
+            "confidence": confidence,
+            "missing_inputs": missing_inputs,
+            "next_action_hint": next_action_hint,
+            "evidence": {
+                "handler_name": result.handler_name,
+                "handler_status": result.status,
+                "handler_evidence": result.evidence_text,
+                "structured_result": structured,
+            },
+            "evidence_source": "deterministic_handler_router" if result.ok else "none",
+            "readiness": {
+                "is_deterministic_task": result.status != "no_match",
+                "is_closed_world": bool(result.ok),
+                "has_complete_data": bool(result.ok),
+                "evidence_source": "deterministic_handler_router" if result.ok else "none",
+                "reason": result.error or result.status,
+            },
+            "error": result.error or None,
+        }
 
     def get_parameters(self) -> list[ToolParameter]:
         """
@@ -89,6 +134,12 @@ class DeterministicSolverTool(Tool):
                 type="string",
                 description="Question or deterministic task to solve.",
                 required=True,
+            ),
+            ToolParameter(
+                name="handler_name",
+                type="string",
+                description="Optional planned deterministic handler name to execute.",
+                required=False,
             )
         ]
 

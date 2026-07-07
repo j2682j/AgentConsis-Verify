@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from .context_budget import ContextBudgetManager
 from .context_builder import ContextBuilder, ContextPacket
 
 
@@ -10,6 +11,7 @@ STAGE1_SYSTEM_PROMPT = """You are one agent in a multi-agent reasoning network.
 Use Evidence only when it directly supports the answer.
 Do not answer from general knowledge when the task asks for a specific external fact.
 Final answer must be supported by at least one Evidence item.
+Return JSON only. Do not include markdown or text outside JSON.
 """
 
 
@@ -26,13 +28,28 @@ Search_Result:
 {search_result}
 
 
-Return exactly this format:
-REASONING =
-step 1. first reasoning step
-step 2. second reasoning step
-step 3. third reasoning step
-step N. final reasoning step
-FINAL_ANSWER = final answer only"""
+Return exactly this JSON schema:
+{{
+  "reasoning_steps": [
+    "step 1. first reasoning step",
+    "step 2. second reasoning step",
+    "step 3. final reasoning step"
+  ],
+  "final_answer": "short final answer only",
+  "confidence": 0.0,
+  "used_evidence_ids": ["E1"],
+  "answer_type": "number | date | person | organization | location | title | list | short_text | boolean | unknown",
+  "tool_request": null
+}}
+
+Rules:
+- final_answer must be a short answer, not an explanation.
+- If no evidence is needed or no Evidence ID applies, use an empty list for used_evidence_ids.
+- confidence must be between 0.0 and 1.0.
+- reasoning_steps must contain 3 to 5 explicit numbered steps.
+- Each reasoning step must be 25 words or fewer.
+- Do not restate evidence verbatim; cite Evidence IDs instead.
+- Do not include markdown or text outside JSON."""
 
 
 class Stage1ContextBuilder(ContextBuilder):
@@ -40,6 +57,15 @@ class Stage1ContextBuilder(ContextBuilder):
 
     REQUIRED_PACKET_TYPES = {"question", "system_instruction"}
     EVIDENCE_PACKET_TYPES = {"search_result", "attachment_result", "solver_result"}
+
+    def __init__(
+        self,
+        *args: Any,
+        budget_manager: ContextBudgetManager | None = None,
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(*args, **kwargs)
+        self.budget_manager = budget_manager or ContextBudgetManager()
 
     def gather(
         self,
@@ -134,6 +160,18 @@ class Stage1ContextBuilder(ContextBuilder):
             )
             or self.config.none_text
         )
+        return self._apply_context_budget(compressed)
+
+    def _apply_context_budget(self, structured: dict[str, Any]) -> dict[str, Any]:
+        budget_sections = {
+            key: value
+            for key, value in structured.items()
+            if key not in {"system", "_context_budget"}
+        }
+        budgeted = self.budget_manager.apply(budget_sections)
+        compressed = dict(structured)
+        compressed.update(budgeted.sections)
+        compressed["_context_budget"] = budgeted.diagnostics.to_dict()
         return compressed
 
     def render(self, compressed: dict[str, Any], **_: Any) -> list[dict[str, str]]:

@@ -113,6 +113,11 @@ class ToolGapDetector:
             "question requires string transformation",
         ),
         (
+            "video.transcript",
+            r"\b(video|youtube|film|documentary|watch|listen|transcript|caption|subtitles?)\b",
+            "question requires video captions, transcript, or audio ASR",
+        ),
+        (
             "web.search",
             r"\b(who|when|where|website|published|according to|official source|latest)\b",
             "question may require external factual lookup",

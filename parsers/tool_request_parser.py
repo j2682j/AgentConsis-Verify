@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from .json_parse import try_parse_json
-from .stage1_reply_parser import Stage1ReplyParser
+from .stage1_output_parser import Stage1OutputParser
 from score.answer_validator import AnswerValidator
 
 
@@ -20,7 +20,7 @@ class ToolRequestParser:
 
     def __init__(self) -> None:
         self.validator = AnswerValidator()
-        self.stage1_parser = Stage1ReplyParser()
+        self.structured_parser = Stage1OutputParser(answer_validator=self.validator)
 
     def parse(self, raw_reply: str) -> dict[str, Any]:
         """
@@ -43,28 +43,41 @@ class ToolRequestParser:
                     "tool_args": parsed.get("tool_args") if isinstance(parsed.get("tool_args"), dict) else {},
                     "reasoning": "",
                     "final_answer": "",
+                    "structured_output": {},
+                    "schema_valid": True,
+                    "schema_errors": [],
+                    "repair_applied": False,
+                    "repair_actions": [],
+                    "eligible_for_winner": False,
+                    "validity_labels": ["tool_request_pending"],
                 }
             if reply_type == "final_answer":
-                final_answer = self.validator.clean(parsed.get("final_answer", ""))
-                if not self.validator.is_valid(final_answer):
-                    return self._invalid()
+                structured = self.structured_parser.parse(raw_reply, expected_weight_count=0)
+                final_answer = self.validator.clean(structured.get("final_answer", ""))
                 return {
                     "type": "final_answer",
                     "reasoning_step": "",
                     "tool_name": "",
                     "tool_args": {},
-                    "reasoning": str(parsed.get("reasoning", "") or "").strip(),
+                    "reasoning": str(structured.get("reasoning", "") or "").strip(),
                     "final_answer": final_answer,
+                    "structured_output": dict(structured.get("structured_output") or {}),
+                    "schema_valid": bool(structured.get("schema_valid")),
+                    "schema_errors": list(structured.get("schema_errors") or []),
+                    "repair_applied": bool(structured.get("repair_applied")),
+                    "repair_actions": list(structured.get("repair_actions") or []),
+                    "eligible_for_winner": bool(structured.get("eligible_for_winner")),
+                    "validity_labels": list(structured.get("validity_labels") or []),
                 }
 
         try:
-            fallback = self.stage1_parser.parse(raw_reply, expected_weight_count=0)
+            fallback = self.structured_parser.parse(raw_reply, expected_weight_count=0)
         except Exception:
             return self._invalid()
 
         final_answer = self.validator.clean(fallback.get("final_answer", ""))
         reasoning = str(fallback.get("reasoning", "") or "").strip()
-        if self.validator.is_valid(final_answer):
+        if final_answer:
             return {
                 "type": "final_answer",
                 "reasoning_step": "",
@@ -72,6 +85,13 @@ class ToolRequestParser:
                 "tool_args": {},
                 "reasoning": reasoning,
                 "final_answer": final_answer,
+                "structured_output": dict(fallback.get("structured_output") or {}),
+                "schema_valid": bool(fallback.get("schema_valid")),
+                "schema_errors": list(fallback.get("schema_errors") or []),
+                "repair_applied": bool(fallback.get("repair_applied")),
+                "repair_actions": list(fallback.get("repair_actions") or []),
+                "eligible_for_winner": bool(fallback.get("eligible_for_winner")),
+                "validity_labels": list(fallback.get("validity_labels") or []),
             }
 
         return self._invalid()
@@ -93,6 +113,13 @@ class ToolRequestParser:
             "tool_args": {},
             "reasoning": "",
             "final_answer": "",
+            "structured_output": {},
+            "schema_valid": False,
+            "schema_errors": ["invalid_tool_reply"],
+            "repair_applied": False,
+            "repair_actions": [],
+            "eligible_for_winner": False,
+            "validity_labels": ["invalid_tool_reply"],
         }
 
 

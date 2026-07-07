@@ -3,12 +3,14 @@ from __future__ import annotations
 import json
 import os
 import re
-import urllib.request
 from dataclasses import asdict, dataclass
 from typing import Any
 
+from core.llm_client import LLMClient
+from core.model_registry import resolve_model_id
 from utils.network_utils import normalize_text
 
+from .search_intent_planner import SearchIntentPlan
 from .semantic_impact import DEFAULT_HF_MODEL_NAME, SemanticImpactScorer, TokenSalient
 from .span_repair import SalientSpan, SpanRepairer
 
@@ -44,7 +46,8 @@ class MaskSalienceQueryGenerator:
 
     Args:
         - hf_model_name: HuggingFace encoder model used for deletion-impact scoring.
-        - query_model_name: Ollama model used to generate search queries.
+        - query_model_name: OpenAI-compatible provider 的 served model name。
+        - llm_client: 共用的 provider-neutral LLMClient。
         - max_input_tokens: Maximum encoder input length.
         - max_salient_tokens: Maximum filtered tokens sent to span repair.
         - max_salient_spans: Maximum repaired spans sent to query generation.
@@ -63,8 +66,34 @@ Do not answer the question.
 Do not explain.
 """
 
+    QUERY_JSON_SCHEMA = {
+        "type": "object",
+        "properties": {
+            "queries": {
+                "type": "array",
+                "items": {"type": "string"},
+                "minItems": 1,
+                "maxItems": 3,
+            }
+        },
+        "required": ["queries"],
+        "additionalProperties": False,
+    }
+
     USER_TEMPLATE = """Question:
 {question}
+
+First search target:
+{target}
+
+Must include:
+{must_include}
+
+Avoid:
+{avoid_terms}
+
+Preferred domain:
+{preferred_domain}
 
 Top semantic-impact spans:
 {spans}
@@ -72,11 +101,9 @@ Top semantic-impact spans:
 Generate {num_candidates} concise web search queries.
 
 Rules:
-- Generate search queries, not answers.
-- Each query must include at least one top semantic-impact span.
-- Prefer exact names, dates, titles, organizations, acronyms, and constraints.
-- Keep each query short.
-- Do not include explanations.
+- Use the first search target.
+- Include must_include terms when possible.
+- Avoid avoid_terms and answer guesses.
 
 Return exactly this JSON shape:
 {{"queries": ["...", "..."]}}"""
@@ -86,6 +113,7 @@ Return exactly this JSON shape:
         *,
         hf_model_name: str | None = None,
         query_model_name: str = "qwen3:4b",
+        llm_client: LLMClient | None = None,
         max_input_tokens: int = 256,
         max_salient_tokens: int = 12,
         max_salient_spans: int = 5,
@@ -95,7 +123,8 @@ Return exactly this JSON shape:
         device: str | None = None,
     ) -> None:
         self.hf_model_name = hf_model_name or os.getenv("SEARCH_SALIENCE_HF_MODEL", DEFAULT_HF_MODEL_NAME)
-        self.query_model_name = query_model_name
+        self.query_model_name = resolve_model_id(query_model_name)
+        self.llm_client = llm_client or LLMClient()
         self.max_input_tokens = max_input_tokens
         self.max_salient_tokens = max_salient_tokens
         self.max_salient_spans = max_salient_spans
@@ -123,6 +152,7 @@ Return exactly this JSON shape:
         question: str,
         *,
         num_candidates: int = 5,
+        intent_plan: SearchIntentPlan | None = None,
     ) -> list[SalienceQueryCandidate]:
         """
         Generate search query candidates from a question.
@@ -141,7 +171,12 @@ Return exactly this JSON shape:
         token_salience = self.score_tokens(text)
         kept_tokens = self.filter_tokens(token_salience)
         spans = self.select_top_spans(self.merge_salient_tokens(text, kept_tokens))
-        raw_queries = self.generate_queries_with_qwen(text, spans, num_candidates=num_candidates)
+        raw_queries = self.generate_queries_with_model(
+            text,
+            spans,
+            num_candidates=num_candidates,
+            intent_plan=intent_plan,
+        )
         candidates = self.build_candidates(raw_queries, spans)
 
         if not candidates:
@@ -204,15 +239,16 @@ Return exactly this JSON shape:
         """
         return self.span_repairer.select_top_spans(spans)
 
-    def generate_queries_with_qwen(
+    def generate_queries_with_model(
         self,
         question: str,
         spans: list[SalientSpan],
         *,
         num_candidates: int,
+        intent_plan: SearchIntentPlan | None = None,
     ) -> list[str]:
         """
-        Ask qwen3:4b to generate concise web search queries.
+        使用目前設定的 OpenAI-compatible model 產生精簡搜尋 query。
 
         Args:
             - question: Original task question.
@@ -229,6 +265,7 @@ Return exactly this JSON shape:
             question,
             spans,
             num_candidates=min(max(1, num_candidates), self.max_query_candidates),
+            intent_plan=intent_plan,
         )
         try:
             raw_reply = self._invoke_query_model(messages)
@@ -286,6 +323,8 @@ Return exactly this JSON shape:
             "method": "embedding_delta_salience",
             "hf_model_name": self.hf_model_name,
             "query_model_name": self.query_model_name,
+            "query_provider": self.llm_client.provider,
+            "query_base_url": self.llm_client.base_url,
             "salient_spans": [asdict(span) for span in self.last_salient_spans],
             "token_salience": [asdict(token) for token in self.last_token_salience],
         }
@@ -296,67 +335,52 @@ Return exactly this JSON shape:
         spans: list[SalientSpan],
         *,
         num_candidates: int,
+        intent_plan: SearchIntentPlan | None = None,
     ) -> list[dict[str, str]]:
         span_lines = "\n".join(f"- {span.text}" for span in spans[: self.max_salient_spans])
+        must_include = intent_plan.must_include if intent_plan else []
+        avoid_terms = intent_plan.avoid_terms if intent_plan else []
+        preferred_domain = intent_plan.preferred_domain if intent_plan else ""
+        target = intent_plan.target if intent_plan else ""
         return [
             {"role": "system", "content": self.SYSTEM_PROMPT},
             {
                 "role": "user",
                 "content": self.USER_TEMPLATE.format(
                     question=question,
+                    target=target or "Find the best first-hop source for the question.",
+                    must_include=self._format_terms(must_include),
+                    avoid_terms=self._format_terms(avoid_terms),
+                    preferred_domain=preferred_domain or "",
                     spans=span_lines,
                     num_candidates=num_candidates,
                 ),
             },
         ]
 
+    def _format_terms(self, terms: list[str]) -> str:
+        cleaned = [normalize_text(term) for term in terms if normalize_text(term)]
+        return "\n".join(f"- {term}" for term in cleaned) if cleaned else "-"
+
     def _invoke_query_model(self, messages: list[dict[str, str]]) -> str:
-        payload = {
-            "model": self.query_model_name,
-            "messages": messages,
-            "stream": False,
-            "think": False,
-            "options": {
-                "temperature": 0.1,
-                "num_predict": 768,
-            },
-        }
-        request = urllib.request.Request(
-            self._ollama_chat_url(),
-            data=json.dumps(payload).encode("utf-8"),
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
-        with urllib.request.urlopen(request, timeout=self._timeout_seconds()) as response:
-            data = json.loads(response.read().decode("utf-8"))
-        message = data.get("message") or {}
-        content = str(message.get("content") or "").strip()
-        thinking = str(message.get("thinking") or "").strip()
-        return content or self._extract_json_text(thinking)
-
-    def _ollama_chat_url(self) -> str:
-        base_url = (
-            os.getenv("OLLAMA_HOST")
-            or os.getenv("OLLAMA_BASE_URL")
-            or "http://localhost:11434"
-        ).rstrip("/")
-        if base_url.endswith("/v1"):
-            base_url = base_url[:-3]
-        return f"{base_url.rstrip('/')}/api/chat"
-
-    def _timeout_seconds(self) -> int:
-        try:
-            return int(os.getenv("OLLAMA_TIMEOUT", "180"))
-        except ValueError:
-            return 180
-
-    def _extract_json_text(self, text: str) -> str:
-        cleaned = str(text or "").strip()
-        start = cleaned.find("{")
-        end = cleaned.rfind("}")
-        if start >= 0 and end > start:
-            return cleaned[start : end + 1]
-        return ""
+        if self.llm_client.provider == "ollama":
+            result = self.llm_client.ollama_native_chat(
+                model=self.query_model_name,
+                messages=messages,
+                temperature=0.1,
+                max_tokens=768,
+                think=False,
+                json_format=self.QUERY_JSON_SCHEMA,
+            )
+        else:
+            result = self.llm_client.chat(
+                model=self.query_model_name,
+                messages=messages,
+                temperature=0.1,
+                max_tokens=768,
+                enable_thinking=False,
+            )
+        return result.content
 
     def _parse_query_json(self, raw_reply: str) -> list[str]:
         cleaned = str(raw_reply or "").strip()

@@ -14,7 +14,7 @@ from core.evidence_runner import EvidenceRunner
 from core.slm_agent import SLM_Agent
 from core.stage1_runner import Stage1Runner
 from core.stage2_runner import Stage2Runner
-from score import AnswerValidator, PenaltyCalculator, ScoreCalculator
+from score import AnswerValidator, ScoreCalculator
 from utils.network_utils import normalize_for_exact
 
 
@@ -65,6 +65,8 @@ class Network:
         enable_evidence_prepare: bool = True,
         enable_compact_search_evidence: bool = False,
         enable_evidence_driven_search: bool = True,
+        enable_deterministic_handler_router: bool = False,
+        enable_tool_planner: bool = False,
         max_parallel_next_hop_queries: int = 2,
         search_result: str = "",
         attachment_result: str = "",
@@ -86,6 +88,8 @@ class Network:
         self.enable_evidence_prepare = enable_evidence_prepare
         self.enable_compact_search_evidence = enable_compact_search_evidence
         self.enable_evidence_driven_search = enable_evidence_driven_search
+        self.enable_deterministic_handler_router = enable_deterministic_handler_router
+        self.enable_tool_planner = enable_tool_planner
         self.max_parallel_next_hop_queries = max(0, max_parallel_next_hop_queries)
         self.search_result = search_result
         self.attachment_result = attachment_result
@@ -96,7 +100,6 @@ class Network:
         self._token_usage: dict[str, dict[str, int]] = {}
 
         self.score_calculator = ScoreCalculator()
-        self.penalty_calculator = PenaltyCalculator()
         self.answer_validator = AnswerValidator()
         self.evidence_runner = EvidenceRunner(
             question=self.question,
@@ -106,6 +109,8 @@ class Network:
             attachment_result=self.attachment_result,
             compact_search_evidence=self.enable_compact_search_evidence,
             enable_evidence_driven_search=self.enable_evidence_driven_search,
+            enable_deterministic_handler_router=self.enable_deterministic_handler_router,
+            enable_tool_planner=self.enable_tool_planner,
             max_parallel_next_hop_queries=self.max_parallel_next_hop_queries,
         )
         self.stage1_runner = Stage1Runner(
@@ -188,10 +193,7 @@ class Network:
             penalty_results = []
             self._write_direct_consensus_scores(stage1_results)
         else:
-            penalty_results = self.penalty_calculator.calculate(
-                stage1_results,
-                question=self.question,
-            )
+            penalty_results = []
             self.score_calculator.write_scores_to_agent_config(
                 self.agents,
                 stage1_results,
@@ -222,6 +224,8 @@ class Network:
                 "enable_compact_search_evidence": self.enable_compact_search_evidence,
                 "query_planner": "signal",
                 "enable_evidence_driven_search": self.enable_evidence_driven_search,
+                "enable_deterministic_handler_router": self.enable_deterministic_handler_router,
+                "enable_tool_planner": self.enable_tool_planner,
                 "max_parallel_next_hop_queries": self.max_parallel_next_hop_queries,
                 "max_stage1_tool_turns": self.max_stage1_tool_turns,
                 "enable_stage1_early_stop": self.enable_stage1_early_stop,
@@ -238,6 +242,13 @@ class Network:
                     direct_consensus_winner.compressed_answer
                     if direct_consensus_winner is not None
                     else ""
+                ),
+                "winner_selection": self._winner_selection_metadata(
+                    stage1_results,
+                    winner,
+                ),
+                "stage1_context_budget": self._stage1_context_budget_metadata(
+                    stage1_results,
                 ),
                 "active_agent_count": len(active_results),
                 "search_used": bool(evidence["search_result"].strip()),
@@ -281,6 +292,7 @@ class Network:
             for result in stage1_results
             if (
                 result.active
+                and result.winner_selection_eligible
                 and result.confidence_score >= 1.0
                 and result.compressed_answer.strip()
                 and self.answer_validator.is_valid(result.compressed_answer)
@@ -325,6 +337,43 @@ class Network:
             - bool: 兩個答案經 exact normalization 後是否相同。
         """
         return normalize_for_exact(answer_a) == normalize_for_exact(answer_b)
+
+    def _stage1_context_budget_metadata(
+        self,
+        stage1_results: list[AgentReasoningSummary],
+    ) -> dict[str, Any]:
+        budgets = [
+            dict(run.context_budget or {})
+            for result in stage1_results
+            for run in result.runs
+            if isinstance(run.context_budget, dict) and run.context_budget
+        ]
+        if not budgets:
+            return {}
+        original_chars = [int(item.get("original_chars", 0) or 0) for item in budgets]
+        final_chars = [int(item.get("final_chars", 0) or 0) for item in budgets]
+        truncated_sections = sorted(
+            {
+                str(section)
+                for item in budgets
+                for section in list(item.get("truncated_sections") or [])
+            }
+        )
+        return {
+            "run_count": len(budgets),
+            "original_chars_total": sum(original_chars),
+            "final_chars_total": sum(final_chars),
+            "original_chars_avg": round(sum(original_chars) / max(1, len(original_chars)), 2),
+            "final_chars_avg": round(sum(final_chars) / max(1, len(final_chars)), 2),
+            "chars_reduction_total": max(0, sum(original_chars) - sum(final_chars)),
+            "truncation_applied_count": sum(
+                1 for item in budgets if bool(item.get("truncation_applied"))
+            ),
+            "dropped_evidence_count": sum(
+                int(item.get("dropped_evidence_count", 0) or 0) for item in budgets
+            ),
+            "truncated_sections": truncated_sections,
+        }
 
     def _write_direct_consensus_scores(
         self,
@@ -372,7 +421,11 @@ class Network:
         active_results = [
             result
             for result in stage1_results
-            if result.active and result.compressed_answer.strip()
+            if (
+                result.active
+                and result.winner_selection_eligible
+                and result.compressed_answer.strip()
+            )
         ]
         if not active_results:
             return None, [], "no_active_stage1_result"
@@ -457,7 +510,12 @@ class Network:
         active_agents = [
             config
             for config in self.agents
-            if result_by_agent.get(config.agent_id) and result_by_agent[config.agent_id].active
+            if (
+                result_by_agent.get(config.agent_id)
+                and result_by_agent[config.agent_id].active
+                and result_by_agent[config.agent_id].winner_selection_eligible
+                and result_by_agent[config.agent_id].compressed_answer.strip()
+            )
         ]
         if not active_agents:
             return None
@@ -470,6 +528,65 @@ class Network:
             ),
         )
         return result_by_agent[winner_config.agent_id]
+
+    def _winner_selection_metadata(
+        self,
+        stage1_results: list[AgentReasoningSummary],
+        winner: AgentReasoningSummary | None,
+    ) -> dict[str, Any]:
+        """
+        Summarize abstention-aware winner selection without adding scores.
+        """
+        answerable = [
+            result
+            for result in stage1_results
+            if result.winner_selection_eligible and result.compressed_answer.strip()
+        ]
+        abstained = [
+            result
+            for result in stage1_results
+            if result.winner_selection_status == "all_runs_abstained"
+        ]
+        invalid = [
+            result
+            for result in stage1_results
+            if result.winner_selection_status in {"all_runs_invalid", "no_final_answer", "no_stage1_runs"}
+        ]
+        low_coverage = [
+            result
+            for result in stage1_results
+            if result.winner_selection_status == "mixed_low_coverage"
+        ]
+        if winner is not None:
+            status = "answerable"
+        elif stage1_results and len(abstained) == len(stage1_results):
+            status = "all_agents_abstained"
+        elif stage1_results:
+            status = "all_agents_abstained_or_invalid"
+        else:
+            status = "no_stage1_results"
+
+        return {
+            "status": status,
+            "winner_agent_id": winner.agent_id if winner else "",
+            "winner_answer": winner.compressed_answer if winner else "",
+            "answerable_agent_count": len(answerable),
+            "abstained_agent_count": len(abstained),
+            "invalid_agent_count": len(invalid),
+            "low_coverage_agent_count": len(low_coverage),
+            "agent_statuses": [
+                {
+                    "agent_id": result.agent_id,
+                    "winner_selection_eligible": result.winner_selection_eligible,
+                    "winner_selection_status": result.winner_selection_status,
+                    "eligible_run_count": result.eligible_run_count,
+                    "abstention_run_count": result.abstention_run_count,
+                    "invalid_run_count": result.invalid_run_count,
+                    "run_validity_labels": result.run_validity_labels,
+                }
+                for result in stage1_results
+            ],
+        }
 
     def _get_slm_agent(self, config: AgentConfig) -> SLM_Agent:
         """

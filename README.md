@@ -166,13 +166,15 @@ such as Ollama-compatible APIs.
 Dependencies for embedding-delta search query planning:
 
 ```bash
-pip install transformers torch
+pip install transformers torch sentencepiece
 ```
 
 The query planner uses a HuggingFace encoder / embedding model for
 representation sensitivity analysis. Each candidate token is removed from the
 question, the query embedding is recomputed, and the embedding delta is used as
-the salience signal. The current default is:
+the salience signal. SentencePiece is also required to load the local
+DeBERTa-v2 EfficientRAG filter checkpoint. Restart long-running Python
+processes after installing it. The current default encoder is:
 
 ```text
 BAAI/bge-m3
@@ -191,10 +193,11 @@ OLLAMA_BASE_URL=http://localhost:11434/v1
 OLLAMA_API_KEY=
 OLLAMA_TIMEOUT=120
 
-Nemotron_MODEL_ID=nemotron-mini:4b
-Minicpm_MODEL_ID=yefx/minicpm3_4b
+Nemotron_MODEL_ID=nemotron-3-nano:4b
 Qwen_MODEL_ID=qwen3:4b
 Gemma_MODEL_ID=gemma3:4b
+QUERY_GENERATOR_MODEL=qwen3:4b
+TOOL_PLANNER_MODEL=qwen3:4b
 ```
 
 The default model aliases used by the GAIA runner are mapped by `SLM_Agent` to
@@ -202,10 +205,9 @@ the environment variables above:
 
 | Internal alias | Environment variable | Example local model |
 | --- | --- | --- |
-| `nemotron-mini:4b` | `Nemotron_MODEL_ID` | `nemotron-3-nano:4b` |
-| `minicpm3:4b` | `Minicpm_MODEL_ID` | `yefx/minicpm3_4b` |
+| `nemotron-3-nano:4b` | `Nemotron_MODEL_ID` | `nemotron-3-nano:4b` |
 | `qwen3:4b` | `Qwen_MODEL_ID` | `qwen3:4b` |
-| `gemma3:4b` | `Gemma_MODEL_ID` | `gemma4:e4b` |
+| `gemma3:4b` | `Gemma_MODEL_ID` | `gemma3:4b` |
 
 Optional vision and attachment settings:
 
@@ -302,7 +304,7 @@ Important options:
 | `--stage1-runs-per-agent` | Number of Stage 1 attempts per agent. |
 | `--stage2-max-tokens` | Maximum tokens for Stage 2 judge responses. |
 | `--enable-stage1-tool-use` | Enable tool trajectory during Stage 1. |
-| `--max-stage1-tool-turns` | Maximum tool-use turns per Stage 1 run. |
+| `--max-stage1-tool-turns` | Base tool-use budget per Stage 1 run. Valid new evidence can extend it to four turns. |
 | `--enable-evidence-driven-search` / `--no-enable-evidence-driven-search` | Enable or disable search_result_builder next-hop retrieval. Enabled by default. |
 | `--enable-stage1-early-stop` | Enable early stopping during Stage 1. |
 | `--stage1-early-stop-max-retries` | Retry budget for early-stop mode. |
@@ -313,12 +315,11 @@ Important options:
 
 ## Default Agents
 
-The default GAIA runner configures four agents:
+The default GAIA runner configures three agents:
 
 | Agent | Default model |
 | --- | --- |
-| `nemotron` | `nemotron-mini:4b` |
-| `minicpm` | `minicpm3:4b` |
+| `nemotron` | `nemotron-3-nano:4b` |
 | `qwen` | `qwen3:4b` |
 | `gemma` | `gemma3:4b` |
 
@@ -409,14 +410,16 @@ There are two tool-use windows:
 
 2. **Optional per-run Stage 1 tool trajectory**
    - Enabled by `--enable-stage1-tool-use`.
-   - Each agent run may request tools up to `--max-stage1-tool-turns`.
+   - Each agent run starts with `--max-stage1-tool-turns` as its base budget.
+   - New valid evidence extends the budget one turn at a time, up to four.
+   - Two consecutive no-progress results force the agent to return a final answer.
    - Tool requests must use the structured JSON format described above.
 
 After all Stage 1 runs are aggregated, SCP does not use tools again. Stage 2
 judges only consume the target answer, target reasoning, and recorded tool
 evidence.
 
-The shared search flow uses `EvidenceSearcher`:
+The shared search flow uses `WebRetrievalControl`:
 
 ```text
 question
@@ -428,7 +431,7 @@ question
 -> EfficientRAG labeler fallback
 -> SEER n-gram dedup
 -> evidence conversion
--> retrieval control
+-> E5 passage embedding + FAISS retrieval control
 -> optional EfficientRAG-filtered next-hop query
 -> structured evidence rendering
 ```
@@ -462,6 +465,8 @@ question
 -> score by embedding delta
 -> select the top 5 semantic-impact spans for search-enabled tasks
 -> ask qwen3:4b for concise query candidates
+-> compute direct query coverage against extracted question constraints
+-> rerank queries and add a repair query when coverage is too low
 -> clean and deduplicate generated queries while preserving order
 ```
 
@@ -473,15 +478,16 @@ The current search pipeline components are:
 
 | Component | Role |
 | --- | --- |
-| `query/` | Builds first-hop search queries from embedding-delta salient spans. |
+| `query/` | Builds first-hop search queries from embedding-delta salient spans, checks direct constraint coverage, and repairs low-coverage query sets. |
 | `source_analyze/seer/source_filter.py` | Removes leaks, duplicates, low-value pages, and question echoes. |
 | `source_analyze/seer/page_content_fetcher.py` | Fetches full pages after source filtering. |
 | `source_analyze/rag_labeler.py` | Labels chunks as useful/useless. Currently uses deterministic fallback until the trained labeler is connected. |
 | `source_analyze/seer/helpfulness_expert.py` | Standalone probability helper. Not used by the active pipeline right now. |
 | `source_analyze/seer/ngram_deduplicate.py` | Deduplicates useful evidence chunks. |
+| `retrieval_control.py` | Owns the active web search, dynamic corpus, FAISS retrieval, EfficientRAG labeler/filter loop, and trace export. |
+| `evidence/evidence_converter.py` | Converts labeler useful tokens into compact source-title/evidence contexts. |
 | `next_hop_query/retrieval_controller.py` | Uses spaCy NER coverage, encoder semantic relevance, and constraint coverage to decide whether next-hop retrieval is needed. |
 | `next_hop_query/rag_filter.py` | Builds up to two EfficientRAG filter queries from separate evidence groups; H1 and H2 are searched in parallel. |
-| `evidence_renderer.py` | Renders compact structured context for agents. |
 
 The prompt sent to agents is intentionally compact:
 
@@ -494,9 +500,8 @@ Query:
 
 Evidence:
 [E1]
-Source: ...
-Query: Q1
-Text: ...
+Source Title: ...
+Evidence: ...
 ```
 
 The search pipeline does not extract intermediate candidate answers. Agents
@@ -506,8 +511,10 @@ next-hop diagnostics.
 
 All evidence sufficiency decisions, both after the initial search and after the
 parallel H1/H2 batch, use spaCy NER coverage, encoder semantic relevance, and
-constraint coverage. SourceAnalysis only filters and converts evidence; useful
-chunk counts do not act as a separate stop condition.
+constraint coverage. The old source-analysis controller has been removed;
+source filtering, corpus construction, FAISS retrieval, labeler/filter
+iteration, and evidence conversion now live under `WebRetrievalControl` and
+`evidence/evidence_converter.py`.
 
 After H1 and H2 complete, their evidence is consolidated before the final
 sufficiency decision. Cross-query duplicates are removed with SEER n-gram

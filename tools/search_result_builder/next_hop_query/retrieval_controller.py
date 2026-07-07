@@ -8,6 +8,7 @@ from utils.network_utils import normalize_text
 
 from ..config import EvidenceItem, SearchSignals
 from ..query.semantic_impact import SemanticImpactScorer
+from .answer_target_extractor import AnswerTarget, AnswerTargetExtractor
 
 _SPACY_CACHE: dict[str, Any] = {}
 
@@ -41,6 +42,7 @@ class RetrievalController:
 
     Args:
         - semantic_scorer: 共用的 encoder embedding scorer。
+        - answer_target_extractor: dependency-based 答案焦點抽取器。
         - nlp: 可注入的 spaCy language pipeline。
         - spacy_model: 預設載入的 spaCy 模型。
         - sufficiency_threshold: 三項訊號加權後的停止門檻。
@@ -60,6 +62,48 @@ class RetrievalController:
         "place": {"GPE", "LOC", "FAC"},
         "date": {"DATE", "TIME"},
         "number": {"CARDINAL", "QUANTITY", "PERCENT", "MONEY", "ORDINAL"},
+        "duration": {"TIME", "QUANTITY", "CARDINAL"},
+        "distance": {"QUANTITY", "CARDINAL"},
+        "volume": {"QUANTITY", "CARDINAL"},
+        "percentage": {"PERCENT", "CARDINAL"},
+    }
+    ROLE_UNIT_TERMS = {
+        "duration": {
+            "day",
+            "days",
+            "hour",
+            "hours",
+            "minute",
+            "minutes",
+            "second",
+            "seconds",
+            "week",
+            "weeks",
+            "year",
+            "years",
+        },
+        "distance": {
+            "kilometer",
+            "kilometers",
+            "km",
+            "meter",
+            "meters",
+            "metre",
+            "metres",
+            "mile",
+            "miles",
+        },
+        "volume": {
+            "liter",
+            "liters",
+            "litre",
+            "litres",
+            "ml",
+            "m3",
+            "cubic meter",
+            "cubic meters",
+        },
+        "percentage": {"percent", "percentage", "%"},
     }
     SOURCE_TERMS = {
         "article",
@@ -80,6 +124,7 @@ class RetrievalController:
         self,
         *,
         semantic_scorer: SemanticImpactScorer | None = None,
+        answer_target_extractor: AnswerTargetExtractor | None = None,
         nlp: Any | None = None,
         spacy_model: str = "en_core_web_md",
         sufficiency_threshold: float = 0.65,
@@ -91,6 +136,7 @@ class RetrievalController:
         self.semantic_scorer = semantic_scorer or SemanticImpactScorer()
         self.nlp = nlp
         self.spacy_model = spacy_model
+        self.answer_target_extractor = answer_target_extractor
         self.sufficiency_threshold = sufficiency_threshold
         self.min_entity_coverage = min_entity_coverage
         self.min_semantic_relevance = min_semantic_relevance
@@ -108,7 +154,7 @@ class RetrievalController:
         判斷目前證據是否足以停止搜尋。
 
         Args:
-            - evidence_items: SourceAnalysis 產生的 evidence chunks。
+            - evidence_items: evidence conversion 產生的 evidence chunks。
             - question: 原始問題。
             - search_signals: 搜尋訊號，目前保留於介面供診斷使用。
 
@@ -331,11 +377,15 @@ class RetrievalController:
                     ("source", source_term, f" {source_term} " in evidence_key)
                 )
 
-        answer_role = self._infer_answer_role(question)
-        if answer_role:
-            labels = self.ANSWER_ROLE_LABELS[answer_role]
-            role_matched = bool(self._entities(evidence_text, labels=labels))
-            constraints.append(("answer_role", answer_role, role_matched))
+        answer_target = self._answer_target(question)
+        if answer_target.role:
+            role_matched = self._answer_target_covered(
+                answer_target,
+                evidence_text,
+            )
+            constraints.append(
+                ("answer_role", answer_target.role, role_matched)
+            )
 
         if not constraints:
             return 1.0, {
@@ -353,6 +403,7 @@ class RetrievalController:
             "required": [f"{kind}:{value}" for kind, value, _ in constraints],
             "matched": matched,
             "missing": missing,
+            "answer_target": answer_target.to_dict(),
         }
 
     def _get_nlp(self) -> Any | None:
@@ -392,19 +443,44 @@ class RetrievalController:
         key = self._match_key(entity).strip()
         return bool(key and f" {key} " in evidence_key)
 
-    def _infer_answer_role(self, question: str) -> str:
-        lowered = normalize_text(question).lower()
-        if re.search(r"\bwho\b", lowered):
-            return "person"
-        if any(marker in lowered for marker in ("which organization", "which company", "what organization")):
-            return "organization"
-        if any(marker in lowered for marker in ("where", "which city", "which country", "what place")):
-            return "place"
-        if any(marker in lowered for marker in ("when", "what date", "which year")):
-            return "date"
-        if any(marker in lowered for marker in ("how many", "how much", "what percentage")):
-            return "number"
-        return ""
+    def _answer_target(self, question: str) -> AnswerTarget:
+        extractor = self.answer_target_extractor
+        if extractor is None:
+            extractor = AnswerTargetExtractor(
+                nlp=self._get_nlp(),
+                semantic_scorer=self.semantic_scorer,
+            )
+            self.answer_target_extractor = extractor
+        elif extractor.nlp is None:
+            extractor.nlp = self._get_nlp()
+        return extractor.extract(question)
+
+    def _answer_target_covered(
+        self,
+        target: AnswerTarget,
+        evidence_text: str,
+    ) -> bool:
+        labels = self.ANSWER_ROLE_LABELS.get(target.role, set())
+        entity_match = bool(
+            labels and self._entities(evidence_text, labels=labels)
+        )
+        if target.role not in self.ROLE_UNIT_TERMS:
+            return entity_match
+
+        evidence_key = self._match_key(evidence_text)
+        unit_terms = set(self.ROLE_UNIT_TERMS[target.role])
+        if target.unit:
+            unit_terms.add(target.unit)
+            unit_terms.add(f"{target.unit}s")
+        unit_match = any(
+            f" {self._match_key(term).strip()} " in evidence_key
+            for term in unit_terms
+            if self._match_key(term).strip()
+        )
+        numeric_match = entity_match or any(
+            char.isdigit() for char in evidence_text
+        )
+        return numeric_match and unit_match
 
     def _match_key(self, text: str) -> str:
         cleaned = re.sub(r"[^a-z0-9]+", " ", normalize_text(text).lower())

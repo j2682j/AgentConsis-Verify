@@ -1,10 +1,19 @@
 from __future__ import annotations
 
+from dataclasses import asdict, is_dataclass
+import hashlib
+from pathlib import Path
+import time
 from typing import Any
 
 from tools.attachment_reader import AttachmentEvidenceBuilder
+from tools.search_result_builder.evidence import EvidenceConverter
+from tools.search_result_builder.retrieval_control import WebRetrievalControl
 from tools.system_routing_contract import SystemRoutingContract
-from utils.network_utils import should_use_calculator
+from utils.network_utils import normalize_text, should_use_calculator
+
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
 class EvidenceBuilder:
@@ -25,7 +34,7 @@ class EvidenceBuilder:
         runtime: Any | None = None,
         *,
         search_query_planner: Any | None = None,
-        evidence_searcher: Any | None = None,
+        web_retrieval_control: Any | None = None,
         initialize_search_helpers: bool = True,
     ) -> None:
         """
@@ -35,7 +44,7 @@ class EvidenceBuilder:
             - tool_manager: 負責執行工具的 ToolManager，沒有提供時會略過工具呼叫。
             - runtime: 提供 current_attachment 等執行期狀態的物件。
             - search_query_planner: 可選的搜尋 query 規劃器。
-            - evidence_searcher: 可選的新版 evidence-oriented search 主入口。
+            - web_retrieval_control: 可選的 WebRetrievalControl 相容 search 主入口。
             - initialize_search_helpers: 是否在初始化時建立 search helper。
 
         Returns:
@@ -44,12 +53,12 @@ class EvidenceBuilder:
         self.tool_manager = tool_manager
         self.runtime = runtime
         self.search_query_planner = search_query_planner
-        self.evidence_searcher = evidence_searcher
+        self.web_retrieval_control = web_retrieval_control
         self.attachment_evidence_builder = AttachmentEvidenceBuilder()
         self.system_routing_contract = SystemRoutingContract()
 
         if initialize_search_helpers:
-            self._ensure_evidence_searcher()
+            self._ensure_web_retrieval_control()
 
     def build(
         self,
@@ -376,7 +385,7 @@ class EvidenceBuilder:
 
     def _build_search_evidence(self, question: str, agent_id: str, stage: str) -> dict[str, Any]:
         """
-        使用新版 EvidenceSearcher 建立 evidence-oriented search context。
+        使用 WebRetrievalControl 建立 evidence-oriented search context。
 
         Args:
             - question: 原始任務問題。
@@ -389,21 +398,36 @@ class EvidenceBuilder:
         if self.tool_manager is None:
             return self._empty_tool_result()
 
-        searcher = self._ensure_evidence_searcher()
+        controller = self._ensure_web_retrieval_control()
         try:
-            output = searcher.search(
+            output = controller.run(
                 question,
-                max_queries=3,
-                max_results_per_query=5,
-                max_full_page_results=2,
-                agent_id=agent_id,
-                stage=stage,
+                output_dir=self._web_retrieval_output_dir(question),
             )
-            context = output.summary
-            tool_usage = output.tool_usage
-            query_plan = searcher.to_dict(output)
-            queries = [query.query for query in output.queries]
-            best_candidate = output.candidates[0].__dict__ if output.candidates else None
+            output_dict = self._dataclass_to_dict(output)
+            converter = EvidenceConverter()
+            evidence_items = converter.convert_web_retrieval_output(
+                output_dict,
+                question=question,
+            )
+            context = self._render_evidence_items(evidence_items)
+            query_plan = {
+                **output_dict,
+                "evidence_items": evidence_items,
+                "evidence_conversion": self._dataclass_to_dict(
+                    converter.last_diagnostics,
+                ),
+            }
+            tool_usage = [
+                {
+                    "ok": bool(context.strip()),
+                    "tool_name": "search",
+                    "output_text": context,
+                    "raw_result": query_plan,
+                    "error": None,
+                }
+            ]
+            queries = list(output_dict.get("generated_queries") or [])
         except Exception as exc:
             context = ""
             tool_usage = [
@@ -417,7 +441,6 @@ class EvidenceBuilder:
             ]
             query_plan = {}
             queries = []
-            best_candidate = None
 
         return {
             "tool_usage": tool_usage,
@@ -426,27 +449,72 @@ class EvidenceBuilder:
             "queries": queries,
             "query_plan": query_plan,
             "search_runs": [],
-            "best_candidate": best_candidate,
+            "best_candidate": None,
         }
 
-    def _ensure_evidence_searcher(self) -> Any:
+    def _ensure_web_retrieval_control(self) -> Any:
         """
-        建立或重用新版 EvidenceSearcher。
+        建立或重用 WebRetrievalControl。
 
         Args:
             - 無。
 
         Returns:
-            - Any: 可執行 evidence-oriented search 的 EvidenceSearcher。
+            - Any: 可執行 evidence-oriented search 的 WebRetrievalControl。
         """
-        if self.evidence_searcher is None:
-            from tools.search_result_builder.evidence_searcher import EvidenceSearcher
-
-            self.evidence_searcher = EvidenceSearcher(
-                tool_manager=self.tool_manager,
-                query_planner=self.search_query_planner,
+        if self.web_retrieval_control is None:
+            self.web_retrieval_control = WebRetrievalControl(
+                max_queries=3,
+                max_results_per_query=5,
+                max_pages_to_fetch=6,
+                max_chunks_per_url=10,
+                max_corpus_records=120,
+                max_iter=3,
+                top_k=10,
+                min_retrieval_score=0.0,
+                relative_score_margin=1.0,
+                embedding_batch_size=8,
             )
-        return self.evidence_searcher
+        return self.web_retrieval_control
+
+    def _web_retrieval_output_dir(self, question: str) -> Path:
+        digest = hashlib.sha1(
+            normalize_text(question).encode("utf-8")
+        ).hexdigest()[:12]
+        timestamp = int(time.time() * 1000)
+        return (
+            PROJECT_ROOT
+            / "outputs"
+            / "web_retrieval_runtime"
+            / f"{digest}_{timestamp}"
+        )
+
+    def _render_evidence_items(self, evidence_items: list[dict[str, Any]]) -> str:
+        lines = ["Evidence:"]
+        if not evidence_items:
+            lines.append("None")
+            return "\n".join(lines)
+        for index, item in enumerate(evidence_items, start=1):
+            lines.extend(
+                [
+                    f"[E{index}]",
+                    f"Source Title: {item.get('title') or item.get('source_id') or 'Unknown'}",
+                    f"Evidence: {item.get('text', '')}",
+                ]
+            )
+        return "\n".join(lines).strip()
+
+    def _dataclass_to_dict(self, value: Any) -> Any:
+        if is_dataclass(value):
+            return self._dataclass_to_dict(asdict(value))
+        if isinstance(value, dict):
+            return {
+                str(key): self._dataclass_to_dict(item)
+                for key, item in value.items()
+            }
+        if isinstance(value, (list, tuple)):
+            return [self._dataclass_to_dict(item) for item in value]
+        return value
 
     def _question_requires_web(self, question: str) -> bool:
         """

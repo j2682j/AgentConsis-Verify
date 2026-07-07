@@ -27,10 +27,9 @@ from tools.tool_manager import ToolManager
 
 
 DEFAULT_AGENT_SPECS = [
-    ("nemotron", "nemotron-mini:4b"),
-    ("minicpm", "minicpm3:4b"),
+    ("nemotron", "nemotron-3-nano:4b"),
     ("qwen", "qwen3:4b"),
-    ("gemma", "gemma4:e4b"),
+    ("gemma", "gemma3:4b"),
 ]
 
 
@@ -83,25 +82,54 @@ def dataclass_to_dict(value: Any) -> Any:
 def extract_search_summary(network_summary: dict[str, Any]) -> dict[str, Any]:
     metadata = network_summary.get("metadata", {}) or {}
     for usage in metadata.get("tool_usage", []) or []:
+        tool_name = str(usage.get("tool_name", "") or "").strip()
         raw_result = usage.get("raw_result")
         if not isinstance(raw_result, dict):
+            continue
+        if tool_name != "search" and not any(
+            key in raw_result
+            for key in ("sources", "evidence_items", "blocked_sources", "web_searches")
+        ):
             continue
         diagnostics = raw_result.get("diagnostics") or {}
         final_counts = diagnostics.get("final_counts", {}) if isinstance(diagnostics, dict) else {}
         evidence_driven_search = diagnostics.get("evidence_driven_search", {})
+        retrieval = raw_result.get("retrieval") or {}
+        retrieval_rounds = retrieval.get("rounds", []) if isinstance(retrieval, dict) else []
+        queries = raw_result.get("queries") or []
+        if not queries and isinstance(retrieval, dict):
+            queries = [
+                str(round_item.get("query", "") or "").strip()
+                for round_item in retrieval_rounds
+                if isinstance(round_item, dict) and str(round_item.get("query", "") or "").strip()
+            ]
+        evidence_items = raw_result.get("evidence_items") or []
+        blocked_sources = raw_result.get("blocked_sources") or []
+        sources = raw_result.get("sources") or []
         return {
-            "initial_source_analysis": diagnostics.get("initial_source_analysis", {}),
+            "initial_web_preprocessing": diagnostics.get("initial_web_preprocessing", {}),
+            "source_filter": diagnostics.get("source_filter", {})
+            or (diagnostics.get("initial_web_preprocessing", {}) or {}).get("source_filter", {}),
+            "full_page_fetch": diagnostics.get("full_page_fetch", {})
+            or (diagnostics.get("initial_web_preprocessing", {}) or {}).get("full_page_fetch", {}),
+            "coverage_summary": diagnostics.get("coverage_summary", {}),
             "initial_retrieval_decision": diagnostics.get("initial_retrieval_decision", {}),
             "final_retrieval_decision": diagnostics.get("final_retrieval_decision", {}),
             "evidence_driven_search": evidence_driven_search,
             "final_counts": final_counts,
-            "source_count": final_counts.get("source_count", len(raw_result.get("sources") or [])),
-            "evidence_count": final_counts.get("evidence_count", len(raw_result.get("evidence_items") or [])),
+            "pipeline_failure_stage": diagnostics.get("pipeline_failure_stage", ""),
+            "queries": queries,
+            "evidence_items": evidence_items,
+            "retrieval_rounds": retrieval_rounds,
+            "source_count": final_counts.get("source_count", len(sources)),
+            "evidence_count": final_counts.get("evidence_count", len(evidence_items)),
             "blocked_source_count": final_counts.get(
                 "blocked_source_count",
-                len(raw_result.get("blocked_sources") or []),
+                len(blocked_sources),
             ),
-            "stop_reason": evidence_driven_search.get("stop_reason", ""),
+            "web_search_count": len(raw_result.get("web_searches") or []),
+            "stop_reason": evidence_driven_search.get("stop_reason", "")
+            or (retrieval.get("stop_reason", "") if isinstance(retrieval, dict) else ""),
         }
     return {}
 
@@ -142,6 +170,8 @@ def run_sample(
     enable_evidence_prepare: bool,
     enable_compact_search_evidence: bool,
     enable_evidence_driven_search: bool,
+    enable_deterministic_handler_router: bool,
+    enable_tool_planner: bool,
     max_parallel_next_hop_queries: int,
     max_stage1_tool_turns: int,
     previous_best_agent_id: str | None,
@@ -161,6 +191,8 @@ def run_sample(
         enable_evidence_prepare=enable_evidence_prepare,
         enable_compact_search_evidence=enable_compact_search_evidence,
         enable_evidence_driven_search=enable_evidence_driven_search,
+        enable_deterministic_handler_router=enable_deterministic_handler_router,
+        enable_tool_planner=enable_tool_planner,
         max_parallel_next_hop_queries=max_parallel_next_hop_queries,
         max_stage1_tool_turns=max_stage1_tool_turns,
         previous_best_agent_id=previous_best_agent_id,
@@ -470,7 +502,30 @@ def write_markdown_report(results: dict[str, Any], output_path: str | Path) -> P
                 )
             lines.append("")
 
+        context_budget = network_metadata.get("stage1_context_budget", {}) or {}
+        if context_budget:
+            lines.extend(
+                [
+                    "**Stage1 Context Budget**",
+                    "",
+                    f"- Runs tracked: {context_budget.get('run_count', 0)}",
+                    f"- Average original chars: {context_budget.get('original_chars_avg', 0)}",
+                    f"- Average final chars: {context_budget.get('final_chars_avg', 0)}",
+                    f"- Total char reduction: {context_budget.get('chars_reduction_total', 0)}",
+                    f"- Truncation applied count: {context_budget.get('truncation_applied_count', 0)}",
+                    f"- Dropped evidence count: {context_budget.get('dropped_evidence_count', 0)}",
+                    f"- Truncated sections: {context_budget.get('truncated_sections', []) or '-'}",
+                    "",
+                ]
+            )
+
         if search_summary:
+            search_queries = search_summary.get("queries", []) or []
+            evidence_items = search_summary.get("evidence_items", []) or []
+            retrieval_rounds = search_summary.get("retrieval_rounds", []) or []
+            source_filter = search_summary.get("source_filter", {}) or {}
+            full_page_fetch = search_summary.get("full_page_fetch", {}) or {}
+            coverage_summary = search_summary.get("coverage_summary", {}) or {}
             lines.extend(
                 [
                     "**Search Summary**",
@@ -478,11 +533,79 @@ def write_markdown_report(results: dict[str, Any], output_path: str | Path) -> P
                     f"- Source count: {search_summary.get('source_count', 0)}",
                     f"- Evidence count: {search_summary.get('evidence_count', 0)}",
                     f"- Blocked source count: {search_summary.get('blocked_source_count', 0)}",
+                    f"- Web search count: {search_summary.get('web_search_count', 0)}",
+                    f"- Query count: {len(search_queries)}",
+                    f"- Retrieval rounds: {len(retrieval_rounds)}",
                     f"- Evidence-driven follow-up: {search_summary.get('evidence_driven_search', {}).get('queries', []) or '-'}",
                     f"- Retrieval stop reason: {search_summary.get('stop_reason', '') or '-'}",
+                    f"- Pipeline failure stage: {search_summary.get('pipeline_failure_stage', '') or '-'}",
+                    f"- Coverage score: {coverage_summary.get('final_score', '-')}",
+                    f"- Coverage sufficient: {coverage_summary.get('final_sufficient', '-')}",
+                    f"- Coverage answer type: {coverage_summary.get('answer_type', '-')}",
+                    f"- Coverage answer type covered: {coverage_summary.get('answer_type_covered', '-')}",
+                    f"- Coverage next-hop trigger: {coverage_summary.get('next_hop_triggered_by', '') or '-'}",
+                    f"- Rescued soft-block sources: {source_filter.get('rescued_soft_block_count', 0)}",
+                    f"- Fetch attempted/fetched/failed: {full_page_fetch.get('attempted_fetch_count', 0)} / "
+                    f"{full_page_fetch.get('fetched_page_count', 0)} / {full_page_fetch.get('fetch_failure_count', 0)}",
                     "",
                 ]
-            )
+                )
+            if coverage_summary.get("missing_constraints") or coverage_summary.get("bridge_terms"):
+                lines.extend(
+                    [
+                        f"Coverage missing constraints: {coverage_summary.get('missing_constraints') or '-'}",
+                        f"Coverage bridge terms: {coverage_summary.get('bridge_terms') or '-'}",
+                        "",
+                    ]
+                )
+            if source_filter.get("block_reason_counts"):
+                block_reasons = ", ".join(
+                    f"{key}={value}"
+                    for key, value in sorted(source_filter.get("block_reason_counts", {}).items())
+                )
+                lines.extend([f"Blocked source reasons: {block_reasons}", ""])
+            if full_page_fetch.get("quality_counts") or full_page_fetch.get("method_counts"):
+                quality = ", ".join(
+                    f"{key}={value}"
+                    for key, value in sorted(full_page_fetch.get("quality_counts", {}).items())
+                )
+                methods = ", ".join(
+                    f"{key}={value}"
+                    for key, value in sorted(full_page_fetch.get("method_counts", {}).items())
+                )
+                lines.extend(
+                    [
+                        f"Fetch quality counts: {quality or '-'}",
+                        f"Fetch method counts: {methods or '-'}",
+                        "",
+                    ]
+                )
+            if search_queries:
+                lines.extend(["Search queries:", ""])
+                for query in search_queries[:8]:
+                    lines.append(f"- {short_cell(query, 180)}")
+                lines.append("")
+            if evidence_items:
+                lines.extend(
+                    [
+                        "Evidence items:",
+                        "",
+                        "| ID | Source Title | Evidence |",
+                        "|---|---|---|",
+                    ]
+                )
+                for item in evidence_items[:8]:
+                    if not isinstance(item, dict):
+                        continue
+                    evidence_id = short_cell(item.get("evidence_id", "") or "-", 24).replace("|", "\\|")
+                    title = short_cell(item.get("title", ""), 90).replace("|", "\\|")
+                    evidence_text = short_cell(item.get("text", ""), 220).replace("|", "\\|")
+                    lines.append(
+                        f"| {evidence_id} | "
+                        f"{title} | "
+                        f"{evidence_text} |"
+                    )
+                lines.append("")
 
         lines.extend(
             [
@@ -628,6 +751,8 @@ def run_gaia_evaluation(args: argparse.Namespace) -> dict[str, Any]:
     print(f"[INFO] compact_search_evidence={args.compact_search_evidence}")
     print("[INFO] query_planner=signal")
     print(f"[INFO] enable_evidence_driven_search={args.enable_evidence_driven_search}")
+    print(f"[INFO] enable_deterministic_handler_router={args.enable_deterministic_handler_router}")
+    print(f"[INFO] enable_tool_planner={args.enable_tool_planner}")
     print(f"[INFO] max_parallel_next_hop_queries={args.max_parallel_next_hop_queries}")
     print(f"[INFO] max_stage1_tool_turns={args.max_stage1_tool_turns}")
     print(f"[INFO] enable_stage1_early_stop={args.enable_stage1_early_stop}")
@@ -653,6 +778,8 @@ def run_gaia_evaluation(args: argparse.Namespace) -> dict[str, Any]:
             enable_evidence_prepare=args.evidence_prepare,
             enable_compact_search_evidence=args.compact_search_evidence,
             enable_evidence_driven_search=args.enable_evidence_driven_search,
+            enable_deterministic_handler_router=args.enable_deterministic_handler_router,
+            enable_tool_planner=args.enable_tool_planner,
             max_parallel_next_hop_queries=args.max_parallel_next_hop_queries,
             max_stage1_tool_turns=args.max_stage1_tool_turns,
             previous_best_agent_id=previous_best_agent_id,
@@ -707,6 +834,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--evidence-prepare", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--compact-search-evidence", action="store_true")
     parser.add_argument("--enable-evidence-driven-search", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--enable-deterministic-handler-router", action="store_true")
+    parser.add_argument("--enable-tool-planner", action="store_true")
     parser.add_argument(
         "--max-parallel-next-hop-queries",
         type=int,

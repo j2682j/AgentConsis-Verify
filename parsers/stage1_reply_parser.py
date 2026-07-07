@@ -4,6 +4,7 @@ import re
 from typing import Any
 
 from .json_parse import try_parse_json
+from .stage1_output_parser import Stage1OutputParser
 from score.answer_validator import AnswerValidator
 
 
@@ -20,6 +21,7 @@ class Stage1ReplyParser:
 
     def __init__(self, validator: AnswerValidator | None = None) -> None:
         self.validator = validator or AnswerValidator()
+        self.structured_parser = Stage1OutputParser(answer_validator=self.validator)
 
     def parse(self, reply: str, expected_weight_count: int = 0) -> dict[str, Any]:
         """
@@ -32,26 +34,15 @@ class Stage1ReplyParser:
         Returns:
             - dict[str, Any]: 包含 reasoning、final_answer、weights、parse_completed 與 parse_error。
         """
-        if not str(reply or "").strip():
-            raise ValueError("Empty stage1 reply.")
-
-        parsed_json = try_parse_json(reply)
-        if isinstance(parsed_json, dict):
-            return self._parse_json_reply(parsed_json, expected_weight_count)
-
-        reasoning = self.extract_reasoning(reply)
-        final_answer = self.extract_final_answer(reply)
-        weights = self.extract_weights(reply, expected_weight_count)
-        if not final_answer:
+        parsed = self.structured_parser.parse(
+            reply,
+            expected_weight_count=expected_weight_count,
+        )
+        if parsed.get("tool_request"):
+            raise ValueError("Tool request cannot be parsed as final answer.")
+        if not parsed.get("final_answer"):
             raise ValueError("Missing or invalid FINAL_ANSWER in stage1 reply.")
-
-        return {
-            "reasoning": reasoning,
-            "final_answer": final_answer,
-            "weights": weights,
-            "parse_completed": True,
-            "parse_error": None,
-        }
+        return parsed
 
     def _parse_json_reply(
         self,

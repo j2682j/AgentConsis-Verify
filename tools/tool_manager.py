@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 from .registry import ToolRegistry
@@ -62,6 +63,7 @@ class ToolManager:
         from .calculator import CalculatorTool
         from .attachment_reader_tool import AttachmentReaderTool
         from .deterministic_solver_tool import DeterministicSolverTool
+        from .video_transcript_tool import VideoTranscriptTool
 
         calculator = CalculatorTool()
         self.register_tool(calculator)
@@ -74,6 +76,10 @@ class ToolManager:
         deterministic_solver = DeterministicSolverTool()
         self.register_tool(deterministic_solver)
         self.enabled_tools.add(deterministic_solver.name)
+
+        video_transcript = VideoTranscriptTool()
+        self.register_tool(video_transcript)
+        self.enabled_tools.add(video_transcript.name)
 
         try:
             from .search_tool import SearchTool
@@ -169,6 +175,7 @@ class ToolManager:
         Returns:
             - dict[str, Any]: 包含 ok、tool_name、output_text、raw_result 與 error 的工具結果。
         """
+        tool_name, parameters = self._reroute_local_media_tool(tool_name, parameters)
         if tool_name not in self.enabled_tools:
             gap = self.detect_tool_gap(
                 str(parameters.get("input") or parameters.get("question") or ""),
@@ -217,6 +224,78 @@ class ToolManager:
 
         self._record_trace(tool_name, parameters, result, agent_id, stage)
         return result
+
+    _LOCAL_MEDIA_EXTENSIONS = {
+        ".mp3",
+        ".m4a",
+        ".wav",
+        ".flac",
+        ".ogg",
+        ".mp4",
+        ".mov",
+        ".mkv",
+        ".webm",
+    }
+
+    def _reroute_local_media_tool(
+        self,
+        tool_name: str,
+        parameters: dict[str, Any],
+    ) -> tuple[str, dict[str, Any]]:
+        if str(tool_name or "") != "video_transcript":
+            return tool_name, parameters
+
+        params = dict(parameters or {})
+        attachment = params.get("attachment")
+        if isinstance(attachment, dict):
+            extension = self._attachment_extension(attachment)
+            if extension in self._LOCAL_MEDIA_EXTENSIONS:
+                routed = dict(params)
+                routed.setdefault("file_path", attachment.get("file_path") or attachment.get("path"))
+                routed.setdefault(
+                    "question",
+                    params.get("question") or params.get("input") or params.get("query") or "",
+                )
+                routed["attachment"] = dict(attachment)
+                routed["rerouted_from"] = "video_transcript"
+                return "attachment_reader", routed
+
+        value = str(
+            params.get("file_path")
+            or params.get("path")
+            or params.get("url")
+            or params.get("input")
+            or params.get("query")
+            or ""
+        ).strip()
+        if self._looks_like_local_media_path(value):
+            routed = dict(params)
+            routed.setdefault("file_path", value)
+            routed.setdefault(
+                "question",
+                params.get("question") or params.get("input") or params.get("query") or "",
+            )
+            routed["rerouted_from"] = "video_transcript"
+            return "attachment_reader", routed
+
+        return tool_name, parameters
+
+    def _looks_like_local_media_path(self, value: str) -> bool:
+        candidate = str(value or "").strip()
+        if not candidate:
+            return False
+        if candidate.lower().startswith(("http://", "https://")):
+            return False
+        return Path(candidate).suffix.lower() in self._LOCAL_MEDIA_EXTENSIONS
+
+    def _attachment_extension(self, attachment: dict[str, Any]) -> str:
+        extension = str(attachment.get("extension", "") or "").strip().lower()
+        if extension and not extension.startswith("."):
+            extension = f".{extension}"
+        if extension:
+            return extension
+        file_path = str(attachment.get("file_path", "") or attachment.get("path", "") or "")
+        return Path(file_path).suffix.lower()
 
     def normalize_result(self, tool_name: str, raw_result: Any) -> dict[str, Any]:
         """
@@ -314,14 +393,20 @@ class ToolManager:
         answer = str(raw_result.get("answer_text") or raw_result.get("answer") or "").strip()
         if not used or not answer:
             error_message = str(raw_result.get("error", "") or "no deterministic handler matched")
-            return failure_result(
+            result = failure_result(
                 "deterministic_solver",
                 status="unsupported",
                 error_code="deterministic_handler_not_found",
                 error_message=error_message,
-                retry_hint="Use another registered capability or report a deterministic tool gap.",
+                retry_hint=(
+                    str(raw_result.get("next_action_hint", "") or "")
+                    or "Use another registered capability or report a deterministic tool gap."
+                ),
                 raw_result=raw_result,
             )
+            result["missing_inputs"] = list(raw_result.get("missing_inputs") or [])
+            result["next_action_hint"] = str(raw_result.get("next_action_hint", "") or "")
+            return result
         return ToolExecutionResult(
             ok=True,
             tool_name="deterministic_solver",

@@ -53,11 +53,16 @@ class ContextBuilder:
         self.config = config or ContextConfig()
 
     def build(self, **kwargs: Any) -> list[dict[str, str]]:
+        messages, _diagnostics = self.build_with_diagnostics(**kwargs)
+        return messages
+
+    def build_with_diagnostics(self, **kwargs: Any) -> tuple[list[dict[str, str]], dict[str, Any]]:
         packets = self.gather(**kwargs)
         selected = self.select(packets, **kwargs)
         structured = self.structure(selected, **kwargs)
         compressed = self.compress(structured, **kwargs)
-        return self.render(compressed, **kwargs)
+        diagnostics = compressed.get("_context_budget", {})
+        return self.render(compressed, **kwargs), dict(diagnostics or {})
 
     def gather(self, **kwargs: Any) -> list[ContextPacket]:
         raise NotImplementedError

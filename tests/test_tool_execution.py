@@ -7,6 +7,19 @@ from threading import Lock
 
 from tools.tool_cache import ToolCache
 from tools.tool_manager import ToolManager
+from tools.video_transcript_tool import VideoTranscriptTool
+
+
+class FakeAttachmentReader:
+    name = "attachment_reader"
+
+    def run(self, parameters):
+        return {
+            "used": True,
+            "context": f"fake attachment context: {parameters.get('file_path')}",
+            "metadata": {"reader": "fake_reader"},
+            "tool_usage": [],
+        }
 
 
 class CountingToolManager:
@@ -66,6 +79,28 @@ class ToolExecutionTests(unittest.TestCase):
         self.assertEqual(result["status"], "unsupported")
         self.assertEqual(result["error_code"], "deterministic_handler_not_found")
 
+    def test_deterministic_solver_gap_is_preserved(self):
+        result = self.manager.normalize_result(
+            "deterministic_solver",
+            {
+                "used_deterministic_solver": False,
+                "error": "missing required deterministic handler inputs",
+                "missing_inputs": ["table_rows"],
+                "next_action_hint": "Use attachment_reader or provide CSV rows.",
+            },
+        )
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["missing_inputs"], ["table_rows"])
+        self.assertEqual(
+            result["next_action_hint"],
+            "Use attachment_reader or provide CSV rows.",
+        )
+        self.assertEqual(
+            result["retry_hint"],
+            "Use attachment_reader or provide CSV rows.",
+        )
+
     def test_empty_search_result_is_partial_without_evidence(self):
         result = self.manager.normalize_result(
             "search",
@@ -76,6 +111,34 @@ class ToolExecutionTests(unittest.TestCase):
         self.assertEqual(result["status"], "partial")
         self.assertFalse(result["evidence_valid"])
         self.assertTrue(result["retryable"])
+
+    def test_video_transcript_rejects_local_media_path(self):
+        result = VideoTranscriptTool().run({"url": "sample.mp3"})
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["status"], "unsupported")
+        self.assertEqual(result["error_code"], "local_media_requires_attachment_reader")
+
+    def test_manager_reroutes_local_media_video_request_to_attachment_reader(self):
+        self.manager.tools["attachment_reader"] = FakeAttachmentReader()
+
+        result = self.manager.execute_tool(
+            "video_transcript",
+            {
+                "input": "question focus",
+                "attachment": {
+                    "file_path": "C:\\SCP\\data\\gaia\\sample.mp3",
+                    "file_name": "sample.mp3",
+                    "extension": ".mp3",
+                },
+            },
+            agent_id="a1",
+            stage="stage1",
+        )
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["tool_name"], "attachment_reader")
+        self.assertIn("sample.mp3", result["output_text"])
 
     def test_single_flight_executes_identical_parallel_request_once(self):
         manager = CountingToolManager(self._success_result())

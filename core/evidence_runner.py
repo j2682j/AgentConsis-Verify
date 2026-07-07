@@ -1,12 +1,29 @@
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import asdict, is_dataclass
+import hashlib
+from pathlib import Path
+import time
 from typing import Any
 
 from tools.attachment_reader import AttachmentEvidenceBuilder
-from tools.deterministic_solver import DeterministicSolver
-from tools.search_result_builder.evidence_searcher import EvidenceSearcher
+from tools.deterministic_handlers import DeterministicHandlerRouter, HandlerTrustGate
+from tools.search_result_builder.evidence import (
+    EvidenceConverter,
+    SpanBuilder,
+)
+from tools.search_result_builder.retrieval_control import WebRetrievalControl
 from tools.system_routing_contract import SystemRoutingContract
+from tools.tool_planner import ToolPlanningRunner
+from tools.tool_capability_registry import ToolCapabilityRegistry
+from tools.tool_result import ToolExecutionResult, failure_result
+from tools.validation import ToolResultValidator
+from tools.video_transcript_tool import VideoTranscriptTool
+from utils.network_utils import normalize_text
+
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
 class EvidenceRunner:
@@ -38,9 +55,17 @@ class EvidenceRunner:
         attachment_result: str = "",
         routing_contract: SystemRoutingContract | None = None,
         attachment_evidence_builder: AttachmentEvidenceBuilder | None = None,
-        deterministic_solver: DeterministicSolver | None = None,
+        deterministic_solver: Any | None = None,
+        deterministic_handler_router: DeterministicHandlerRouter | None = None,
+        tool_planning_runner: ToolPlanningRunner | None = None,
+        tool_result_validator: ToolResultValidator | None = None,
+        handler_trust_gate: HandlerTrustGate | None = None,
+        span_builder: SpanBuilder | None = None,
+        evidence_converter: EvidenceConverter | None = None,
         compact_search_evidence: bool = False,
         enable_evidence_driven_search: bool = True,
+        enable_deterministic_handler_router: bool = False,
+        enable_tool_planner: bool = False,
         max_parallel_next_hop_queries: int = 2,
     ) -> None:
         self.question = question
@@ -50,9 +75,23 @@ class EvidenceRunner:
         self.attachment_result = attachment_result
         self.routing_contract = routing_contract or SystemRoutingContract()
         self.attachment_evidence_builder = attachment_evidence_builder or AttachmentEvidenceBuilder()
-        self.deterministic_solver = deterministic_solver or DeterministicSolver()
+        self.deterministic_solver = deterministic_solver
+        self.deterministic_handler_router = deterministic_handler_router or DeterministicHandlerRouter()
+        self.tool_planning_runner = tool_planning_runner or ToolPlanningRunner(
+            deterministic_handler_available=enable_deterministic_handler_router,
+        )
+        self.tool_result_validator = tool_result_validator or ToolResultValidator()
+        self.handler_trust_gate = handler_trust_gate or HandlerTrustGate()
+        self.tool_capability_registry = ToolCapabilityRegistry()
+        self.video_transcript_tool = VideoTranscriptTool()
+        self.span_builder = span_builder or SpanBuilder()
+        self.evidence_converter = evidence_converter or EvidenceConverter(
+            span_builder=self.span_builder,
+        )
         self.compact_search_evidence = compact_search_evidence
         self.enable_evidence_driven_search = enable_evidence_driven_search
+        self.enable_deterministic_handler_router = enable_deterministic_handler_router
+        self.enable_tool_planner = enable_tool_planner
         self.max_parallel_next_hop_queries = max(0, max_parallel_next_hop_queries)
 
     def run(self) -> dict[str, Any]:
@@ -67,6 +106,8 @@ class EvidenceRunner:
         """
         routing = self._route_stage1_tools()
         tool_usage: list[dict[str, Any]] = []
+        if self.enable_tool_planner:
+            return self._run_with_tool_plan(routing)
 
         attachment_result = self._resolve_attachment_result()
         search_result = self.search_result.strip()
@@ -102,11 +143,46 @@ class EvidenceRunner:
 
         solver_result = ""
         if routing.get("use_deterministic_solver") or routing.get("use_python_solver"):
-            solver_result, solver_usage = self._build_solver_evidence(
+            solver_result, solver_usage = self._build_deterministic_handler_evidence(
                 attachment_context=attachment_result,
+                search_context=search_result,
             )
             tool_usage.extend(solver_usage)
+            solver_result, retry_usage = self._retry_deterministic_after_gap(
+                solver_result=solver_result,
+                tool_usage=solver_usage,
+                attachment_result=attachment_result,
+                search_result=search_result,
+            )
+            if retry_usage:
+                if any(item.get("tool_name") == "attachment_reader" for item in retry_usage):
+                    attachment_result = self._last_output_for_tool(retry_usage, "attachment_reader") or attachment_result
+                if any(item.get("tool_name") == "search" for item in retry_usage):
+                    search_result = self._last_output_for_tool(retry_usage, "search") or search_result
+                tool_usage.extend(retry_usage)
+        elif self.enable_deterministic_handler_router:
+            handler_result, handler_usage = self._build_deterministic_handler_evidence(
+                attachment_context=attachment_result,
+                search_context=search_result,
+            )
+            solver_result = handler_result
+            tool_usage.extend(handler_usage)
+            solver_result, retry_usage = self._retry_deterministic_after_gap(
+                solver_result=solver_result,
+                tool_usage=handler_usage,
+                attachment_result=attachment_result,
+                search_result=search_result,
+            )
+            if retry_usage:
+                if any(item.get("tool_name") == "attachment_reader" for item in retry_usage):
+                    attachment_result = self._last_output_for_tool(retry_usage, "attachment_reader") or attachment_result
+                if any(item.get("tool_name") == "search" for item in retry_usage):
+                    search_result = self._last_output_for_tool(retry_usage, "search") or search_result
+                tool_usage.extend(retry_usage)
 
+        deterministic_gap = self._deterministic_gap_from_usage(tool_usage)
+        if deterministic_gap:
+            routing["deterministic_tool_gap"] = deterministic_gap
         return {
             "search_result": search_result.strip(),
             "attachment_result": attachment_result.strip(),
@@ -114,6 +190,271 @@ class EvidenceRunner:
             "routing": routing,
             "tool_usage": tool_usage,
         }
+
+    def _run_with_tool_plan(self, routing: dict[str, Any]) -> dict[str, Any]:
+        """
+        Execute evidence preparation according to a validated hybrid tool plan.
+        """
+        tool_usage: list[dict[str, Any]] = []
+        attachment_result = self._resolve_attachment_result()
+        search_result = self.search_result.strip()
+        solver_result = ""
+
+        plan_result = self.tool_planning_runner.plan(
+            question=self.question,
+            attachment=self.attachment,
+            routing=routing,
+        )
+        plan = plan_result.validated_plan
+        tool_usage.append(
+            {
+                "ok": True,
+                "tool_name": "tool_planner",
+                "output_text": self._render_tool_plan(plan.tool_sequence),
+                "raw_result": plan_result.to_dict(),
+                "error": None,
+            }
+        )
+
+        executed: set[str] = set()
+        for step in plan.tool_sequence:
+            tool_name = step.tool_name
+            if tool_name in executed:
+                continue
+            executed.add(tool_name)
+
+            if tool_name == "attachment_reader":
+                if attachment_result:
+                    continue
+                result_text, result_usage = self._build_attachment_evidence()
+                attachment_result = result_text
+                tool_usage.extend(result_usage)
+            elif tool_name == "video_transcript":
+                result_text, result_usage = self._build_video_transcript_evidence()
+                if result_text:
+                    attachment_result = self._merge_contexts(
+                        attachment_result,
+                        result_text,
+                    )
+                tool_usage.extend(result_usage)
+            elif tool_name == "search":
+                if search_result:
+                    continue
+                result_text, result_usage = self._build_search_evidence()
+                search_result = result_text
+                tool_usage.extend(result_usage)
+            elif tool_name == "deterministic_handler":
+                handler_plan = self._select_handler_plan(plan)
+                result_text, result_usage = self._build_deterministic_handler_evidence(
+                    attachment_context=attachment_result,
+                    search_context=search_result,
+                    handler_name=getattr(handler_plan, "handler_name", "") if handler_plan else "",
+                    handler_plan=handler_plan.to_dict() if handler_plan else {},
+                )
+                if result_text:
+                    solver_result = "\n\n".join(
+                        part for part in [solver_result.strip(), result_text.strip()] if part
+                    )
+                tool_usage.extend(result_usage)
+                retry_result, retry_usage = self._retry_deterministic_after_gap(
+                    solver_result=result_text,
+                    tool_usage=result_usage,
+                    attachment_result=attachment_result,
+                    search_result=search_result,
+                    executed=executed,
+                    handler_name=getattr(handler_plan, "handler_name", "") if handler_plan else "",
+                    handler_plan=handler_plan.to_dict() if handler_plan else {},
+                )
+                if retry_usage:
+                    attachment_result = self._last_output_for_tool(retry_usage, "attachment_reader") or attachment_result
+                    search_result = self._last_output_for_tool(retry_usage, "search") or search_result
+                    if retry_result:
+                        solver_result = "\n\n".join(
+                            part for part in [solver_result.strip(), retry_result.strip()] if part
+                        )
+                    tool_usage.extend(retry_usage)
+
+        if (
+            not solver_result
+            and (routing.get("use_deterministic_solver") or routing.get("use_python_solver"))
+            and "deterministic_handler" not in executed
+        ):
+            result_text, result_usage = self._build_deterministic_handler_evidence(
+                attachment_context=attachment_result,
+                search_context=search_result,
+            )
+            solver_result = result_text
+            tool_usage.extend(result_usage)
+
+        deterministic_gap = self._deterministic_gap_from_usage(tool_usage)
+        return {
+            "search_result": search_result.strip(),
+            "attachment_result": attachment_result.strip(),
+            "solver_result": solver_result.strip(),
+            "routing": {
+                **routing,
+                "tool_planner_enabled": True,
+                "tool_plan": plan.to_dict(),
+                "deterministic_tool_gap": deterministic_gap,
+            },
+            "tool_usage": tool_usage,
+        }
+
+    def _render_tool_plan(self, steps: list[Any]) -> str:
+        if not steps:
+            return "No evidence preparation tools selected."
+        return " -> ".join(str(step.tool_name) for step in steps)
+
+    def _select_handler_plan(self, plan: Any) -> Any | None:
+        handler_plans = list(getattr(plan, "handler_plans", []) or [])
+        for status in ("ready", "missing_input"):
+            for handler_plan in handler_plans:
+                if getattr(handler_plan, "status", "") == status and getattr(handler_plan, "handler_name", ""):
+                    return handler_plan
+        return next(
+            (
+                handler_plan
+                for handler_plan in handler_plans
+                if getattr(handler_plan, "handler_name", "")
+            ),
+            None,
+        )
+
+    def _merge_contexts(self, left: str, right: str) -> str:
+        parts = [part.strip() for part in (left, right) if str(part or "").strip()]
+        return "\n\n".join(parts)
+
+    _ATTACHMENT_GAP_INPUTS = {
+        "table_rows",
+        "source_text",
+        "grid",
+        "candidate_words",
+        "edges",
+        "date_values",
+        "numbers",
+        "list_items",
+        "quoted_or_inline_text",
+        "two_coordinate_pairs",
+    }
+    _SEARCH_GAP_INPUTS = {
+        "source_text",
+        "date_values",
+        "numbers",
+        "matching_text",
+        "connected_path",
+    }
+
+    def _retry_deterministic_after_gap(
+        self,
+        *,
+        solver_result: str,
+        tool_usage: list[dict[str, Any]],
+        attachment_result: str,
+        search_result: str,
+        executed: set[str] | None = None,
+        handler_name: str = "",
+        handler_plan: dict[str, Any] | None = None,
+    ) -> tuple[str, list[dict[str, Any]]]:
+        gap = self._deterministic_gap_from_usage(tool_usage)
+        if not gap or solver_result.strip():
+            return solver_result, []
+
+        executed = executed or set()
+        retry_usage: list[dict[str, Any]] = []
+        missing = set(gap.get("missing_inputs", []) or [])
+        updated_attachment = attachment_result
+        updated_search = search_result
+
+        if (
+            not updated_attachment.strip()
+            and self.attachment
+            and "attachment_reader" not in executed
+            and missing & self._ATTACHMENT_GAP_INPUTS
+        ):
+            result_text, result_usage = self._build_attachment_evidence()
+            updated_attachment = result_text
+            retry_usage.extend(self._mark_gap_recovery_usage(result_usage, gap, "attachment_reader"))
+            executed.add("attachment_reader")
+
+        if (
+            not updated_search.strip()
+            and "search" not in executed
+            and missing & self._SEARCH_GAP_INPUTS
+        ):
+            result_text, result_usage = self._build_search_evidence()
+            updated_search = result_text
+            retry_usage.extend(self._mark_gap_recovery_usage(result_usage, gap, "search"))
+            executed.add("search")
+
+        if updated_attachment == attachment_result and updated_search == search_result:
+            return solver_result, retry_usage
+
+        retry_result, deterministic_usage = self._build_deterministic_handler_evidence(
+            attachment_context=updated_attachment,
+            search_context=updated_search,
+            handler_name=handler_name,
+            handler_plan=handler_plan or {},
+        )
+        for item in deterministic_usage:
+            item["gap_recovery_retry"] = True
+            item["previous_deterministic_gap"] = gap
+        retry_usage.extend(deterministic_usage)
+        return retry_result or solver_result, retry_usage
+
+    def _mark_gap_recovery_usage(
+        self,
+        usage: list[dict[str, Any]],
+        gap: dict[str, Any],
+        tool_name: str,
+    ) -> list[dict[str, Any]]:
+        marked: list[dict[str, Any]] = []
+        for item in usage:
+            copied = dict(item)
+            copied["gap_recovery_for"] = "deterministic_handler"
+            copied["gap_recovery_tool"] = tool_name
+            copied["previous_deterministic_gap"] = gap
+            marked.append(copied)
+        return marked
+
+    def _last_output_for_tool(
+        self,
+        usage: list[dict[str, Any]],
+        tool_name: str,
+    ) -> str:
+        for item in reversed(usage):
+            if item.get("tool_name") == tool_name:
+                return str(item.get("output_text", "") or "")
+        return ""
+
+    def _deterministic_gap_from_usage(
+        self,
+        tool_usage: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        for item in reversed(tool_usage):
+            if item.get("tool_name") != "deterministic_handler_router":
+                continue
+            if item.get("ok"):
+                return {}
+            missing = list(item.get("missing_inputs") or [])
+            if not missing:
+                raw = item.get("raw_result") if isinstance(item.get("raw_result"), dict) else {}
+                missing = list(raw.get("missing_inputs") or [])
+            if not missing:
+                raw = item.get("raw_result") if isinstance(item.get("raw_result"), dict) else {}
+                selected = (raw.get("structured_result") or {}).get("selected_match") or {}
+                missing = list(selected.get("missing_inputs") or [])
+            if not missing:
+                continue
+            raw = item.get("raw_result") if isinstance(item.get("raw_result"), dict) else {}
+            return {
+                "handler_name": item.get("handler_name") or raw.get("handler_name", ""),
+                "status": item.get("status") or raw.get("status", ""),
+                "missing_inputs": missing,
+                "next_action_hint": item.get("next_action_hint") or raw.get("next_action_hint", ""),
+                "error": item.get("error") or raw.get("error", ""),
+                "selected_match": (raw.get("structured_result") or {}).get("selected_match", {}),
+            }
+        return {}
 
     def _route_stage1_tools(self) -> dict[str, Any]:
         """
@@ -192,7 +533,7 @@ class EvidenceRunner:
         try:
             result = self.attachment_evidence_builder.build(self.question, self.attachment)
         except Exception as exc:
-            return "", [
+            return self._validate_tool_context("attachment_reader", "", [
                 {
                     "ok": False,
                     "tool_name": "attachment_reader",
@@ -200,8 +541,107 @@ class EvidenceRunner:
                     "raw_result": None,
                     "error": str(exc),
                 }
+            ])
+        return self._validate_tool_context(
+            "attachment_reader",
+            str(result.get("context", "") or ""),
+            list(result.get("tool_usage", []) or []),
+        )
+
+    def _build_video_transcript_evidence(self) -> tuple[str, list[dict[str, Any]]]:
+        """
+        從題目中的影片 URL 擷取 transcript evidence。
+
+        Args:
+            - 無。
+
+        Returns:
+            - str: 可放入 Stage1 attachment_result 的影片 transcript context。
+            - list[dict[str, Any]]: video_transcript 工具執行紀錄。
+        """
+        url = self.tool_capability_registry.extract_video_url(self.question)
+        if not url:
+            result = failure_result(
+                "video_transcript",
+                status="unsupported",
+                error_code="missing_video_url",
+                error_message="No remote video URL found in the question.",
+                retry_hint="Use search or attachment_reader if the video is provided another way.",
+            )
+            return self._validate_tool_context("video_transcript", "", [result])
+        try:
+            raw = self.video_transcript_tool.run(
+                {
+                    "url": url,
+                    "question": self.question,
+                    "language": "en",
+                    "max_chars": 24000,
+                    "allow_asr": True,
+                }
+            )
+        except Exception as exc:
+            result = failure_result(
+                "video_transcript",
+                status="retryable_failure",
+                error_code="video_transcript_exception",
+                error_message=f"{type(exc).__name__}: {exc}",
+                retryable=True,
+                retry_hint="Retry with another transcript source or use search fallback.",
+            )
+            return self._validate_tool_context("video_transcript", "", [result])
+
+        if isinstance(raw, dict):
+            result = dict(raw)
+            result.setdefault("tool_name", "video_transcript")
+            output_text = str(result.get("output_text") or result.get("raw_result") or "")
+            if result.get("ok") and output_text:
+                result["output_text"] = output_text
+                result.setdefault("evidence_valid", True)
+                return self._validate_tool_context(
+                    "video_transcript",
+                    self._render_video_transcript_evidence(output_text),
+                    [result],
+                )
+            result.setdefault("output_text", "")
+            result.setdefault("error", result.get("error_message"))
+            return self._validate_tool_context("video_transcript", "", [result])
+
+        output_text = str(raw or "").strip()
+        if not output_text:
+            result = failure_result(
+                "video_transcript",
+                status="partial",
+                error_code="empty_video_transcript",
+                error_message="video_transcript returned empty output",
+                retryable=True,
+                retry_hint="Use search fallback or another media source.",
+            )
+            return self._validate_tool_context("video_transcript", "", [result])
+        result = ToolExecutionResult(
+            ok=True,
+            tool_name="video_transcript",
+            status="success",
+            output_text=output_text,
+            raw_result={"url": url, "transcript": output_text},
+            evidence_valid=True,
+        ).to_dict()
+        return self._validate_tool_context(
+            "video_transcript",
+            self._render_video_transcript_evidence(output_text),
+            [result],
+        )
+
+    def _render_video_transcript_evidence(self, transcript: str) -> str:
+        cleaned = normalize_text(transcript)
+        if not cleaned:
+            return ""
+        return "\n".join(
+            [
+                "Video Evidence:",
+                "Source Title: Video transcript",
+                f"Evidence: {cleaned}",
             ]
-        return str(result.get("context", "") or ""), list(result.get("tool_usage", []) or [])
+        ).strip()
 
     def _build_search_evidence(self) -> tuple[str, list[dict[str, Any]]]:
         """
@@ -214,36 +654,39 @@ class EvidenceRunner:
             - str: search evidence 文字。
             - list[dict[str, Any]]: search tool 的執行結果紀錄。
         """
-        if self.tool_manager is None or not hasattr(self.tool_manager, "execute_tool"):
-            return "", [
-                {
-                    "ok": False,
-                    "tool_name": "search",
-                    "output_text": "",
-                    "raw_result": None,
-                    "error": "tool_manager with execute_tool is not available",
-                }
-            ]
-
         try:
-            searcher = EvidenceSearcher(
-                tool_manager=self.tool_manager,
-                enable_evidence_driven_search=self.enable_evidence_driven_search,
-                max_parallel_next_hop_queries=self.max_parallel_next_hop_queries,
-            )
-            output = searcher.search(
-                self.question,
+            controller = WebRetrievalControl(
                 max_queries=3,
                 max_results_per_query=5,
-                max_full_page_results=2,
-                agent_id="network_shared",
-                stage="stage1_evidence",
+                max_pages_to_fetch=6,
+                max_chunks_per_url=10,
+                max_corpus_records=120,
+                max_iter=3 if self.enable_evidence_driven_search else 1,
+                top_k=10,
+                min_retrieval_score=0.0,
+                relative_score_margin=1.0,
+                embedding_batch_size=8,
+            )
+            output = controller.run(
+                self.question,
+                output_dir=self._web_retrieval_output_dir(),
+            )
+            output_dict = self._dataclass_to_dict(output)
+            evidence_items = self._web_retrieval_evidence_items(output_dict)
+            answer_candidates: list[dict[str, Any]] = []
+            summary = self._render_web_retrieval_evidence(
+                evidence_items,
+                answer_candidates=answer_candidates,
             )
             result = {
-                "ok": bool(output.summary.strip()),
+                "ok": bool(summary.strip()),
                 "tool_name": "search",
-                "output_text": output.summary,
-                "raw_result": searcher.to_dict(output),
+                "output_text": summary,
+                "raw_result": self._web_retrieval_raw_result(
+                    output_dict=output_dict,
+                    evidence_items=evidence_items,
+                    answer_candidates=answer_candidates,
+                ),
                 "error": None,
             }
         except Exception as exc:
@@ -254,7 +697,417 @@ class EvidenceRunner:
                 "raw_result": None,
                 "error": str(exc),
             }
-        return str(result.get("output_text", "") or ""), [result]
+        return self._validate_tool_context(
+            "search",
+            str(result.get("output_text", "") or ""),
+            [result],
+        )
+
+    def _web_retrieval_output_dir(self) -> Path:
+        """
+        建立單題 WebRetrievalControl 的輸出目錄。
+
+        Args:
+            - 無。
+
+        Returns:
+            - Path: 本題 corpus、embedding 與 trace 的輸出目錄。
+        """
+        digest = hashlib.sha1(
+            normalize_text(self.question).encode("utf-8")
+        ).hexdigest()[:12]
+        timestamp = int(time.time() * 1000)
+        return (
+            PROJECT_ROOT
+            / "outputs"
+            / "web_retrieval_runtime"
+            / f"{digest}_{timestamp}"
+        )
+
+    def _web_retrieval_evidence_items(
+        self,
+        output_dict: dict[str, Any],
+        *,
+        max_items: int = 5,
+        max_chars: int = 450,
+    ) -> list[dict[str, Any]]:
+        """
+        從 WebRetrievalControl trace 選出可傳給 Stage1 Agent 的 evidence chunks。
+
+        Args:
+            - output_dict: WebRetrievalControl 的 JSON-safe trace。
+            - max_items: 最多輸出多少 evidence items。
+            - max_chars: 單筆 evidence 最大字元數。
+
+        Returns:
+            - list[dict[str, Any]]: 精簡後的 evidence items。
+        """
+        self.evidence_converter.max_items = max(1, max_items)
+        self.evidence_converter.max_chars = max(120, max_chars)
+        return self.evidence_converter.convert_web_retrieval_output(
+            output_dict,
+            question=self.question,
+        )
+
+    def _render_web_retrieval_evidence(
+        self,
+        evidence_items: list[dict[str, Any]],
+        answer_candidates: list[dict[str, Any]] | None = None,
+    ) -> str:
+        """
+        將 WebRetrievalControl evidence items 轉成 Stage1 prompt context。
+
+        Args:
+            - evidence_items: 精簡後的 evidence items。
+
+        Returns:
+            - str: 只包含 source title 與 evidence 內容的 prompt 區塊。
+        """
+        lines = ["Evidence:"]
+        if not evidence_items:
+            lines.append("None")
+            return "\n".join(lines)
+
+        for index, item in enumerate(evidence_items, start=1):
+            lines.extend(
+                [
+                    f"[E{index}]",
+                    f"Source Title: {item.get('title') or item.get('source_id') or 'Unknown'}",
+                    f"Evidence: {item.get('text', '')}",
+                ]
+            )
+        candidates = list(answer_candidates or [])
+        if candidates:
+            lines.extend(["", "Candidate Answers:"])
+            for index, candidate in enumerate(candidates[:5], start=1):
+                text = normalize_text(candidate.get("text", ""))
+                if text:
+                    lines.append(f"{index}. {text}")
+        return "\n".join(lines).strip()
+
+    def _web_retrieval_raw_result(
+        self,
+        *,
+        output_dict: dict[str, Any],
+        evidence_items: list[dict[str, Any]],
+        answer_candidates: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
+        """
+        建立 GAIA log 可讀且與舊 search summary 大致相容的 raw_result。
+
+        Args:
+            - output_dict: WebRetrievalControl 的完整 trace。
+            - evidence_items: Stage1 實際收到的 evidence items。
+
+        Returns:
+            - dict[str, Any]: 可序列化 search raw result。
+        """
+        web_searches = list(output_dict.get("web_searches") or [])
+        retrieval = output_dict.get("retrieval") or {}
+        rounds = list(retrieval.get("rounds") or [])
+        searched_queries = list(retrieval.get("searched_queries") or [])
+        next_queries = [
+            normalize_text(round_info.get("next_query", ""))
+            for round_info in rounds
+            if normalize_text(round_info.get("next_query", ""))
+        ]
+        source_count = sum(
+            int(search.get("result_count", 0) or 0)
+            for search in web_searches
+        )
+        blocked_source_count = int(
+            (output_dict.get("diagnostics") or {}).get(
+                "blocked_source_count",
+                0,
+            )
+            or 0
+        )
+        diagnostics = {
+            **dict(output_dict.get("diagnostics") or {}),
+            "initial_web_preprocessing": {
+                "source_pipeline": (
+                    (output_dict.get("diagnostics") or {}).get("corpus_pipeline")
+                    or "web_search->seer_source_filter->full_page_fetch->clean->chunk->dedup->e5_faiss"
+                ),
+                "labeler_stage": {
+                    "position": "after_faiss_retrieval_before_filter",
+                    "adapter": "EfficientRAGLabelerAdapter",
+                    "implementation": "efficientrag_pretrained_sequence_token_model",
+                    "checkpoint": str(PROJECT_ROOT / "models" / "labeler_mixed_v1"),
+                    "device": "cpu",
+                },
+                "source_count": source_count,
+                "filtered_source_count": (output_dict.get("diagnostics") or {}).get(
+                    "filtered_source_count",
+                    0,
+                ),
+                "blocked_source_count": blocked_source_count,
+                "corpus_record_count": output_dict.get("corpus_record_count", 0),
+                "fetched_pages": (output_dict.get("diagnostics") or {}).get(
+                    "fetched_page_count",
+                    0,
+                ),
+                "source_filter": (output_dict.get("diagnostics") or {}).get(
+                    "source_filter",
+                    {},
+                ),
+                "full_page_fetch": (output_dict.get("diagnostics") or {}).get(
+                    "full_page_fetch",
+                    {},
+                ),
+                "sufficiency_decision": "delegated_to_web_retrieval_control",
+            },
+            "initial_retrieval_decision": {
+                "controller": "WebRetrievalControl",
+                "initial_retrieval_query": (output_dict.get("diagnostics") or {}).get(
+                    "initial_retrieval_query",
+                    "",
+                ),
+                "stop_reason": retrieval.get("stop_reason", ""),
+            },
+            "final_retrieval_decision": {
+                "controller": "WebRetrievalControl",
+                "stop_reason": retrieval.get("stop_reason", ""),
+                "searched_queries": searched_queries,
+            },
+            "sufficiency_method": {
+                "controller": "WebRetrievalControl",
+                "signals": [
+                    "query_generation",
+                    "seer_source_filter",
+                    "e5_faiss_retrieval",
+                    "efficientrag_labeler",
+                    "efficientrag_filter",
+                ],
+            },
+            "web_retrieval_control": {
+                "enabled": True,
+                "round_count": len(rounds),
+                "searched_queries": searched_queries,
+                "retrieval_stop_reason": retrieval.get("stop_reason", ""),
+                "unique_document_count": retrieval.get(
+                    "unique_document_count",
+                    0,
+                ),
+            },
+            "coverage_summary": (output_dict.get("diagnostics") or {}).get(
+                "coverage_summary",
+                {},
+            ),
+            "evidence_conversion": self._dataclass_to_dict(
+                self.evidence_converter.last_diagnostics,
+            ),
+            "evidence_driven_search": {
+                "enabled": self.enable_evidence_driven_search,
+                "triggered": len(searched_queries) > 1 or bool(next_queries),
+                "mode": "web_retrieval_control_iterative_filter",
+                "queries": next_queries,
+                "query_ids": [
+                    f"H{index}"
+                    for index, _ in enumerate(next_queries, start=1)
+                ],
+                "parallel_query_count": 0,
+                "max_parallel_queries": self.max_parallel_next_hop_queries,
+                "evidence_gain": len(evidence_items),
+                "stop_reason": retrieval.get("stop_reason", ""),
+            },
+            "final_counts": {
+                "query_count": len(output_dict.get("generated_queries") or []),
+                "retrieval_query_count": len(searched_queries),
+                "source_count": source_count,
+                "evidence_count": len(evidence_items),
+                "answer_candidate_count": len(answer_candidates or []),
+                "blocked_source_count": blocked_source_count,
+                "corpus_record_count": output_dict.get(
+                    "corpus_record_count",
+                    0,
+                ),
+            },
+        }
+        diagnostics["pipeline_failure_stage"] = self._web_retrieval_failure_stage(
+            diagnostics,
+            evidence_items=evidence_items,
+            retrieval=retrieval,
+        )
+        return {
+            "question": output_dict.get("question", ""),
+            "queries": output_dict.get("generated_queries", []),
+            "salient_spans": output_dict.get("salient_spans", []),
+            "web_searches": web_searches,
+            "sources": [],
+            "evidence_items": evidence_items,
+            "answer_candidates": list(answer_candidates or []),
+            "summary": self._render_web_retrieval_evidence(
+                evidence_items,
+                answer_candidates=answer_candidates,
+            ),
+            "diagnostics": diagnostics,
+            "blocked_sources": self._web_retrieval_blocked_sources(output_dict),
+            "corpus_path": output_dict.get("corpus_path", ""),
+            "embedding_path": output_dict.get("embedding_path", ""),
+            "retrieval": retrieval,
+        }
+
+    def _web_retrieval_failure_stage(
+        self,
+        diagnostics: dict[str, Any],
+        *,
+        evidence_items: list[dict[str, Any]],
+        retrieval: dict[str, Any],
+    ) -> str:
+        final_counts = diagnostics.get("final_counts") or {}
+        preprocessing = diagnostics.get("initial_web_preprocessing") or {}
+        if int(final_counts.get("source_count", 0) or 0) <= 0:
+            return "no_sources"
+        if int(preprocessing.get("filtered_source_count", 0) or 0) <= 0:
+            return "all_sources_blocked"
+        if int(preprocessing.get("corpus_record_count", 0) or 0) <= 0:
+            return "no_corpus_chunks"
+        if not (retrieval.get("rounds") or []):
+            return "no_retrieval_rounds"
+        if not evidence_items:
+            stop_reason = str(retrieval.get("stop_reason", "") or "")
+            if stop_reason:
+                return f"evidence_conversion_empty:{stop_reason}"
+            return "evidence_conversion_empty"
+        return ""
+
+    def _web_retrieval_blocked_sources(
+        self,
+        output_dict: dict[str, Any],
+    ) -> list[dict[str, Any]]:
+        """
+        將 WebRetrievalControl 擋下的 source 轉成 log 可讀的精簡資料。
+
+        Args:
+            - output_dict: WebRetrievalResult 轉成的 dict。
+
+        Returns:
+            - list[dict[str, Any]]: blocked source detail。
+        """
+        blocked_sources: list[dict[str, Any]] = []
+        for source in output_dict.get("blocked_sources") or []:
+            if not isinstance(source, dict):
+                continue
+            snippet = self._truncate_text(str(source.get("snippet", "") or ""), max_chars=500)
+            raw_preview = self._truncate_text(str(source.get("raw_content", "") or ""), max_chars=500)
+            blocked_sources.append(
+                {
+                    "source_id": source.get("source_id", ""),
+                    "query_id": source.get("query_id", ""),
+                    "rank": source.get("rank", 0),
+                    "title": source.get("title", ""),
+                    "url": source.get("url", ""),
+                    "domain": source.get("domain", ""),
+                    "snippet": snippet,
+                    "raw_content_preview": raw_preview,
+                    "block_reason": source.get("block_reason", ""),
+                    "filter_reasons": list(source.get("filter_reasons") or []),
+                }
+            )
+        return blocked_sources
+
+    def _dataclass_to_dict(self, value: Any) -> Any:
+        """
+        遞迴轉換 dataclass 與 Path，讓 log 可以直接 JSON 序列化。
+
+        Args:
+            - value: 任意 Python 物件。
+
+        Returns:
+            - Any: JSON-safe value。
+        """
+        if is_dataclass(value):
+            return self._dataclass_to_dict(asdict(value))
+        if isinstance(value, list):
+            return [self._dataclass_to_dict(item) for item in value]
+        if isinstance(value, tuple):
+            return [self._dataclass_to_dict(item) for item in value]
+        if isinstance(value, dict):
+            return {
+                str(key): self._dataclass_to_dict(item)
+                for key, item in value.items()
+            }
+        if isinstance(value, Path):
+            return str(value)
+        return value
+
+    def _truncate_text(self, text: str, *, max_chars: int) -> str:
+        cleaned = normalize_text(text)
+        if len(cleaned) <= max_chars:
+            return cleaned
+        return cleaned[:max_chars].rstrip() + " ..."
+
+    def _validate_tool_context(
+        self,
+        tool_name: str,
+        output_text: str,
+        usage: list[dict[str, Any]],
+    ) -> tuple[str, list[dict[str, Any]]]:
+        """
+        對一般工具輸出做 light validation，避免無效輸出進入 Agent context。
+
+        Args:
+            - tool_name: 主要工具名稱。
+            - output_text: 準備放入 context 的文字。
+            - usage: 工具執行紀錄。
+
+        Returns:
+            - tuple[str, list[dict[str, Any]]]: 通過驗證的 context 與補上 validation 的 usage。
+        """
+        items = [dict(item) for item in usage or []]
+        if not items:
+            items = [
+                {
+                    "ok": bool(str(output_text or "").strip()),
+                    "tool_name": tool_name,
+                    "output_text": output_text,
+                    "raw_result": None,
+                    "error": None,
+                }
+            ]
+
+        validated_items: list[dict[str, Any]] = []
+        primary_valid = False
+        for item in items:
+            item_tool = str(item.get("tool_name") or tool_name)
+            item_output = str(item.get("output_text") or "")
+            if item_tool == tool_name and not item_output:
+                item_output = output_text
+            validation = self.tool_result_validator.validate(
+                tool_name=item_tool,
+                raw_result=item.get("raw_result"),
+                output_text=item_output,
+                metadata=item,
+            )
+            item["validation"] = validation.to_dict()
+            item["evidence_valid"] = validation.valid
+            if item_tool == tool_name and validation.valid:
+                primary_valid = True
+            validated_items.append(item)
+
+        if not any(str(item.get("tool_name") or "") == tool_name for item in validated_items):
+            validation = self.tool_result_validator.validate(
+                tool_name=tool_name,
+                raw_result=None,
+                output_text=output_text,
+                metadata={"ok": bool(str(output_text or "").strip())},
+            )
+            validated_items.insert(
+                0,
+                {
+                    "ok": validation.valid,
+                    "tool_name": tool_name,
+                    "output_text": output_text if validation.valid else "",
+                    "raw_result": None,
+                    "error": None,
+                    "validation": validation.to_dict(),
+                    "evidence_valid": validation.valid,
+                },
+            )
+            primary_valid = validation.valid
+
+        return (output_text if primary_valid else ""), validated_items
 
     def _build_solver_evidence(
         self,
@@ -271,40 +1124,68 @@ class EvidenceRunner:
             - str: solver evidence 文字。
             - list[dict[str, Any]]: solver 執行紀錄。
         """
+        return self._build_deterministic_handler_evidence(
+            attachment_context=attachment_context,
+            search_context="",
+        )
+
+    def _build_deterministic_handler_evidence(
+        self,
+        *,
+        attachment_context: str,
+        search_context: str,
+        handler_name: str = "",
+        handler_plan: dict[str, Any] | None = None,
+    ) -> tuple[str, list[dict[str, Any]]]:
+        """
+        Run the deterministic handler router after attachment/search evidence is available.
+        """
         try:
-            result = self.deterministic_solver.solve(
-                self.question,
-                attachment_context=attachment_context,
+            result = self.deterministic_handler_router.run(
+                question=self.question,
+                attachment=self.attachment,
+                attachment_result=attachment_context,
+                search_result=search_context,
+                handler_name=handler_name,
             )
             payload = result.to_dict()
-        except Exception as exc:
-            payload = {
-                "used_deterministic_solver": False,
-                "answer_text": "",
-                "confidence": 0.0,
-                "error": str(exc),
-            }
-
-        used = bool(payload.get("used_deterministic_solver"))
-        answer_text = str(payload.get("answer_text", "") or payload.get("answer", "") or "")
-        confidence = payload.get("confidence", 0.0)
-        context = ""
-        if used and answer_text:
-            context = (
-                "Deterministic solver evidence:\n"
-                f"Answer text: {answer_text}\n"
-                f"Confidence: {confidence}\n"
-                "Instruction: prefer this exact answer for deterministic closed-world tasks."
+            trust = self.handler_trust_gate.validate(
+                result,
+                question=self.question,
+                handler_plan=handler_plan or {},
             )
-        return context, [
-            {
-                "ok": used,
-                "tool_name": "deterministic_solver",
-                "output_text": context,
-                "raw_result": payload,
-                "error": payload.get("error"),
-            }
-        ]
+            context = trust.evidence_text if trust.trusted else ""
+            next_action_hint = result.next_action_hint or (
+                "Recover missing deterministic inputs: " + ", ".join(result.missing_inputs)
+                if result.missing_inputs
+                else ""
+            )
+            return context, [
+                {
+                    "ok": trust.trusted,
+                    "tool_name": "deterministic_handler_router",
+                    "handler_name": result.handler_name,
+                    "planned_handler_name": handler_name,
+                    "handler_plan": handler_plan or {},
+                    "handler_trust": trust.to_dict(),
+                    "status": result.status,
+                    "output_text": context,
+                    "raw_result": payload,
+                    "missing_inputs": list(result.missing_inputs or []),
+                    "next_action_hint": next_action_hint,
+                    "error": result.error or None,
+                }
+            ]
+        except Exception as exc:
+            return "", [
+                {
+                    "ok": False,
+                    "tool_name": "deterministic_handler_router",
+                    "output_text": "",
+                    "raw_result": None,
+                    "error": str(exc),
+                }
+            ]
 
 
 __all__ = ["EvidenceRunner"]

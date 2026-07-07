@@ -13,7 +13,8 @@ from pathlib import Path
 
 from .dataset import GAIADataset
 from .metrics import GAIAMetrics
-from utils.network_utils import answer_equivalence, normalize_for_exact
+from .answer_matcher import exact_match as gaia_exact_match
+from .answer_matcher import partial_match as gaia_partial_match
 
 
 class GAIAEvaluator:
@@ -354,19 +355,7 @@ class GAIAEvaluator:
         ??雿:
             ?航霈???湔?拐辣???獢??冽????亥?嚗?靘?怠?舐Ⅱ隤雿??
         """
-        if not predicted or not expected:
-            return False
-
-        pred_normalized = self._normalize_answer(predicted)
-        exp_normalized = self._normalize_answer(expected)
-        if pred_normalized == exp_normalized:
-            return True
-        if normalize_for_exact(predicted) == normalize_for_exact(expected):
-            return True
-        try:
-            return answer_equivalence(predicted, expected)
-        except Exception:
-            return False
+        return gaia_exact_match(predicted, expected)
 
     def _check_partial_match(self, predicted: str, expected: str) -> bool:
         """
@@ -382,27 +371,7 @@ class GAIAEvaluator:
         ??雿:
             ?航霈???湔?拐辣???獢??冽????亥?嚗?靘?怠?舐Ⅱ隤雿??
         """
-        if not predicted or not expected:
-            return False
-
-        # 璅???銝?
-        pred_normalized = self._normalize_answer(predicted)
-        exp_normalized = self._normalize_answer(expected)
-
-        # 瑼Ｘ??頂
-        if exp_normalized in pred_normalized or pred_normalized in exp_normalized:
-            return True
-
-        # 瑼Ｘ?閰??
-        pred_words = set(pred_normalized.split())
-        exp_words = set(exp_normalized.split())
-
-        if not exp_words:
-            return False
-
-        # 憒?頞?70%?????臬?曉?葫銝哨?隤?典??寥?
-        overlap = len(pred_words & exp_words)
-        return overlap / len(exp_words) >= 0.7
+        return gaia_partial_match(predicted, expected)
 
     def _normalize_answer(self, answer: str) -> str:
         """
