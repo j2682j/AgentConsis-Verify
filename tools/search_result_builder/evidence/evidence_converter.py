@@ -212,21 +212,37 @@ class EvidenceConverter:
         text = normalize_text(document.get("text", ""))
         if not text:
             return None
+        if document.get("valid_for_evidence") is False:
+            return None
+        support_level = normalize_text(document.get("support_level", "bridge"))
+        if support_level == "unsupported":
+            return None
 
         matched_terms = [
             normalize_text(str(term or ""))
-            for term in document.get("useful_tokens") or []
+            for term in (
+                document.get("answer_spans")
+                or document.get("bridge_spans")
+                or document.get("useful_spans")
+                or document.get("useful_tokens")
+                or []
+            )
         ]
         matched_terms = [
             term
             for term in matched_terms
             if self._is_informative_term(term)
         ]
-        evidence_text, matched_spans = self.span_builder.build_context(
-            text,
-            matched_terms,
-            fallback_chars=self.max_chars,
-        )
+        utility_context = normalize_text(document.get("utility_context", ""))
+        if support_level in {"direct", "direct_strong", "direct_weak"} and utility_context:
+            evidence_text = utility_context
+            matched_spans = document.get("matched_spans") or []
+        else:
+            evidence_text, matched_spans = self.span_builder.build_context(
+                text,
+                matched_terms,
+                fallback_chars=self.max_chars,
+            )
         evidence_text = self._truncate(evidence_text or text, self.max_chars)
         if not evidence_text:
             return None
@@ -236,6 +252,7 @@ class EvidenceConverter:
         label_priority = self._label_priority(
             sequence_tag,
             bool(matched_terms),
+            support_level=support_level,
             has_strong_terms=has_strong_terms,
         )
         fallback = label_priority <= 0
@@ -256,15 +273,41 @@ class EvidenceConverter:
             "text": evidence_text,
             "url": url,
             "matched_terms": matched_terms[:16],
-            "matched_spans": [asdict(span) for span in matched_spans],
+            "matched_spans": self._span_dicts(matched_spans),
             "retrieval_score": retrieval_score,
             "sequence_tag": sequence_tag,
             "label": normalize_text(document.get("label", "")),
+            "support_level": support_level,
+            "support_strength": normalize_text(document.get("support_strength", "")),
+            "normalized_constraints": [
+                normalize_text(str(item or ""))
+                for item in (document.get("normalized_constraints") or [])
+                if normalize_text(str(item or ""))
+            ],
+            "answer_spans": [
+                normalize_text(str(span or ""))
+                for span in (document.get("answer_spans") or [])
+                if normalize_text(str(span or ""))
+            ],
+            "bridge_spans": [
+                normalize_text(str(span or ""))
+                for span in (document.get("bridge_spans") or [])
+                if normalize_text(str(span or ""))
+            ],
+            "utility_reasons": [
+                normalize_text(str(reason or ""))
+                for reason in (document.get("utility_reasons") or [])
+                if normalize_text(str(reason or ""))
+            ],
+            "span_recovery_used": bool(document.get("span_recovery_used", False)),
             "round_index": round_index,
             "retrieval_query": query,
             "selection_reason": self._selection_reason(
                 sequence_tag=sequence_tag,
                 matched_terms=matched_terms,
+                support_level=support_level,
+                utility_reasons=document.get("utility_reasons") or [],
+                span_recovery_used=bool(document.get("span_recovery_used", False)),
                 fallback=fallback,
             ),
         }
@@ -283,12 +326,19 @@ class EvidenceConverter:
         sequence_tag: str,
         has_terms: bool,
         *,
+        support_level: str = "",
         has_strong_terms: bool = False,
     ) -> float:
+        if support_level in {"direct", "direct_strong"}:
+            return 3.5 if has_terms else 3.0
+        if support_level == "direct_weak":
+            return 3.15 if has_terms else 2.75
+        if support_level == "bridge" and has_terms:
+            return 2.4
         if sequence_tag == "<FINISH>":
             return 3.0 if has_terms else 2.2
         if sequence_tag == "<CONTINUE>":
-            return 2.6 if has_terms else 1.5
+            return 2.6 if has_terms else 0.0
         if sequence_tag == "<TERMINATE>":
             return 2.2 if has_strong_terms else 0.0
         return 0.0
@@ -298,10 +348,23 @@ class EvidenceConverter:
         *,
         sequence_tag: str,
         matched_terms: list[str],
+        support_level: str,
+        utility_reasons: list[Any],
+        span_recovery_used: bool,
         fallback: bool,
     ) -> str:
         if fallback:
             return "fallback_retrieval_order"
+        if support_level in {"direct", "direct_strong"}:
+            return "direct_answer_span"
+        if support_level == "direct_weak":
+            return "weak_direct_answer_span"
+        if support_level == "bridge":
+            if span_recovery_used:
+                return "bridge_recovered_span"
+            if any("terminal_label_demoted" in str(reason) for reason in utility_reasons):
+                return "bridge_demoted_terminal_span"
+            return "bridge_labeler_span"
         if sequence_tag == "<FINISH>":
             return "primary_labeler_sequence"
         if sequence_tag == "<CONTINUE>":
@@ -318,6 +381,18 @@ class EvidenceConverter:
         strong_terms = sum(1 for term in matched_terms if self._is_strong_term(term))
         span_count = len(matched_spans)
         return min(1.0, 0.2 + 0.18 * strong_terms + 0.12 * span_count)
+
+    def _span_dicts(self, matched_spans: list[Any]) -> list[dict[str, Any]]:
+        result: list[dict[str, Any]] = []
+        for span in matched_spans or []:
+            if isinstance(span, dict):
+                result.append(dict(span))
+                continue
+            try:
+                result.append(asdict(span))
+            except TypeError:
+                continue
+        return result
 
     def _coverage_score(self, evidence_text: str, question_terms: set[str]) -> float:
         if not question_terms:

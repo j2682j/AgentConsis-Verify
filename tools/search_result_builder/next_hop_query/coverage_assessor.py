@@ -91,6 +91,7 @@ class CoverageAssessor:
         *,
         question: str,
         documents: Iterable[Any],
+        intent_plan: Any | None = None,
     ) -> CoverageAssessment:
         question_text = normalize_text(question)
         document_list = list(documents or [])
@@ -111,7 +112,7 @@ class CoverageAssessor:
                 sufficient=False,
                 coverage_score=0.0,
                 missing_constraints=self._constraints(question_text),
-                answer_type=self._answer_type(question_text),
+                answer_type=self._answer_type(question_text, intent_plan=intent_plan),
                 trigger_reason="no_retrieved_evidence",
             )
 
@@ -130,7 +131,7 @@ class CoverageAssessor:
             else 1.0
         )
 
-        answer_type = self._answer_type(question_text)
+        answer_type = self._answer_type(question_text, intent_plan=intent_plan)
         answer_type_covered = self._answer_type_covered(answer_type, combined_evidence)
         answer_score = 1.0 if answer_type_covered or answer_type == "unknown" else 0.0
         availability_score = min(1.0, len(combined_evidence) / max(1, self.min_evidence_chars * 2))
@@ -215,8 +216,19 @@ class CoverageAssessor:
             return bool(re.search(r"\b\d{5}\b", evidence_text))
         return self._contains_phrase(lowered, constraint)
 
-    def _answer_type(self, question: str) -> str:
+    def _answer_type(self, question: str, *, intent_plan: Any | None = None) -> str:
+        planned = normalize_text(
+            str(getattr(intent_plan, "answer_role", "") if intent_plan else "")
+        ).casefold()
+        if planned and planned != "unknown":
+            return self._normalize_answer_type(planned)
         lowered = question.casefold()
+        if re.search(r"\bwhat\s+does\b.+\bstand\s+for\b", lowered):
+            return "text_span"
+        if re.search(r"\b(?:what|which)\s+writer\b|\bquoted\s+by\b|\bfirst\s+name\b|\blast\s+name\b|\bwho\b", lowered):
+            return "person"
+        if re.search(r"\b(?:ioc|country|nation|airport|station)\s+code\b|\bcode\s+as\s+your\s+answer\b", lowered):
+            return "text_span"
         if "zip code" in lowered or "zipcode" in lowered or "five-digit" in lowered:
             return "zip_code"
         if re.search(r"\blist\b|\bseparated by commas\b|\bcomma-separated\b", lowered):
@@ -227,10 +239,31 @@ class CoverageAssessor:
             return "date"
         if re.search(r"\bwhere\b|\bwhich country\b|\bwhich city\b|\bwhich place\b", lowered):
             return "location"
-        if re.search(r"\bwho\b|\bwhose\b", lowered):
-            return "person"
         if re.search(r"\btitle\b|\bname of\b|\bcalled\b", lowered):
             return "title"
+        return "short_phrase"
+
+    def _normalize_answer_type(self, answer_role: str) -> str:
+        role = normalize_text(answer_role).casefold()
+        if role == "count":
+            return "number"
+        if role in {"volume", "duration", "distance"}:
+            return "number"
+        if role == "species":
+            return "text_span"
+        if role in {
+            "zip_code",
+            "list",
+            "number",
+            "date",
+            "location",
+            "person",
+            "title",
+            "organization",
+            "boolean",
+            "text_span",
+        }:
+            return role
         return "short_phrase"
 
     def _answer_type_covered(self, answer_type: str, evidence_text: str) -> bool:

@@ -46,6 +46,10 @@ class SimpleMathRouterHandler:
             answer=str(result.answer_text or result.answer),
             evidence_text="",
             structured_result=result.to_dict(),
+            confidence=float(result.confidence or 0.0),
+            output_type="final_answer",
+            semantic_role=str(result.task_type or "simple_math_answer"),
+            supporting_inputs=[str(inputs.get("question", ""))[:240]],
         )
 
 

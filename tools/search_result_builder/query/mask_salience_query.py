@@ -86,6 +86,9 @@ Do not explain.
 First search target:
 {target}
 
+Answer role:
+{answer_role}
+
 Must include:
 {must_include}
 
@@ -102,6 +105,7 @@ Generate {num_candidates} concise web search queries.
 
 Rules:
 - Use the first search target.
+- Preserve the answer role in every query.
 - Include must_include terms when possible.
 - Avoid avoid_terms and answer guesses.
 
@@ -342,6 +346,7 @@ Return exactly this JSON shape:
         avoid_terms = intent_plan.avoid_terms if intent_plan else []
         preferred_domain = intent_plan.preferred_domain if intent_plan else ""
         target = intent_plan.target if intent_plan else ""
+        answer_role = intent_plan.answer_role if intent_plan else "unknown"
         return [
             {"role": "system", "content": self.SYSTEM_PROMPT},
             {
@@ -349,6 +354,7 @@ Return exactly this JSON shape:
                 "content": self.USER_TEMPLATE.format(
                     question=question,
                     target=target or "Find the best first-hop source for the question.",
+                    answer_role=answer_role or "unknown",
                     must_include=self._format_terms(must_include),
                     avoid_terms=self._format_terms(avoid_terms),
                     preferred_domain=preferred_domain or "",

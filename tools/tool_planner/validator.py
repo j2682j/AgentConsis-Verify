@@ -80,13 +80,15 @@ class ToolPlanValidator:
         for handler_plan in plan.handler_plans:
             tool_name = str(handler_plan.tool_name or "deterministic_handler").strip()
             handler_name = str(handler_plan.handler_name or "").strip()
+            required_handler_role = str(handler_plan.required_handler_role or "").strip()
             if tool_name != "deterministic_handler":
                 errors.append(f"handler_plan_non_deterministic_tool_removed:{tool_name}")
                 continue
-            if not handler_name:
-                errors.append("empty_handler_name_removed")
+            if not handler_name and not required_handler_role:
+                errors.append("empty_handler_plan_removed")
                 continue
-            if handler_name in seen_handlers:
+            dedupe_key = handler_name or f"role:{required_handler_role}"
+            if dedupe_key in seen_handlers:
                 errors.append(f"duplicate_handler_plan_removed:{handler_name}")
                 continue
             status = str(handler_plan.status or "not_applicable").strip()
@@ -97,6 +99,7 @@ class ToolPlanValidator:
                 HandlerPlan(
                     tool_name="deterministic_handler",
                     handler_name=handler_name,
+                    required_handler_role=required_handler_role,
                     reason=handler_plan.reason,
                     required_inputs=list(handler_plan.required_inputs or []),
                     available_inputs=dict(handler_plan.available_inputs or {}),
@@ -106,7 +109,7 @@ class ToolPlanValidator:
                     confidence=float(handler_plan.confidence or 0.0),
                 )
             )
-            seen_handlers.add(handler_name)
+            seen_handlers.add(dedupe_key)
 
         return ToolPlan(
             requires_tools=bool(normalized_steps),

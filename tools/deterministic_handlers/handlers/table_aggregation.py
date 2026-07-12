@@ -195,17 +195,25 @@ class TableAggregationRouterHandler:
         return format(value.normalize(), "f")
 
     def _result(self, task_type: str, answer: str, inputs: dict[str, Any]) -> HandlerResult:
+        structured = {
+            "task_type": task_type,
+            "condition": dict(inputs.get("condition") or {}),
+            "target_column": inputs.get("target_column", ""),
+            "matched_row_count": len(inputs.get("filtered") or []),
+            "rows": list(inputs.get("filtered") or [])[:10],
+        }
         return HandlerResult(
             handler_name=self.name,
             status="ok",
             answer=answer,
-            structured_result={
-                "task_type": task_type,
-                "condition": dict(inputs.get("condition") or {}),
-                "target_column": inputs.get("target_column", ""),
-                "matched_row_count": len(inputs.get("filtered") or []),
-                "rows": list(inputs.get("filtered") or [])[:10],
-            },
+            structured_result=structured,
+            output_type="final_answer",
+            semantic_role=task_type,
+            supporting_inputs=[
+                f"condition={structured['condition']}",
+                f"target_column={structured['target_column']}",
+                f"matched_row_count={structured['matched_row_count']}",
+            ],
         )
 
 

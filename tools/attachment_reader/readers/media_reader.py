@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import json
 import os
+import re
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -28,6 +29,7 @@ class MediaAttachmentReader:
         prompt = (
             "You are extracting evidence from an image attachment for a GAIA benchmark question.\n"
             "Read the image carefully. Return concise structured text only.\n"
+            "Do not include reasoning, chain-of-thought, or <think> text.\n"
             "Include:\n"
             "- visible text/OCR, if any\n"
             "- important objects, layout, chart/table values, board positions, symbols, numbers, colors, and labels\n"
@@ -73,10 +75,18 @@ class MediaAttachmentReader:
             content = str(data.get("response", "") or "").strip()
         if not content:
             content = str(message.get("thinking", "") or "").strip()
+        content = self._strip_thinking(content)
         if not content:
             raise RuntimeError("Ollama vision response did not include text content")
 
         return f"Ollama vision model: {self.config.vision_model}\n{content}"
+
+    @staticmethod
+    def _strip_thinking(text: str) -> str:
+        cleaned = str(text or "")
+        cleaned = re.sub(r"<think>.*?</think>", "", cleaned, flags=re.IGNORECASE | re.DOTALL)
+        cleaned = re.sub(r"^\s*<think>.*?(?=\{|\w)", "", cleaned, flags=re.IGNORECASE | re.DOTALL)
+        return cleaned.strip()
 
     def _ollama_chat_endpoint(self) -> str:
         """_ollama_chat_endpoint 的內部輔助實作。"""

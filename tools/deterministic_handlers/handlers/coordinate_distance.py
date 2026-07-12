@@ -97,6 +97,9 @@ class CoordinateDistanceRouterHandler:
                 "unit": unit,
             },
             confidence=0.95,
+            output_type="final_answer",
+            semantic_role=task_type,
+            supporting_inputs=[str(first), str(second)],
         )
 
     def _dms_pairs(self, text: str) -> list[tuple[float, float]]:

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import sys
 import time
@@ -23,6 +24,10 @@ from benchmark.gaia.dataset import GAIADataset
 from benchmark.gaia.evaluator import GAIAEvaluator
 from core.config import AgentConfig
 from core.network import Network
+from score.versa_prm_scorer import (
+    DEFAULT_VERSA_PRM_BASE_MODEL_ID,
+    DEFAULT_VERSA_PRM_MODEL_ID,
+)
 from tools.tool_manager import ToolManager
 
 
@@ -71,7 +76,18 @@ def dataclass_to_dict(value: Any) -> Any:
     if isinstance(value, set):
         return [dataclass_to_dict(item) for item in sorted(value, key=str)]
     if isinstance(value, dict):
-        return {str(key): dataclass_to_dict(item) for key, item in value.items()}
+        converted = {str(key): dataclass_to_dict(item) for key, item in value.items()}
+        if "verifier_results" in converted and "judge_results" not in converted:
+            converted["judge_results"] = converted["verifier_results"]
+        if "verifier_id" in converted and "judge_agent_id" not in converted:
+            converted["judge_agent_id"] = converted["verifier_id"]
+        if "verifier_score" in converted and "judge_score" not in converted:
+            converted["judge_score"] = converted["verifier_score"]
+        if "verifier_scores" in converted and "judge_scores" not in converted:
+            converted["judge_scores"] = converted["verifier_scores"]
+        if "avg_verifier_score" in converted and "avg_judge_score" not in converted:
+            converted["avg_judge_score"] = converted["avg_verifier_score"]
+        return converted
     if isinstance(value, Decimal):
         return int(value) if value == value.to_integral_value() else float(value)
     if isinstance(value, Path):
@@ -176,6 +192,12 @@ def run_sample(
     max_stage1_tool_turns: int,
     previous_best_agent_id: str | None,
     stage1_early_stop_max_retries: int,
+    stage2_verifier: str,
+    versa_prm_model: str,
+    versa_prm_base_model: str,
+    versa_prm_device: str,
+    versa_prm_dtype: str,
+    versa_prm_local_files_only: bool,
 ) -> dict[str, Any]:
     start_time = time.time()
     network = Network(
@@ -197,6 +219,13 @@ def run_sample(
         max_stage1_tool_turns=max_stage1_tool_turns,
         previous_best_agent_id=previous_best_agent_id,
         stage1_early_stop_max_retries=stage1_early_stop_max_retries,
+        reference_answer=str(sample.get("final_answer", "") or ""),
+        stage2_verifier=stage2_verifier,
+        versa_prm_model=versa_prm_model,
+        versa_prm_base_model=versa_prm_base_model,
+        versa_prm_device=versa_prm_device,
+        versa_prm_dtype=versa_prm_dtype,
+        versa_prm_local_files_only=versa_prm_local_files_only,
     )
 
     try:
@@ -328,7 +357,10 @@ def format_step_scores(step_scores: Any) -> str:
     for index, item in enumerate(step_scores, 1):
         if isinstance(item, dict):
             step = item.get("step", index)
-            score = item.get("score", item.get("judge_score", 0))
+            score = item.get(
+                "reward_probability",
+                item.get("score", item.get("verifier_score", item.get("judge_score", 0))),
+            )
         else:
             step = index
             score = item
@@ -336,21 +368,22 @@ def format_step_scores(step_scores: Any) -> str:
     return ", ".join(parts)
 
 
-def format_judge_score(item: dict[str, Any]) -> str:
+def format_verifier_score(item: dict[str, Any]) -> str:
     step_text = format_step_scores(item.get("step_scores"))
+    verifier_score = item.get("verifier_score", item.get("judge_score", 0))
     if step_text == "-":
-        return str(item.get("judge_score", 0))
-    return f"{item.get('judge_score', 0)} ({step_text})"
+        return str(verifier_score)
+    return f"{verifier_score} ({step_text})"
 
 
-def format_judge_pairs(network_summary: dict[str, Any]) -> str:
+def format_verifier_pairs(network_summary: dict[str, Any]) -> str:
     pairs = []
-    for item in network_summary.get("judge_results", []) or []:
+    for item in network_summary.get("verifier_results", network_summary.get("judge_results", [])) or []:
         pairs.append(
-            f"{item.get('judge_agent_id', '')}->{item.get('target_agent_id', '')}: "
-            f"{format_judge_score(item)}"
+            f"{item.get('verifier_id', item.get('judge_agent_id', ''))}->{item.get('target_agent_id', '')}: "
+            f"{format_verifier_score(item)}"
         )
-    return "; ".join(pairs) if pairs else "No Stage2 judge scores"
+    return "; ".join(pairs) if pairs else "No Stage2 verifier scores"
 
 
 def write_markdown_report(results: dict[str, Any], output_path: str | Path) -> Path:
@@ -454,7 +487,7 @@ def write_markdown_report(results: dict[str, Any], output_path: str | Path) -> P
         network_summary = result.get("network_summary", {}) or {}
         network_metadata = network_summary.get("metadata", {}) or {}
         stage1_results = network_summary.get("stage1_results", []) or []
-        judge_results = network_summary.get("judge_results", []) or []
+        verifier_results = network_summary.get("verifier_results", network_summary.get("judge_results", [])) or []
         agent_scores = network_summary.get("agent_scores", []) or []
         token_usage = result.get("token_usage", {}) or (
             network_metadata
@@ -611,20 +644,24 @@ def write_markdown_report(results: dict[str, Any], output_path: str | Path) -> P
             [
                 "**Agent Scores**",
                 "",
-                "| Agent | Model | Active | Confidence | Judge Scores | Avg Judge | Penalty | Penalty Reasons | Total |",
+                "| Agent | Model | Active | Confidence | Verifier Scores | Avg Verifier | Penalty | Penalty Reasons | Total |",
                 "|---|---|---|---:|---|---:|---:|---|---:|",
             ]
         )
         if agent_scores:
             active_by_agent = {item.get("agent_id"): item.get("active") for item in stage1_results}
             for score in agent_scores:
-                judge_scores = ", ".join(str(value) for value in score.get("judge_scores", []) or [])
+                verifier_scores = ", ".join(
+                    str(value)
+                    for value in score.get("verifier_scores", score.get("judge_scores", [])) or []
+                )
                 penalty_reasons = ", ".join(str(value) for value in score.get("penalty_reasons", []) or [])
                 lines.append(
                     f"| {score.get('agent_id', '')} | {score.get('model_name', '')} | "
                     f"{active_by_agent.get(score.get('agent_id'), False)} | "
-                    f"{score.get('confidence_score', 0)} | {judge_scores or '-'} | "
-                    f"{score.get('avg_judge_score', 0)} | {score.get('penalty_score', 0)} | "
+                    f"{score.get('confidence_score', 0)} | {verifier_scores or '-'} | "
+                    f"{score.get('avg_verifier_score', score.get('avg_judge_score', 0))} | "
+                    f"{score.get('penalty_score', 0)} | "
                     f"{short_cell(penalty_reasons, 120) or '-'} | {score.get('total_score', 0)} |"
                 )
         else:
@@ -652,18 +689,18 @@ def write_markdown_report(results: dict[str, Any], output_path: str | Path) -> P
         lines.extend(
             [
                 "",
-                "**Stage2 Judge Scores**",
+                "**Stage2 Verifier Scores**",
                 "",
-                "| Judge Agent | Target Reason Agent | Judge Score | Step Scores |",
+                "| Verifier | Target Reason Agent | Verifier Score | Step Scores |",
                 "|---|---|---:|---|",
             ]
         )
-        if judge_results:
-            for item in judge_results:
+        if verifier_results:
+            for item in verifier_results:
                 lines.append(
-                    f"| {item.get('judge_agent_id', '')} | "
+                    f"| {item.get('verifier_id', item.get('judge_agent_id', ''))} | "
                     f"{item.get('target_agent_id', '')} | "
-                    f"{item.get('judge_score', 0)} | "
+                    f"{item.get('verifier_score', item.get('judge_score', 0))} | "
                     f"{short_cell(format_step_scores(item.get('step_scores')), 240)} |"
                 )
         else:
@@ -688,17 +725,18 @@ def write_markdown_report(results: dict[str, Any], output_path: str | Path) -> P
 
             lines.extend(["", "**Reasoning Text And Received Scores**", ""])
             scores_by_target: dict[str, list[dict[str, Any]]] = {}
-            for judge in judge_results:
-                scores_by_target.setdefault(judge.get("target_agent_id", ""), []).append(judge)
+            for verifier in verifier_results:
+                scores_by_target.setdefault(verifier.get("target_agent_id", ""), []).append(verifier)
             for item in stage1_results:
                 target_id = item.get("agent_id", "")
                 received_scores = scores_by_target.get(target_id, [])
                 score_text = (
                     ", ".join(
-                        f"{score.get('judge_agent_id', '')}: {format_judge_score(score)}"
+                        f"{score.get('verifier_id', score.get('judge_agent_id', ''))}: "
+                        f"{format_verifier_score(score)}"
                         for score in received_scores
                     )
-                    or "No judge score"
+                    or "No verifier score"
                 )
                 lines.extend(
                     [
@@ -707,7 +745,7 @@ def write_markdown_report(results: dict[str, Any], output_path: str | Path) -> P
                         f"- Model: {item.get('model_name', '')}",
                         f"- Active: {item.get('active', False)}",
                         f"- Confidence: {item.get('confidence_score', 0)}",
-                        f"- Received judge scores: {score_text}",
+                        f"- Received verifier scores: {score_text}",
                         "",
                         "Final answer:",
                         "",
@@ -746,6 +784,12 @@ def run_gaia_evaluation(args: argparse.Namespace) -> dict[str, Any]:
     print(f"[INFO] stage1_runs_per_agent={args.stage1_runs_per_agent}")
     print(f"[INFO] stage2_max_tokens={args.stage2_max_tokens}")
     print(f"[INFO] enable_stage2_score={not args.without_stage2_score}")
+    print(f"[INFO] stage2_verifier={args.stage2_verifier}")
+    print(f"[INFO] versa_prm_model={args.versa_prm_model}")
+    print(f"[INFO] versa_prm_base_model={args.versa_prm_base_model}")
+    print(f"[INFO] versa_prm_device={args.versa_prm_device}")
+    print(f"[INFO] versa_prm_dtype={args.versa_prm_dtype}")
+    print(f"[INFO] versa_prm_local_files_only={args.versa_prm_local_files_only}")
     print(f"[INFO] enable_stage1_tool_use={args.enable_stage1_tool_use}")
     print(f"[INFO] evidence_prepare={args.evidence_prepare}")
     print(f"[INFO] compact_search_evidence={args.compact_search_evidence}")
@@ -784,6 +828,12 @@ def run_gaia_evaluation(args: argparse.Namespace) -> dict[str, Any]:
             max_stage1_tool_turns=args.max_stage1_tool_turns,
             previous_best_agent_id=previous_best_agent_id,
             stage1_early_stop_max_retries=args.stage1_early_stop_max_retries,
+            stage2_verifier=args.stage2_verifier,
+            versa_prm_model=args.versa_prm_model,
+            versa_prm_base_model=args.versa_prm_base_model,
+            versa_prm_device=args.versa_prm_device,
+            versa_prm_dtype=args.versa_prm_dtype,
+            versa_prm_local_files_only=args.versa_prm_local_files_only,
         )
         previous_best_agent_id = result.get("winner_agent_id") or previous_best_agent_id
         task_json_path = write_task_json(result, output_dir, index)
@@ -795,7 +845,7 @@ def run_gaia_evaluation(args: argparse.Namespace) -> dict[str, Any]:
             f"winner={result['winner_agent_id']} predicted={result['predicted']!r} "
             f"json={task_json_path}"
         )
-        print(f"judge_scores={format_judge_pairs(result.get('network_summary', {}) or {})}")
+        print(f"verifier_scores={format_verifier_pairs(result.get('network_summary', {}) or {})}")
         if result["error"]:
             print(f"[WARN] {result['error']}")
 
@@ -823,6 +873,39 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--max-samples", type=int, default=1)
     parser.add_argument("--stage1-runs-per-agent", type=int, default=3)
     parser.add_argument("--stage2-max-tokens", type=int, default=512)
+    parser.add_argument(
+        "--stage2-verifier",
+        choices=["versa"],
+        default=os.getenv("STAGE2_VERIFIER", "versa"),
+        help="Stage2 verifier backend. SCP currently supports VersaPRM only.",
+    )
+    parser.add_argument(
+        "--versa-prm-model",
+        default=os.getenv("VERSA_PRM_MODEL", DEFAULT_VERSA_PRM_MODEL_ID),
+        help="HuggingFace model name or local path for VersaPRM.",
+    )
+    parser.add_argument(
+        "--versa-prm-base-model",
+        default=os.getenv("VERSA_PRM_BASE_MODEL", DEFAULT_VERSA_PRM_BASE_MODEL_ID),
+        help="Base model id used by VersaPRM PEFT fallback.",
+    )
+    parser.add_argument(
+        "--versa-prm-device",
+        default=os.getenv("VERSA_PRM_DEVICE", "auto"),
+        choices=["auto", "cuda", "cpu"],
+        help="VersaPRM torch device.",
+    )
+    parser.add_argument(
+        "--versa-prm-dtype",
+        default=os.getenv("VERSA_PRM_DTYPE", "auto"),
+        choices=["auto", "float16", "bfloat16", "float32"],
+        help="VersaPRM torch dtype.",
+    )
+    parser.add_argument(
+        "--versa-prm-local-files-only",
+        action="store_true",
+        help="Only use local Hugging Face cache for VersaPRM.",
+    )
     parser.add_argument(
         "--without--stage2--score",
         "--without-stage2-score",

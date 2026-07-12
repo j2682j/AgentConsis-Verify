@@ -10,10 +10,10 @@ class AgentConfig:
     """
     agent_id: str
     model_name: str
-    temperature: float = 0.5
+    temperature: float = 0.3
     confidence_score: float = 0.0
-    judge_scores: list[float] = field(default_factory=list)
-    avg_judge_score: float = 0.0
+    verifier_scores: list[float] = field(default_factory=list)
+    avg_verifier_score: float = 0.0
     penalty_score: float = 0.0
     penalty_reasons: list[str] = field(default_factory=list)
     total_score: float = 0.0
@@ -71,18 +71,21 @@ class AgentReasoningSummary:
     winner_selection_status: str = "answerable"
 
 @dataclass
-class JudgeScoreByReasoning:
+class VerifierScoreByReasoning:
     """
     Judge 根據 Agent 的 Reasoning 給分的資料結構
     """
-    judge_agent_id: str
+    verifier_id: str
     target_agent_id: str
-    judge_score: float  # -5 ~ 5
+    verifier_score: float  # VersaPRM average reward probability, 0.0 ~ 1.0
     step_scores: list[dict] = field(default_factory=list)
     raw_reply: str = ""
     prompt_tokens: int = 0
     completion_tokens: int = 0
     total_tokens: int = 0
+
+
+JudgeScoreByReasoning = VerifierScoreByReasoning
 
 @dataclass
 class NetworkSummary:
@@ -93,6 +96,6 @@ class NetworkSummary:
     final_answer: str
     winner_agent_id: str
     stage1_results: list[AgentReasoningSummary]
-    judge_results: list[JudgeScoreByReasoning]
+    verifier_results: list[VerifierScoreByReasoning]
     agent_scores: list[AgentConfig]
     metadata: dict

@@ -30,6 +30,19 @@ class ToolCapabilityRegistry:
     TABLE_EXTENSIONS = {".csv", ".tsv", ".xls", ".xlsx"}
     IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".gif"}
     DOCUMENT_EXTENSIONS = {".pdf", ".docx", ".pptx", ".txt", ".json", ".xml", ".zip"}
+    VISUAL_VIDEO_TERMS = {
+        "camera",
+        "visible",
+        "shown",
+        "seen",
+        "watch",
+        "frame",
+        "simultaneously",
+        "appears",
+        "appear",
+        "highest number",
+    }
+    TRANSCRIPT_VIDEO_TERMS = {"transcript", "caption", "subtitles", "said", "spoken", "says"}
 
     def __init__(self, specs: Iterable[ToolCapabilitySpec] | None = None) -> None:
         self.specs: dict[str, ToolCapabilitySpec] = {}
@@ -41,6 +54,15 @@ class ToolCapabilityRegistry:
     @classmethod
     def default_specs(cls) -> list[ToolCapabilitySpec]:
         return [
+            ToolCapabilitySpec(
+                tool_name="video_evidence",
+                capabilities=["video", "youtube_url", "video.visual", "video.frame_analysis", "vision", "evidence_text"],
+                input_types=["question", "question.youtube_url", "youtube_url", "remote_video_url"],
+                output_types=["visual_evidence", "timestamped_frames", "evidence_text"],
+                required_inputs=["youtube_url"],
+                optional_inputs=["question", "answer_role", "max_frames"],
+                priority=98,
+            ),
             ToolCapabilitySpec(
                 tool_name="video_transcript",
                 capabilities=["video", "youtube_url", "transcript", "video.transcript", "speech_to_text"],
@@ -125,12 +147,39 @@ class ToolCapabilityRegistry:
         needs: list[ToolNeed] = []
 
         if self.extract_video_url(text):
+            if self._needs_visual_video(text):
+                needs.append(
+                    ToolNeed(
+                        need_type="video_visual",
+                        required_capabilities=["youtube_url", "video.visual", "video.frame_analysis"],
+                        input_refs=["question.youtube_url"],
+                        reason="Question asks about visible video content that requires frame evidence.",
+                    )
+                )
+            if self._needs_transcript_video(text):
+                needs.append(
+                    ToolNeed(
+                        need_type="video_transcript",
+                        required_capabilities=["youtube_url", "transcript"],
+                        input_refs=["question.youtube_url"],
+                        reason="Question asks for speech, captions, or transcript evidence.",
+                    )
+                )
+            if not self._needs_visual_video(text) and not self._needs_transcript_video(text):
+                needs.append(
+                    ToolNeed(
+                        need_type="video_visual",
+                        required_capabilities=["youtube_url", "video.visual", "video.frame_analysis"],
+                        input_refs=["question.youtube_url"],
+                        reason="Question contains a remote video URL and asks for video evidence.",
+                    )
+                )
             needs.append(
                 ToolNeed(
-                    need_type="video",
-                    required_capabilities=["youtube_url", "transcript"],
+                    need_type="video_fallback_search",
+                    required_capabilities=["web_search", "external_evidence"],
                     input_refs=["question.youtube_url"],
-                    reason="Question contains a remote video URL and asks for video evidence.",
+                    reason="Search may provide metadata fallback for remote video tasks.",
                 )
             )
 
@@ -285,6 +334,14 @@ class ToolCapabilityRegistry:
 
     def _key(self, value: Any) -> str:
         return normalize_text(str(value or "")).casefold().strip()
+
+    def _needs_visual_video(self, text: str) -> bool:
+        lowered = normalize_text(text).casefold()
+        return any(term in lowered for term in self.VISUAL_VIDEO_TERMS)
+
+    def _needs_transcript_video(self, text: str) -> bool:
+        lowered = normalize_text(text).casefold()
+        return any(term in lowered for term in self.TRANSCRIPT_VIDEO_TERMS)
 
 
 __all__ = ["ToolCapabilityRegistry"]

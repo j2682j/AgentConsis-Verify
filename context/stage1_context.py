@@ -8,9 +8,10 @@ from .context_builder import ContextBuilder, ContextPacket
 
 STAGE1_SYSTEM_PROMPT = """You are one agent in a multi-agent reasoning network.
 
-Use Evidence only when it directly supports the answer.
-Do not answer from general knowledge when the task asks for a specific external fact.
-Final answer must be supported by at least one Evidence item.
+1. Use Evidence only when it directly supports the answer.
+2. Do not answer from general knowledge when the task asks for a specific external fact.
+3. Final answer must be supported by at least one Evidence item.
+4. Your reasoning will be evaluated step by step.
 Return JSON only. Do not include markdown or text outside JSON.
 """
 
@@ -31,9 +32,12 @@ Search_Result:
 Return exactly this JSON schema:
 {{
   "reasoning_steps": [
-    "step 1. first reasoning step",
-    "step 2. second reasoning step",
-    "step 3. final reasoning step"
+    "step 1. Identify the required value from evidence.",
+    "step 2. Convert units or normalize values if needed.",
+    "step 3. Perform one calculation or comparison.",
+    "step 4. Apply rounding if required.",
+    ......
+    "step N. Format the computed value according to the question."
   ],
   "final_answer": "short final answer only",
   "confidence": 0.0,
@@ -43,13 +47,11 @@ Return exactly this JSON schema:
 }}
 
 Rules:
-- final_answer must be a short answer, not an explanation.
-- If no evidence is needed or no Evidence ID applies, use an empty list for used_evidence_ids.
-- confidence must be between 0.0 and 1.0.
-- reasoning_steps must contain 3 to 5 explicit numbered steps.
-- Each reasoning step must be 25 words or fewer.
-- Do not restate evidence verbatim; cite Evidence IDs instead.
-- Do not include markdown or text outside JSON."""
+- Each step must be one short sentence and exactly one action.
+- If one step needs multiple actions, split it into multiple steps.
+- Keep final_answer short and separate from reasoning_steps.
+- Never include "Final Answer", "Answer", "boxed", or conclusion text inside reasoning_steps.
+- Split lookup, conversion, calculation, rounding, and formatting into separate steps."""
 
 
 class Stage1ContextBuilder(ContextBuilder):

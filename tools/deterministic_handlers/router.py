@@ -40,6 +40,7 @@ class DeterministicHandlerRouter:
         search_result: str = "",
         metadata: dict[str, Any] | None = None,
         handler_name: str = "",
+        required_handler_role: str = "",
     ) -> HandlerResult:
         handler_input = HandlerInput(
             question=question,
@@ -49,8 +50,31 @@ class DeterministicHandlerRouter:
             metadata=metadata or {},
         )
         matches = self.match_handlers(handler_input)
+        selected_role = str(required_handler_role or "").strip()
+        if selected_role:
+            role_handlers = self.registry.find_by_role(selected_role)
+            if not role_handlers:
+                return HandlerResult.missing_handler(
+                    required_handler_role=selected_role,
+                    matches=matches,
+                )
+            role_handler_names = {handler.name for handler in role_handlers}
+            matches = [match for match in matches if match.handler_name in role_handler_names]
+            if not matches:
+                return HandlerResult.missing_handler(
+                    required_handler_role=selected_role,
+                    matches=[],
+                )
         selected_handler_name = str(handler_name or "").strip()
         if selected_handler_name:
+            if selected_role:
+                role_handlers = self.registry.find_by_role(selected_role)
+                role_handler_names = {handler.name for handler in role_handlers}
+                if selected_handler_name not in role_handler_names:
+                    return HandlerResult.missing_handler(
+                        required_handler_role=selected_role,
+                        matches=matches,
+                    )
             selected = next(
                 (match for match in matches if match.handler_name == selected_handler_name),
                 None,
@@ -126,6 +150,10 @@ class DeterministicHandlerRouter:
             confidence = max(base_confidence, readiness.confidence if readiness else 0.0)
             missing_inputs = list(readiness.missing_inputs if readiness else [])
             input_contract = getattr(handler, "input_schema", None)
+            registry_role = ""
+            role_getter = getattr(self.registry, "role_for_handler", None)
+            if callable(role_getter):
+                registry_role = str(role_getter(handler.name) or "")
             required_inputs = (
                 input_contract.required_input_names()
                 if isinstance(input_contract, HandlerIOContract)
@@ -141,6 +169,7 @@ class DeterministicHandlerRouter:
                     and not (readiness and not readiness.matched and missing_inputs),
                     confidence=round(confidence, 6),
                     reason=";".join(part for part in reason_parts if part),
+                    handler_role=str(getattr(handler, "handler_role", "") or registry_role),
                     missing_inputs=missing_inputs,
                     required_inputs=required_inputs,
                     schema_version=(
@@ -166,6 +195,18 @@ class DeterministicHandlerRouter:
             result.input_summary = self._input_summary(handler_inputs)
 
         result.structured_result.setdefault("input_summary", result.input_summary)
+        registry_role = ""
+        role_getter = getattr(self.registry, "role_for_handler", None)
+        if callable(role_getter):
+            registry_role = str(role_getter(getattr(handler, "name", "")) or "")
+        result.structured_result.setdefault(
+            "handler_role",
+            str(getattr(handler, "handler_role", "") or registry_role),
+        )
+        result.structured_result.setdefault(
+            "supported_answer_roles",
+            sorted(getattr(handler, "supported_answer_roles", set()) or []),
+        )
         result.structured_result.setdefault(
             "task_type",
             result.structured_result.get("task_type") or getattr(handler, "name", ""),
@@ -179,6 +220,9 @@ class DeterministicHandlerRouter:
                 or ""
             ),
         )
+        result.structured_result.setdefault("output_type", result.output_type)
+        result.structured_result.setdefault("semantic_role", result.semantic_role)
+        result.structured_result.setdefault("supporting_inputs", list(result.supporting_inputs or []))
         result.structured_result.setdefault("calculation_trace", {})
         if isinstance(input_contract, HandlerIOContract):
             result.structured_result.setdefault(

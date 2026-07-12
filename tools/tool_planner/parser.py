@@ -108,6 +108,12 @@ class ToolPlanParser:
                     HandlerPlan(
                         tool_name=str(item.get("tool_name") or "deterministic_handler").strip(),
                         handler_name=str(item.get("handler_name") or item.get("handler") or "").strip(),
+                        required_handler_role=str(
+                            item.get("required_handler_role")
+                            or item.get("handler_role")
+                            or item.get("role")
+                            or ""
+                        ).strip(),
                         reason=str(item.get("reason", "") or "").strip(),
                         required_inputs=[
                             str(value).strip()

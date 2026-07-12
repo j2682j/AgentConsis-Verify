@@ -29,6 +29,7 @@ class HandlerMatch:
     matched: bool
     confidence: float
     reason: str
+    handler_role: str = ""
     missing_inputs: list[str] = field(default_factory=list)
     required_inputs: list[str] = field(default_factory=list)
     schema_version: str = SCHEMA_VERSION
@@ -49,6 +50,9 @@ class HandlerResult:
     confidence: float = 0.0
     next_action_hint: str = ""
     input_summary: dict[str, Any] = field(default_factory=dict)
+    output_type: str = "intermediate_value"
+    semantic_role: str = ""
+    supporting_inputs: list[str] = field(default_factory=list)
     output_schema_version: str = SCHEMA_VERSION
 
     @property
@@ -105,11 +109,36 @@ class HandlerResult:
     def error_result(cls, *, handler_name: str, error: str) -> "HandlerResult":
         return cls(handler_name=handler_name, status="error", error=error)
 
+    @classmethod
+    def missing_handler(
+        cls,
+        *,
+        required_handler_role: str,
+        matches: list[HandlerMatch] | None = None,
+    ) -> "HandlerResult":
+        return cls(
+            handler_name="",
+            status="missing_handler",
+            missing_inputs=["handler:" + str(required_handler_role or "unknown")],
+            structured_result={
+                "required_handler_role": required_handler_role,
+                "matches": [match.to_dict() for match in matches or []],
+            },
+            error=f"no deterministic handler registered for role: {required_handler_role}",
+            next_action_hint=(
+                "No deterministic handler is registered for this task role; "
+                "do not use a generic handler as fallback."
+            ),
+        )
+
 
 class DeterministicHandler(Protocol):
     name: str
     capability_description: str
     supported_attachment_types: set[str]
+    handler_role: str
+    supported_answer_roles: set[str]
+    supported_task_roles: set[str]
     input_schema: HandlerIOContract
     output_schema: HandlerIOContract
 
@@ -126,10 +155,22 @@ class DeterministicHandler(Protocol):
 def render_handler_evidence(result: HandlerResult) -> str:
     if not result.ok:
         return ""
+    if result.output_type != "final_answer":
+        return (
+            "Intermediate deterministic result:\n"
+            f"Handler: {result.handler_name}\n"
+            f"Status: {result.status}\n"
+            f"Output type: {result.output_type}\n"
+            f"Semantic role: {result.semantic_role or 'unspecified'}\n"
+            f"Value: {result.answer}\n"
+            "Instruction: this is not a final answer; use only as intermediate trace."
+        )
     return (
         "Deterministic handler evidence:\n"
         f"Handler: {result.handler_name}\n"
         f"Status: {result.status}\n"
+        f"Output type: {result.output_type}\n"
+        f"Semantic role: {result.semantic_role or 'final_answer'}\n"
         f"Answer: {result.answer}\n"
         f"Confidence: {result.confidence}\n"
         f"Input summary: {result.input_summary}\n"

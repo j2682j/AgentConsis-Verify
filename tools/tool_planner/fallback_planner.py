@@ -32,10 +32,27 @@ class FallbackToolPlanner:
         steps: list[ToolPlanStep] = []
         needs: list[ToolNeed] = []
 
+        if "video_evidence" in candidate_names:
+            needs.append(
+                ToolNeed(
+                    need_type="video_visual",
+                    required_capabilities=["youtube_url", "video.visual", "video.frame_analysis"],
+                    input_refs=["question.youtube_url"],
+                    reason="Question contains video input that should be converted to visual frame evidence.",
+                )
+            )
+            steps.append(
+                ToolPlanStep(
+                    tool_name="video_evidence",
+                    purpose="extract visual frame evidence from video URL",
+                    expected_output="timestamped visual evidence",
+                )
+            )
+
         if "video_transcript" in candidate_names:
             needs.append(
                 ToolNeed(
-                    need_type="video",
+                    need_type="video_transcript",
                     required_capabilities=["youtube_url", "transcript"],
                     input_refs=["question.youtube_url"],
                     reason="Question contains video input that should be converted to transcript evidence.",

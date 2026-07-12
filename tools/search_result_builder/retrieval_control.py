@@ -4,7 +4,7 @@ import hashlib
 import pickle
 import re
 import shutil
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
@@ -13,8 +13,12 @@ from utils.network_utils import normalize_text
 from .config import EvidenceItem, SearchSourceCandidate
 from .corpus import DocumentChunker, WebCorpusBuilder
 from .embeddings import Embedder
-from .next_hop_query.coverage_assessor import CoverageAssessment, CoverageAssessor
+from .evidence import EvidenceUtilityGate
+from .next_hop_query.coverage_assessor import CoverageAssessor
+from .next_hop_query.evidence_sufficiency_gate import EvidenceSufficiencyGate
 from .next_hop_query.intent_state_tracker import SearchIntentStateTracker
+from .next_hop_query.next_hop_evidence_selector import NextHopEvidenceSelector
+from .next_hop_query.next_hop_query_composer import NextHopQueryComposer
 from .next_hop_query.query_guard import NextHopQueryGuard
 from .next_hop_query.rag_filter import EfficientRAGFilterAdapter, RAGFilterResult
 from .passage_retriever import Retriever
@@ -24,6 +28,8 @@ from .source_analyze.rag_labeler import (
     EfficientRAGLabelerAdapter,
     RAGLabelResult,
 )
+from .source_analyze.label_contract import LabelContractValidator
+from .source_analyze.labeler_input_builder import LabelerInputBuilder
 from .source_analyze.seer import PageContentFetcher, SourceFilter
 
 
@@ -60,6 +66,21 @@ class RetrievedDocumentTrace:
     useful_tokens: list[str] = field(default_factory=list)
     continue_probability: float = 0.0
     terminate_probability: float = 0.0
+    label_status: str = ""
+    valid_for_next_hop: bool = False
+    valid_for_evidence: bool = False
+    useful_spans: list[str] = field(default_factory=list)
+    invalid_reasons: list[str] = field(default_factory=list)
+    support_level: str = ""
+    support_strength: str = ""
+    normalized_constraints: list[str] = field(default_factory=list)
+    answer_spans: list[str] = field(default_factory=list)
+    bridge_spans: list[str] = field(default_factory=list)
+    utility_context: str = ""
+    utility_reasons: list[str] = field(default_factory=list)
+    span_recovery_used: bool = False
+    can_support_sufficient: bool = False
+    labeler_diagnostics: dict[str, object] = field(default_factory=dict)
     duplicate: bool = False
     duplicate_reason: str = ""
 
@@ -193,7 +214,12 @@ class IterativeRetrievalControl:
         retriever: Retriever,
         labeler: EfficientRAGLabelerAdapter | None = None,
         rag_filter: EfficientRAGFilterAdapter | None = None,
+        next_hop_composer: NextHopQueryComposer | None = None,
+        next_hop_evidence_selector: NextHopEvidenceSelector | None = None,
         coverage_assessor: CoverageAssessor | None = None,
+        sufficiency_gate: EvidenceSufficiencyGate | None = None,
+        evidence_utility_gate: EvidenceUtilityGate | None = None,
+        labeler_input_builder: LabelerInputBuilder | None = None,
         intent_state_tracker: SearchIntentStateTracker | None = None,
         query_guard: NextHopQueryGuard | None = None,
         max_iter: int = 4,
@@ -204,7 +230,15 @@ class IterativeRetrievalControl:
         self.retriever = retriever
         self.labeler = labeler or EfficientRAGLabelerAdapter()
         self.rag_filter = rag_filter or EfficientRAGFilterAdapter()
+        self.next_hop_composer = next_hop_composer or NextHopQueryComposer()
+        self.next_hop_evidence_selector = (
+            next_hop_evidence_selector or NextHopEvidenceSelector()
+        )
+        self.label_contract_validator = LabelContractValidator()
         self.coverage_assessor = coverage_assessor or CoverageAssessor()
+        self.sufficiency_gate = sufficiency_gate or EvidenceSufficiencyGate()
+        self.evidence_utility_gate = evidence_utility_gate or EvidenceUtilityGate()
+        self.labeler_input_builder = labeler_input_builder or LabelerInputBuilder()
         self.intent_state_tracker = intent_state_tracker or SearchIntentStateTracker()
         self.query_guard = query_guard or NextHopQueryGuard()
         self.max_iter = max(1, max_iter)
@@ -304,81 +338,134 @@ class IterativeRetrievalControl:
                 stop_reason = round_trace.stop_reason
                 break
 
-            label_results = self.labeler.label_texts(
-                question=current_query,
-                texts=[
-                    normalize_text(document.get("text", ""))
-                    for document in label_documents
-                ],
+            labeler_batch = self.labeler_input_builder.build_batch(
+                question=initial_query,
+                current_query=current_query,
+                documents=label_documents,
+                intent_plan=current_intent_plan,
             )
-            for trace_index, result in zip(label_trace_indexes, label_results):
+            label_results = self.labeler.label_texts(
+                question=labeler_batch.question_context,
+                texts=labeler_batch.texts,
+            )
+            for trace_index, result, prepared in zip(
+                label_trace_indexes,
+                label_results,
+                labeler_batch.documents,
+            ):
+                result.metadata = {
+                    **result.metadata,
+                    **prepared.diagnostics,
+                }
                 self._apply_label(
                     round_trace.documents[trace_index],
                     result,
+                    question=initial_query,
+                    intent_plan=current_intent_plan,
                 )
 
+            non_duplicate_documents = [
+                document
+                for document in round_trace.documents
+                if not document.duplicate
+            ]
             coverage = self.coverage_assessor.assess(
                 question=initial_query,
-                documents=[
-                    document
-                    for document in round_trace.documents
-                    if not document.duplicate
-                ],
+                documents=non_duplicate_documents,
+                intent_plan=current_intent_plan,
             )
+            gate_result = self.sufficiency_gate.assess(
+                question=initial_query,
+                documents=non_duplicate_documents,
+                intent_plan=current_intent_plan,
+                coverage=coverage,
+            )
+            score_based_sufficient = bool(coverage.sufficient)
+            if coverage.sufficient and not gate_result.sufficient:
+                coverage = replace(
+                    coverage,
+                    sufficient=False,
+                    missing_constraints=self._dedupe_tokens(
+                        list(coverage.missing_constraints or [])
+                        + list(gate_result.missing or [])
+                    ),
+                    trigger_reason=f"sufficiency_gate_failed:{gate_result.reason}",
+                )
             if use_intent_state and current_intent_plan is not None:
                 current_intent_plan = self.intent_state_tracker.update(
                     plan=current_intent_plan,
                     question=initial_query,
-                    documents=[
-                        document
-                        for document in round_trace.documents
-                        if not document.duplicate
-                    ],
+                    documents=non_duplicate_documents,
                 )
+                intent_state_before_gate = current_intent_plan
+                intent_state_sufficient = current_intent_plan.state == "sufficient"
+                if intent_state_sufficient and not gate_result.sufficient:
+                    current_intent_plan = current_intent_plan.replace(
+                        state="needs_next_hop",
+                        missing_terms=self._dedupe_tokens(
+                            list(current_intent_plan.missing_terms or [])
+                            + [f"answer_support:{gate_result.answer_role}"]
+                        ),
+                    )
                 round_trace.coverage = {
                     **coverage.to_dict(),
                     "intent_state": current_intent_plan.to_dict(),
-                    "score_based_sufficient": bool(coverage.sufficient),
-                    "sufficient": current_intent_plan.state == "sufficient",
+                    "score_based_sufficient": score_based_sufficient,
+                    "intent_state_before_gate": intent_state_before_gate.to_dict(),
+                    "sufficiency_gate": gate_result.to_dict(),
+                    "sufficient": current_intent_plan.state == "sufficient"
+                    and gate_result.sufficient,
                 }
-                if current_intent_plan.state == "sufficient":
+                if intent_state_sufficient and gate_result.sufficient:
                     round_trace.stop_reason = "intent_state_sufficient"
                     rounds.append(round_trace)
                     stop_reason = round_trace.stop_reason
                     break
+                if intent_state_sufficient and not gate_result.sufficient:
+                    round_trace.filter_metadata = {
+                        **round_trace.filter_metadata,
+                        "sufficiency_gate_failed": gate_result.to_dict(),
+                    }
             else:
-                round_trace.coverage = coverage.to_dict()
-                if coverage.sufficient:
+                round_trace.coverage = {
+                    **coverage.to_dict(),
+                    "score_based_sufficient": score_based_sufficient,
+                    "sufficiency_gate": gate_result.to_dict(),
+                    "sufficient": coverage.sufficient and gate_result.sufficient,
+                }
+                if coverage.sufficient and gate_result.sufficient:
                     round_trace.stop_reason = "coverage_sufficient"
                     rounds.append(round_trace)
                     stop_reason = round_trace.stop_reason
                     break
+                if coverage.sufficient and not gate_result.sufficient:
+                    round_trace.filter_metadata = {
+                        **round_trace.filter_metadata,
+                        "sufficiency_gate_failed": gate_result.to_dict(),
+                    }
 
             continue_documents = [
                 trace
                 for trace in round_trace.documents
-                if not trace.duplicate and trace.sequence_tag == CONTINUE_TAG
+                if (
+                    not trace.duplicate
+                    and trace.valid_for_next_hop
+                    and trace.support_level == "bridge"
+                )
             ]
             if not continue_documents:
-                fallback_result = self._try_coverage_next_query(
-                    original_question=initial_query,
-                    current_query=current_query,
-                    coverage=coverage,
+                fallback_result = self._try_fallback_next_query(
+                    query=initial_query,
                     documents=[
                         document
                         for document in round_trace.documents
-                        if not document.duplicate
-                    ],
-                    seen_query_keys=seen_query_keys,
-                    reason="no_continue_chunks",
-                ) or self._try_fallback_next_query(
-                    query=current_query,
-                    documents=[
-                        document
-                        for document in round_trace.documents
-                        if not document.duplicate
+                        if (
+                            not document.duplicate
+                            and document.support_level != "unsupported"
+                        )
                     ],
                     reason="no_continue_chunks",
+                    intent_plan=current_intent_plan,
                 )
                 if fallback_result is not None and round_index < self.max_iter:
                     next_query = self._guard_next_query(
@@ -419,7 +506,7 @@ class IterativeRetrievalControl:
                 document
                 for document in continue_documents
                 if (
-                    document.useful_tokens
+                    document.bridge_spans
                     and document.retrieval_score >= relative_threshold
                 )
             ]
@@ -435,17 +522,11 @@ class IterativeRetrievalControl:
                 ),
             }
             if not qualified_documents:
-                fallback_result = self._try_coverage_next_query(
-                    original_question=initial_query,
-                    current_query=current_query,
-                    coverage=coverage,
-                    documents=continue_documents,
-                    seen_query_keys=seen_query_keys,
-                    reason="no_qualified_continue_chunks",
-                ) or self._try_fallback_next_query(
-                    query=current_query,
+                fallback_result = self._try_fallback_next_query(
+                    query=initial_query,
                     documents=continue_documents,
                     reason="no_qualified_continue_chunks",
+                    intent_plan=current_intent_plan,
                 )
                 if fallback_result is not None and round_index < self.max_iter:
                     next_query = self._guard_next_query(
@@ -477,17 +558,15 @@ class IterativeRetrievalControl:
             useful_tokens = self._dedupe_tokens(
                 token
                 for document in qualified_documents
-                for token in document.useful_tokens
+                for token in document.bridge_spans
             )
             round_trace.useful_tokens = useful_tokens
             if not useful_tokens:
-                fallback_result = self._try_coverage_next_query(
-                    original_question=initial_query,
-                    current_query=current_query,
-                    coverage=coverage,
+                fallback_result = self._try_fallback_next_query(
+                    query=initial_query,
                     documents=continue_documents,
-                    seen_query_keys=seen_query_keys,
-                    reason="no_useful_tokens",
+                    reason="no_bridge_tokens",
+                    intent_plan=current_intent_plan,
                 )
                 if fallback_result is not None and round_index < self.max_iter:
                     next_query = self._guard_next_query(
@@ -517,8 +596,9 @@ class IterativeRetrievalControl:
                 break
 
             filter_result = self._build_next_query(
-                query=current_query,
+                query=initial_query,
                 documents=qualified_documents,
+                intent_plan=current_intent_plan,
             )
             next_query = self._guard_next_query(
                 original_question=initial_query,
@@ -543,41 +623,10 @@ class IterativeRetrievalControl:
                 stop_reason = round_trace.stop_reason
                 break
             if self._is_duplicate_query(next_query, seen_query_keys):
-                coverage_result = self._try_coverage_next_query(
-                    original_question=initial_query,
-                    current_query=current_query,
-                    coverage=coverage,
-                    documents=qualified_documents,
-                    seen_query_keys=seen_query_keys,
-                    reason="duplicate_filter_query",
-                )
-                if coverage_result is not None:
-                    next_query = self._guard_next_query(
-                        original_question=initial_query,
-                        current_query=current_query,
-                        result=coverage_result,
-                        round_trace=round_trace,
-                        intent_plan=current_intent_plan,
-                        seen_query_keys=seen_query_keys,
-                    )
-                    if self._is_duplicate_query(next_query, seen_query_keys):
-                        round_trace.stop_reason = "coverage_next_query_duplicate"
-                        rounds.append(round_trace)
-                        stop_reason = round_trace.stop_reason
-                        break
-                    round_trace.next_query = next_query
-                    round_trace.filter_metadata = {
-                        **round_trace.filter_metadata,
-                        **coverage_result.metadata,
-                        "fallback_used": True,
-                        "kept_question_tokens": coverage_result.kept_question_tokens,
-                        "kept_evidence_tokens": coverage_result.kept_evidence_tokens,
-                    }
-                else:
-                    round_trace.stop_reason = "duplicate_next_query"
-                    rounds.append(round_trace)
-                    stop_reason = round_trace.stop_reason
-                    break
+                round_trace.stop_reason = "duplicate_next_query"
+                rounds.append(round_trace)
+                stop_reason = round_trace.stop_reason
+                break
 
             rounds.append(round_trace)
             current_query = next_query
@@ -622,25 +671,50 @@ class IterativeRetrievalControl:
         *,
         query: str,
         documents: list[RetrievedDocumentTrace],
+        intent_plan: SearchIntentPlan | None = None,
     ) -> RAGFilterResult:
+        selection = self.next_hop_evidence_selector.select(
+            documents=documents,
+            question=query,
+            intent_plan=intent_plan,
+        )
+        if not selection.bridge_spans:
+            return RAGFilterResult(
+                query="",
+                kept_question_tokens=[],
+                kept_evidence_tokens=[],
+                fallback_used=False,
+                metadata={
+                    "method": "external_semantic_role_next_hop",
+                    "filter_model_used": False,
+                    "evidence_selector": selection.to_dict(),
+                    "empty_reason": "no_selected_bridge_spans",
+                },
+            )
         evidence_items = [
             EvidenceItem(
                 evidence_id=f"R{index}",
-                source_id=document.document_id,
+                source_id=f"next-hop-selection-{index}",
                 query_id="iterative_retrieval",
-                title=document.title,
-                text=" ".join(document.useful_tokens),
-                url=document.url,
-                matched_terms=document.useful_tokens,
-                evidence_quality=document.retrieval_score,
-                cleaning_reasons=["efficientrag_labeler:continue"],
+                title="",
+                text=" ".join(selection.bridge_spans),
+                url="",
+                matched_terms=selection.bridge_spans,
+                evidence_quality=0.0,
+                cleaning_reasons=["efficientrag_labeler:valid_continue"],
             )
-            for index, document in enumerate(documents, start=1)
+            for index in range(1, 2)
         ]
-        return self.rag_filter.build_query(
+        result = self.next_hop_composer.build_query(
             question=query,
             evidence_items=evidence_items,
+            intent_plan=intent_plan,
         )
+        result.metadata = {
+            **result.metadata,
+            "evidence_selector": selection.to_dict(),
+        }
+        return result
 
     def _guard_next_query(
         self,
@@ -657,7 +731,7 @@ class IterativeRetrievalControl:
         useful_spans = list(result.kept_evidence_tokens or [])
         useful_spans.extend(round_trace.useful_tokens or [])
         for document in round_trace.documents:
-            useful_spans.extend(document.useful_tokens or [])
+            useful_spans.extend(document.bridge_spans or [])
         guard_result = self.query_guard.validate(
             original_question=original_question,
             current_query=current_query,
@@ -666,11 +740,21 @@ class IterativeRetrievalControl:
             useful_spans=useful_spans,
             seen_query_keys=seen_query_keys,
         )
+        selected_query = normalize_text(guard_result.query)
+        if (
+            not guard_result.accepted
+            and str(result.metadata.get("method", "")).startswith("external_")
+        ):
+            selected_query = ""
         round_trace.filter_metadata = {
             **round_trace.filter_metadata,
             "query_guard": guard_result.to_dict(),
+            "query_guard_external_fallback_disabled": (
+                not guard_result.accepted
+                and str(result.metadata.get("method", "")).startswith("external_")
+            ),
         }
-        return normalize_text(guard_result.query)
+        return selected_query
 
     def _try_fallback_next_query(
         self,
@@ -678,11 +762,17 @@ class IterativeRetrievalControl:
         query: str,
         documents: list[RetrievedDocumentTrace],
         reason: str,
+        intent_plan: SearchIntentPlan | None = None,
     ) -> RAGFilterResult | None:
         candidates = [
             document
             for document in documents
-            if document.text and document.retrieval_score > 0
+            if (
+                document.bridge_spans
+                and document.retrieval_score > 0
+                and document.valid_for_next_hop
+                and document.support_level == "bridge"
+            )
         ]
         if not candidates:
             return None
@@ -696,30 +786,17 @@ class IterativeRetrievalControl:
         ][:3]
         if not selected:
             return None
-        evidence_items = [
-            EvidenceItem(
-                evidence_id=f"FB{index}",
-                source_id=document.document_id,
-                query_id="retrieval_fallback",
-                title=document.title,
-                text=self._fallback_context_text(document),
-                url=document.url,
-                matched_terms=self._fallback_terms(document),
-                evidence_quality=document.retrieval_score,
-                retrieval_score=document.retrieval_score,
-                sequence_tag=document.sequence_tag,
-                cleaning_reasons=[f"retrieval_control_fallback:{reason}"],
-            )
-            for index, document in enumerate(selected, start=1)
-        ]
-        result = self.rag_filter.build_query(
-            question=query,
-            evidence_items=evidence_items,
+        result = self._build_next_query(
+            query=query,
+            documents=selected,
+            intent_plan=intent_plan,
         )
+        if not result.query:
+            return None
         result.fallback_used = True
         result.metadata = {
             **result.metadata,
-            "method": "coverage_fallback_next_query",
+            "method": "external_composer_fallback_next_query",
             "fallback_reason": reason,
             "fallback_document_count": len(selected),
             "best_retrieval_score": round(best_score, 6),
@@ -727,90 +804,6 @@ class IterativeRetrievalControl:
         if self._query_key(result.query) == self._query_key(query):
             return None
         return result
-
-    def _try_coverage_next_query(
-        self,
-        *,
-        original_question: str,
-        current_query: str,
-        coverage: CoverageAssessment,
-        documents: list[RetrievedDocumentTrace],
-        seen_query_keys: set[str],
-        reason: str,
-    ) -> RAGFilterResult | None:
-        if coverage.sufficient:
-            return None
-        parts = self._coverage_query_parts(
-            original_question=original_question,
-            coverage=coverage,
-            documents=documents,
-        )
-        query = normalize_text(" ".join(parts))[:300]
-        if not query or self._is_duplicate_query(query, seen_query_keys):
-            return None
-        if self._query_key(query) == self._query_key(current_query):
-            return None
-        question_terms = set(self._keywords(original_question))
-        bridge_terms = list(coverage.bridge_terms or [])
-        return RAGFilterResult(
-            query=query,
-            kept_question_tokens=[part for part in parts if part in question_terms],
-            kept_evidence_tokens=[part for part in parts if part in bridge_terms],
-            fallback_used=True,
-            metadata={
-                "method": "coverage_based_next_query",
-                "fallback_reason": reason,
-                "coverage_score": coverage.coverage_score,
-                "coverage_trigger_reason": coverage.trigger_reason,
-                "missing_constraints": list(coverage.missing_constraints),
-                "answer_type": coverage.answer_type,
-                "answer_type_covered": coverage.answer_type_covered,
-                "bridge_terms": bridge_terms,
-            },
-        )
-
-    def _coverage_query_parts(
-        self,
-        *,
-        original_question: str,
-        coverage: CoverageAssessment,
-        documents: list[RetrievedDocumentTrace],
-    ) -> list[str]:
-        parts: list[str] = []
-        for constraint in coverage.missing_constraints:
-            value = constraint.split(":", 1)[1] if ":" in constraint else constraint
-            value = value.replace("_", " ")
-            if value.startswith(("before ", "after ", "since ", "until ")):
-                parts.append(value)
-            elif not value.startswith("answer hint"):
-                parts.append(value)
-        answer_hint = self._answer_type_hint(coverage.answer_type)
-        if answer_hint:
-            parts.append(answer_hint)
-        parts.extend(list(coverage.bridge_terms or [])[:5])
-        for document in sorted(documents, key=lambda item: item.retrieval_score, reverse=True)[:2]:
-            parts.extend(self._keywords(document.title)[:4])
-        if len(parts) < 3:
-            parts.extend(self._keywords(original_question)[:8])
-        return self._dedupe_tokens(parts)
-
-    def _answer_type_hint(self, answer_type: str) -> str:
-        return {
-            "zip_code": "zip code",
-            "number": "number",
-            "date": "date",
-            "location": "location",
-            "person": "name",
-            "title": "title",
-            "list": "list",
-        }.get(answer_type, "")
-
-    def _fallback_context_text(self, document: RetrievedDocumentTrace) -> str:
-        text = normalize_text(" ".join([document.title, document.text]))
-        return text[:800]
-
-    def _fallback_terms(self, document: RetrievedDocumentTrace) -> list[str]:
-        return self._dedupe_tokens(self._keywords(" ".join([document.title, document.text]))[:12])
 
     def _document_trace(
         self,
@@ -829,16 +822,153 @@ class IterativeRetrievalControl:
         self,
         trace: RetrievedDocumentTrace,
         result: RAGLabelResult,
+        *,
+        question: str,
+        intent_plan: SearchIntentPlan | None,
     ) -> None:
-        trace.label = result.label
-        trace.sequence_tag = str(result.metadata.get("sequence_tag", ""))
+        contract = self.label_contract_validator.validate(result)
+        metadata = dict(result.metadata)
+        trace.label = "useful" if contract.valid_for_evidence else "useless"
+        trace.sequence_tag = str(metadata.get("sequence_tag", ""))
         trace.useful_tokens = list(result.kept_tokens)
+        trace.useful_spans = list(contract.useful_spans)
+        trace.label_status = contract.label_status
+        trace.valid_for_next_hop = contract.valid_for_next_hop
+        trace.valid_for_evidence = contract.valid_for_evidence
+        trace.invalid_reasons = list(contract.invalid_reasons)
+        self._apply_restricted_span_recovery(
+            trace=trace,
+            metadata=metadata,
+            intent_plan=intent_plan,
+            question=question,
+        )
+        utility = self.evidence_utility_gate.assess(
+            question=question,
+            document=trace,
+            intent_plan=intent_plan,
+        )
+        trace.support_level = utility.support_level
+        trace.support_strength = utility.support_strength
+        trace.normalized_constraints = list(utility.normalized_constraints)
+        trace.answer_spans = list(utility.answer_spans)
+        trace.bridge_spans = list(utility.bridge_spans)
+        trace.utility_context = utility.supporting_context
+        trace.utility_reasons = list(utility.reasons)
+        trace.span_recovery_used = utility.span_recovery_used
+        trace.can_support_sufficient = utility.can_support_sufficient
+        trace.valid_for_evidence = utility.valid_for_evidence
+        trace.valid_for_next_hop = utility.valid_for_next_hop
+        trace.label = "useful" if utility.valid_for_evidence else "useless"
+        trace.invalid_reasons = self._dedupe_tokens(
+            list(trace.invalid_reasons) + list(utility.reasons)
+        )
         trace.continue_probability = float(
-            result.metadata.get("continue_probability", 0.0) or 0.0
+            metadata.get("continue_probability", 0.0) or 0.0
         )
         trace.terminate_probability = float(
-            result.metadata.get("terminate_probability", 0.0) or 0.0
+            metadata.get("terminate_probability", 0.0) or 0.0
         )
+        trace.labeler_diagnostics = self._labeler_diagnostics(
+            metadata=metadata,
+            trace=trace,
+        )
+
+    def _apply_restricted_span_recovery(
+        self,
+        *,
+        trace: RetrievedDocumentTrace,
+        metadata: dict[str, object],
+        intent_plan: SearchIntentPlan | None,
+        question: str,
+    ) -> None:
+        sequence_tag = normalize_text(str(metadata.get("sequence_tag", "") or ""))
+        if trace.useful_spans or sequence_tag not in {"<CONTINUE>", "<TERMINATE>", "<FINISH>"}:
+            return
+        selected_passage = normalize_text(str(metadata.get("selected_passage", "") or ""))
+        if not selected_passage:
+            return
+        recovery = self.evidence_utility_gate.span_recovery.recover_restricted(
+            question=question,
+            title=trace.title,
+            selected_passage=selected_passage,
+            intent_plan=intent_plan,
+            answer_role=getattr(intent_plan, "answer_role", "") if intent_plan else "",
+            sequence_tag=sequence_tag,
+        )
+        recovered_spans = (
+            list(recovery.bridge_spans)
+            if sequence_tag == "<CONTINUE>"
+            else list(recovery.answer_spans)
+        )
+        if not recovered_spans:
+            metadata["span_recovery_triggered"] = True
+            metadata["span_recovery_mode"] = "restricted"
+            metadata["recovered_span_count"] = 0
+            metadata["recovered_spans"] = []
+            trace.invalid_reasons = self._dedupe_tokens(
+                list(trace.invalid_reasons) + list(recovery.reasons)
+            )
+            return
+
+        trace.useful_spans = self._dedupe_tokens(recovered_spans)
+        trace.useful_tokens = list(trace.useful_spans)
+        if sequence_tag == "<CONTINUE>":
+            trace.label_status = "continue_with_recovered_span"
+            trace.valid_for_next_hop = True
+            trace.valid_for_evidence = True
+        else:
+            trace.label_status = "terminate_with_recovered_span"
+            trace.valid_for_next_hop = False
+            trace.valid_for_evidence = True
+        trace.invalid_reasons = self._dedupe_tokens(
+            list(trace.invalid_reasons) + list(recovery.reasons)
+        )
+        metadata["span_recovery_triggered"] = True
+        metadata["span_recovery_mode"] = "restricted"
+        metadata["recovered_span_count"] = len(trace.useful_spans)
+        metadata["recovered_spans"] = list(trace.useful_spans)
+
+    def _labeler_diagnostics(
+        self,
+        *,
+        metadata: dict[str, object],
+        trace: RetrievedDocumentTrace,
+    ) -> dict[str, object]:
+        return {
+            "input_mode": metadata.get("input_mode", ""),
+            "source_title": metadata.get("source_title", ""),
+            "labeler_input_text": metadata.get("labeler_input_text", ""),
+            "labeler_input_char_count": metadata.get("labeler_input_char_count", 0),
+            "sequence_tag": trace.sequence_tag,
+            "continue_probability": round(trace.continue_probability, 6),
+            "terminate_probability": round(trace.terminate_probability, 6),
+            "finish_probability": metadata.get("finish_probability", 0.0),
+            "token_span_count": len(trace.useful_spans),
+            "selected_passage": metadata.get("selected_passage", ""),
+            "selected_sentence_count": metadata.get("selected_sentence_count", 0),
+            "original_char_count": metadata.get("original_char_count", 0),
+            "selected_char_count": metadata.get("selected_char_count", 0),
+            "sentence_selection_used": bool(metadata.get("sentence_selection_used", False)),
+            "sentence_selection_truncated": bool(metadata.get("sentence_selection_truncated", False)),
+            "evidence_unit_selector_used": bool(metadata.get("evidence_unit_selector_used", False)),
+            "evidence_unit_count": metadata.get("evidence_unit_count", 0),
+            "evidence_unit_selected_count": metadata.get("evidence_unit_selected_count", 0),
+            "evidence_unit_dropped_count": metadata.get("evidence_unit_dropped_count", 0),
+            "evidence_unit_empty_fallback": bool(metadata.get("evidence_unit_empty_fallback", False)),
+            "evidence_unit_should_fallback": bool(metadata.get("evidence_unit_should_fallback", False)),
+            "evidence_unit_empty_reason": metadata.get("evidence_unit_empty_reason", ""),
+            "evidence_unit_retried_raw_text": bool(metadata.get("evidence_unit_retried_raw_text", False)),
+            "evidence_unit_selected_types": metadata.get("evidence_unit_selected_types", []),
+            "evidence_unit_dropped_flags": metadata.get("evidence_unit_dropped_flags", []),
+            "evidence_unit_avg_relevance": metadata.get("evidence_unit_avg_relevance", 0.0),
+            "evidence_unit_avg_novelty": metadata.get("evidence_unit_avg_novelty", 0.0),
+            "evidence_unit_passage": metadata.get("evidence_unit_passage", ""),
+            "evidence_unit_selected": metadata.get("evidence_unit_selected", []),
+            "span_recovery_triggered": bool(metadata.get("span_recovery_triggered", False)),
+            "span_recovery_mode": metadata.get("span_recovery_mode", ""),
+            "recovered_span_count": metadata.get("recovered_span_count", 0),
+            "final_label_status": trace.label_status,
+        }
 
     def _duplicate_reason(
         self,
@@ -984,6 +1114,8 @@ class WebRetrievalControl:
         page_content_fetcher: PageContentFetcher | None = None,
         labeler: EfficientRAGLabelerAdapter | None = None,
         rag_filter: EfficientRAGFilterAdapter | None = None,
+        next_hop_composer: NextHopQueryComposer | None = None,
+        next_hop_evidence_selector: NextHopEvidenceSelector | None = None,
         model_type: str = "multilingual-e5-base",
         max_queries: int = 3,
         max_results_per_query: int = 8,
@@ -1020,6 +1152,10 @@ class WebRetrievalControl:
         )
         self.labeler = labeler or EfficientRAGLabelerAdapter()
         self.rag_filter = rag_filter or EfficientRAGFilterAdapter()
+        self.next_hop_composer = next_hop_composer or NextHopQueryComposer()
+        self.next_hop_evidence_selector = (
+            next_hop_evidence_selector or NextHopEvidenceSelector()
+        )
         self.model_type = model_type
         self.max_queries = max(1, max_queries)
         self.max_results_per_query = max(1, max_results_per_query)
@@ -1194,6 +1330,8 @@ class WebRetrievalControl:
             retriever=retriever,
             labeler=self.labeler,
             rag_filter=self.rag_filter,
+            next_hop_composer=self.next_hop_composer,
+            next_hop_evidence_selector=self.next_hop_evidence_selector,
             max_iter=self.max_iter,
             top_k=min(self.top_k, len(records)),
             min_retrieval_score=self.min_retrieval_score,

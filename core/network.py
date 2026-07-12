@@ -7,43 +7,28 @@ from typing import Any
 from core.config import (
     AgentConfig,
     AgentReasoningSummary,
-    JudgeScoreByReasoning,
+    VerifierScoreByReasoning,
     NetworkSummary,
 )
 from core.evidence_runner import EvidenceRunner
 from core.slm_agent import SLM_Agent
 from core.stage1_runner import Stage1Runner
 from core.stage2_runner import Stage2Runner
-from score import AnswerValidator, ScoreCalculator
+from score import AnswerValidator
+from score.versa_prm_scorer import (
+    DEFAULT_VERSA_PRM_BASE_MODEL_ID,
+    DEFAULT_VERSA_PRM_MODEL_ID,
+)
 from utils.network_utils import normalize_for_exact
 
 
 class Network:
     """
-    主控一次多 Agent 推理任務，協調 evidence 準備、Stage1 候選答案生成、
-    early-stop 判定、Stage2 cross-agent judging、分數計算與最終答案選擇。
-
+    銝餅銝甈∪? Agent ?函?隞餃?嚗?隤?evidence 皞??tage1 ?蝑?????    early-stop ?文??tage2 cross-agent judging???貉?蝞??蝯?獢??
     Args:
-        - question: 使用者輸入的問題。
-        - agents: 參與推理與評分的 AgentConfig 清單。
-        - attachment: 題目附檔資訊或已解析內容。
-        - tool_manager: 可執行 search、calculator 等工具的管理器。
-        - stage1_runs_per_agent: 每個 Agent 在 Stage1 要重複 reasoning 的次數。
-        - max_stage1_workers: Stage1 平行 worker 數量上限。
-        - max_stage2_workers: Stage2 judge pair 平行 worker 數量上限。
-        - stage2_max_tokens: Stage2 judge 單次回覆的最大 token 數。
-        - enable_stage1_early_stop: 是否啟用 Stage1 early-stop。
-        - enable_stage1_tool_use: 是否允許 Stage1 Agent 在 reasoning 中使用工具。
-        - max_stage1_tool_turns: Stage1 tool-use 模式下每個 run 最多工具回合數。
-        - previous_best_agent_id: 前一題表現最佳的 Agent id，用於 early-stop judge。
-        - stage1_early_stop_max_retries: early-stop 條件不通過時最多重新執行 Stage1 的次數。
-        - search_result: 外部預先提供的 search evidence。
-        - attachment_result: 外部預先提供的 attachment evidence。
-
+        - question: 雿輻?撓?亦?????        - agents: ???函????? AgentConfig 皜??        - attachment: 憿??鞈??歇閫???批捆??        - tool_manager: ?臬銵?search?alculator 蝑極?瑞?蝞∠??具?        - stage1_runs_per_agent: 瘥?Agent ??Stage1 閬?銴?reasoning ?活?詻?        - max_stage1_workers: Stage1 撟唾? worker ?賊?銝???        - max_stage2_workers: Stage2 judge pair 撟唾? worker ?賊?銝???        - stage2_max_tokens: Stage2 judge ?格活????憭?token ?詻?        - enable_stage1_early_stop: ?臬? Stage1 early-stop??        - enable_stage1_tool_use: ?臬?迂 Stage1 Agent ??reasoning 銝凋蝙?典極?瑯?        - max_stage1_tool_turns: Stage1 tool-use 璅∪?銝???run ?憭極?瑕????        - previous_best_agent_id: ??憿”?暹?雿喟? Agent id嚗??early-stop judge??        - stage1_early_stop_max_retries: early-stop 璇辣銝???憭??啣銵?Stage1 ?活?詻?        - search_result: 憭??????search evidence??        - attachment_result: 憭??????attachment evidence??
     Returns:
-        - NetworkSummary: 包含 final answer、winner agent、Stage1 結果、Stage2 judge 結果、
-          Agent 分數、response time、token usage 與 tool usage metadata。
-    """
+        - NetworkSummary: ? final answer?inner agent?tage1 蝯??tage2 judge 蝯???          Agent ??esponse time?oken usage ??tool usage metadata??    """
 
     def __init__(
         self,
@@ -70,6 +55,13 @@ class Network:
         max_parallel_next_hop_queries: int = 2,
         search_result: str = "",
         attachment_result: str = "",
+        reference_answer: str = "",
+        stage2_verifier: str = "versa",
+        versa_prm_model: str = DEFAULT_VERSA_PRM_MODEL_ID,
+        versa_prm_base_model: str = DEFAULT_VERSA_PRM_BASE_MODEL_ID,
+        versa_prm_device: str = "auto",
+        versa_prm_dtype: str = "auto",
+        versa_prm_local_files_only: bool = False,
     ) -> None:
         self.question = question
         self.agents = agents
@@ -93,13 +85,19 @@ class Network:
         self.max_parallel_next_hop_queries = max(0, max_parallel_next_hop_queries)
         self.search_result = search_result
         self.attachment_result = attachment_result
+        self.reference_answer = reference_answer
+        self.stage2_verifier = stage2_verifier
+        self.versa_prm_model = versa_prm_model
+        self.versa_prm_base_model = versa_prm_base_model
+        self.versa_prm_device = versa_prm_device
+        self.versa_prm_dtype = versa_prm_dtype
+        self.versa_prm_local_files_only = versa_prm_local_files_only
 
         self._slm_agents: dict[str, SLM_Agent] = {}
         self._slm_agents_lock = Lock()
         self._token_usage_lock = Lock()
         self._token_usage: dict[str, dict[str, int]] = {}
 
-        self.score_calculator = ScoreCalculator()
         self.answer_validator = AnswerValidator()
         self.evidence_runner = EvidenceRunner(
             question=self.question,
@@ -128,30 +126,28 @@ class Network:
         self.stage2_runner = Stage2Runner(
             question=self.question,
             agents=self.agents,
-            get_agent=self._get_slm_agent,
-            record_token_usage=self._record_token_usage,
-            max_workers=self.max_stage2_workers,
-            max_tokens=self.stage2_max_tokens,
+            verifier_mode=self.stage2_verifier,
+            versa_prm_model=self.versa_prm_model,
+            versa_prm_base_model=self.versa_prm_base_model,
+            versa_prm_device=self.versa_prm_device,
+            versa_prm_dtype=self.versa_prm_dtype,
+            versa_prm_local_files_only=self.versa_prm_local_files_only,
         )
 
     def run(self) -> NetworkSummary:
         """
-        執行完整 Network 任務流程，包含 evidence、Stage1、early-stop、Stage2、
-        penalty、score calculation 與 winner selection。
-
+        ?瑁?摰 Network 隞餃?瘚?嚗???evidence?tage1?arly-stop?tage2??        penalty?core calculation ??winner selection??
         Args:
-            - 無。
-
+            - ?～?
         Returns:
-            - NetworkSummary: 本次任務的最終答案、各階段結果、分數與 metadata。
-        """
+            - NetworkSummary: ?祆活隞餃???蝯?獢??挾蝯????貉? metadata??        """
         response_started_at = time.perf_counter()
         self._reset_token_usage()
         evidence = self.evidence_runner.run() if self.enable_evidence_prepare else self._empty_evidence_bundle()
 
         stage1_attempts = 0
         early_stop_reason = ""
-        early_stop_judge_results: list[JudgeScoreByReasoning] = []
+        early_stop_verifier_results: list[VerifierScoreByReasoning] = []
         direct_consensus_winner: AgentReasoningSummary | None = None
         direct_consensus_supporting_agents: list[str] = []
         while True:
@@ -163,15 +159,15 @@ class Network:
             ) = self._confidence_one_answer_consensus(stage1_results)
             if direct_consensus_winner is not None:
                 early_stop_winner = direct_consensus_winner
-                early_stop_judge_results = []
+                early_stop_verifier_results = []
                 early_stop_reason = "cross_agent_confidence_1.0_answer_consensus"
             else:
-                early_stop_winner, early_stop_judge_results, early_stop_reason = (
+                early_stop_winner, early_stop_verifier_results, early_stop_reason = (
                     self._stage1_early_stop_decision(stage1_results)
                 )
             should_retry_stage1 = (
                 self.enable_stage1_early_stop
-                and early_stop_reason == "confidence_0.67_judge_score_not_positive"
+                and early_stop_reason == "confidence_0.67_versa_reward_not_positive"
                 and stage1_attempts <= self.stage1_early_stop_max_retries
             )
             if not should_retry_stage1:
@@ -181,25 +177,18 @@ class Network:
         stage1_early_stop_used = early_stop_winner is not None
         stage2_skipped = stage1_early_stop_used or not self.enable_stage2_score
         if stage1_early_stop_used:
-            judge_results = early_stop_judge_results
+            verifier_results = early_stop_verifier_results
             stage2_skip_reason = "stage1_early_stop"
         elif not self.enable_stage2_score:
-            judge_results = []
+            verifier_results = []
             stage2_skip_reason = "stage2_score_disabled"
         else:
-            judge_results = self.stage2_runner.run(active_results)
+            verifier_results = self.stage2_runner.run(active_results)
             stage2_skip_reason = ""
         if direct_consensus_winner is not None:
-            penalty_results = []
             self._write_direct_consensus_scores(stage1_results)
         else:
-            penalty_results = []
-            self.score_calculator.write_scores_to_agent_config(
-                self.agents,
-                stage1_results,
-                judge_results,
-                penalty_results,
-            )
+            self._write_agent_scores(stage1_results, verifier_results)
         winner = early_stop_winner or self._select_winner(stage1_results)
         response_time_seconds = time.perf_counter() - response_started_at
 
@@ -208,7 +197,7 @@ class Network:
             final_answer=winner.compressed_answer if winner else "",
             winner_agent_id=winner.agent_id if winner else "",
             stage1_results=stage1_results,
-            judge_results=judge_results,
+            verifier_results=verifier_results,
             agent_scores=self.agents,
             metadata={
                 "stage1_runs_per_agent": self.stage1_runs_per_agent,
@@ -219,6 +208,12 @@ class Network:
                 "max_stage2_workers": self.stage2_runner.worker_count(active_results),
                 "stage2_max_tokens": self.stage2_max_tokens,
                 "enable_stage2_score": self.enable_stage2_score,
+                "stage2_verifier": self.stage2_verifier,
+                "versa_prm_model": self.versa_prm_model,
+                "versa_prm_base_model": self.versa_prm_base_model,
+                "versa_prm_device": self.versa_prm_device,
+                "versa_prm_dtype": self.versa_prm_dtype,
+                "versa_prm_local_files_only": self.versa_prm_local_files_only,
                 "enable_stage1_tool_use": self.enable_stage1_tool_use,
                 "enable_evidence_prepare": self.enable_evidence_prepare,
                 "enable_compact_search_evidence": self.enable_compact_search_evidence,
@@ -256,7 +251,6 @@ class Network:
                 "solver_used": bool(evidence["solver_result"].strip()),
                 "routing": evidence.get("routing", {}),
                 "tool_usage": evidence.get("tool_usage", []),
-                "penalty_results": penalty_results,
             },
         )
 
@@ -280,13 +274,9 @@ class Network:
         stage1_results: list[AgentReasoningSummary],
     ) -> tuple[AgentReasoningSummary | None, list[str]]:
         """
-        找出多個 Agent 同時達到 confidence=1.0 且 normalized answer 相同的跨 Agent 共識。
-        Args:
-            - stage1_results: Stage1Runner 回傳的每個 Agent 推理摘要。
-        Returns:
-            - AgentReasoningSummary | None: 若存在共識，回傳代表該答案的 winner。
-            - list[str]: 支持該共識答案的 Agent id 清單。
-        """
+        ?曉憭?Agent ??? confidence=1.0 銝?normalized answer ?詨??楊 Agent ?梯???        Args:
+            - stage1_results: Stage1Runner ?????Agent ?函?????        Returns:
+            - AgentReasoningSummary | None: ?亙??典霅??隞?”閰脩?獢? winner??            - list[str]: ?舀?閰脣霅?獢? Agent id 皜??        """
         confident_results = [
             result
             for result in stage1_results
@@ -329,13 +319,9 @@ class Network:
 
     def _same_normalized_answer(self, answer_a: str, answer_b: str) -> bool:
         """
-        判斷兩個跨 Agent 候選答案是否為相同答案。
-        Args:
-            - answer_a: 第一個候選答案。
-            - answer_b: 第二個候選答案。
-        Returns:
-            - bool: 兩個答案經 exact normalization 後是否相同。
-        """
+        ?斗?拙楊 Agent ?蝑??臬?箇??獢?        Args:
+            - answer_a: 蝚砌??蝑???            - answer_b: 蝚砌??蝑???        Returns:
+            - bool: ?拙?獢? exact normalization 敺?衣??        """
         return normalize_for_exact(answer_a) == normalize_for_exact(answer_b)
 
     def _stage1_context_budget_metadata(
@@ -380,18 +366,15 @@ class Network:
         stage1_results: list[AgentReasoningSummary],
     ) -> None:
         """
-        跨 Agent 共識直接輸出時，重設 AgentConfig 的非必要評分欄位。
-        Args:
-            - stage1_results: Stage1Runner 回傳的每個 Agent 推理摘要。
-        Returns:
-            - None。
-        """
+        頝?Agent ?梯??湔頛詨???身 AgentConfig ??敹?閰?甈???        Args:
+            - stage1_results: Stage1Runner ?????Agent ?函?????        Returns:
+            - None??        """
         result_by_agent = {result.agent_id: result for result in stage1_results}
         for config in self.agents:
             result = result_by_agent.get(config.agent_id)
             config.confidence_score = result.confidence_score if result else 0.0
-            config.judge_scores = []
-            config.avg_judge_score = 0.0
+            config.verifier_scores = []
+            config.avg_verifier_score = 0.0
             config.penalty_score = 0.0
             config.penalty_reasons = []
             config.total_score = (
@@ -400,21 +383,51 @@ class Network:
                 else float("-inf")
             )
 
+    def _write_agent_scores(
+        self,
+        stage1_results: list[AgentReasoningSummary],
+        verifier_results: list[VerifierScoreByReasoning],
+    ) -> None:
+        """
+        撠?Stage1 confidence ??Stage2 judge score 撖怠? AgentConfig??
+        Args:
+            - stage1_results: Stage1Runner ?Ｙ??? Agent ??蝯???            - verifier_results: Stage2 ?Ｙ???reasoning 閰?蝯???
+        Returns:
+            - None??        """
+        result_by_agent = {result.agent_id: result for result in stage1_results}
+        scores_by_target: dict[str, list[float]] = {}
+        for result in verifier_results:
+            scores_by_target.setdefault(result.target_agent_id, []).append(
+                result.verifier_score
+            )
+
+        for config in self.agents:
+            result = result_by_agent.get(config.agent_id)
+            config.confidence_score = result.confidence_score if result else 0.0
+            config.verifier_scores = list(scores_by_target.get(config.agent_id, []))
+            config.avg_verifier_score = (
+                sum(config.verifier_scores) / len(config.verifier_scores)
+                if config.verifier_scores
+                else 0.0
+            )
+            config.penalty_score = 0.0
+            config.penalty_reasons = []
+            config.total_score = (
+                config.confidence_score + config.avg_verifier_score
+                if result is not None and result.active
+                else float("-inf")
+            )
+
     def _stage1_early_stop_decision(
         self,
         stage1_results: list[AgentReasoningSummary],
-    ) -> tuple[AgentReasoningSummary | None, list[JudgeScoreByReasoning], str]:
+    ) -> tuple[AgentReasoningSummary | None, list[VerifierScoreByReasoning], str]:
         """
-        根據 Stage1 confidence 與 previous-best judge 結果判斷是否提前停止。
-
+        ?寞? Stage1 confidence ??previous-best judge 蝯??斗?臬???迫??
         Args:
-            - stage1_results: Stage1Runner 產生的各 Agent 候選結果。
-
+            - stage1_results: Stage1Runner ?Ｙ??? Agent ?蝯???
         Returns:
-            - AgentReasoningSummary | None: 若 early-stop 成立，回傳勝出候選。
-            - list[JudgeScoreByReasoning]: early-stop 過程產生的 judge 結果。
-            - str: early-stop 判斷原因。
-        """
+            - AgentReasoningSummary | None: ??early-stop ??嚗??喳??箏??            - list[VerifierScoreByReasoning]: early-stop ???Ｙ???judge 蝯???            - str: early-stop ?斗????        """
         if not self.enable_stage1_early_stop:
             return None, [], ""
 
@@ -447,65 +460,34 @@ class Network:
             for result in active_results
             if result.confidence_score == max_confidence
         ]
-        judge_config = self._early_stop_judge_config(candidates)
-        if judge_config is None:
-            return None, [], "no_early_stop_judge_agent"
-
-        judge_results = [
-            self.stage2_runner.judge_reasoning(judge_config, candidate)
+        verifier_results = [
+            self.stage2_runner.score_candidate(candidate)
             for candidate in candidates
         ]
         positive_results = [
-            result for result in judge_results if result.judge_score > 0
+            result for result in verifier_results if result.verifier_score > 0.5
         ]
         if not positive_results:
-            return None, judge_results, "confidence_0.67_judge_score_not_positive"
+            return None, verifier_results, "confidence_0.67_versa_reward_not_positive"
 
-        best_judge_result = max(positive_results, key=lambda result: result.judge_score)
+        best_verifier_result = max(positive_results, key=lambda result: result.verifier_score)
         winner = next(
             result
             for result in candidates
-            if result.agent_id == best_judge_result.target_agent_id
+            if result.agent_id == best_verifier_result.target_agent_id
         )
-        return winner, judge_results, "confidence_0.67_positive_previous_best_judge"
-
-    def _early_stop_judge_config(
-        self,
-        candidates: list[AgentReasoningSummary],
-    ) -> AgentConfig | None:
-        """
-        選擇 early-stop 模式下用來評分候選答案的 judge agent。
-
-        Args:
-            - candidates: confidence score 最高的 Stage1 候選結果。
-
-        Returns:
-            - AgentConfig | None: 可用的 judge agent 設定；若沒有 agent 則回傳 None。
-        """
-        if self.previous_best_agent_id:
-            for config in self.agents:
-                if config.agent_id == self.previous_best_agent_id:
-                    return config
-
-        candidate_ids = {candidate.agent_id for candidate in candidates}
-        for config in self.agents:
-            if config.agent_id not in candidate_ids:
-                return config
-        return self.agents[0] if self.agents else None
+        return winner, verifier_results, "confidence_0.67_positive_versa_reward"
 
     def _select_winner(
         self,
         stage1_results: list[AgentReasoningSummary],
     ) -> AgentReasoningSummary | None:
         """
-        根據 AgentConfig 中的 total_score、confidence_score 與 avg_judge_score 選出最終 winner。
-
+        ?寞? AgentConfig 銝剔? total_score?onfidence_score ??avg_verifier_score ?詨?蝯?winner??
         Args:
-            - stage1_results: Stage1Runner 產生的各 Agent 候選結果。
-
+            - stage1_results: Stage1Runner ?Ｙ??? Agent ?蝯???
         Returns:
-            - AgentReasoningSummary | None: 最終勝出的候選結果；若沒有 active agent 則回傳 None。
-        """
+            - AgentReasoningSummary | None: ?蝯??箇??蝯?嚗瘝? active agent ????None??        """
         result_by_agent = {result.agent_id: result for result in stage1_results}
         active_agents = [
             config
@@ -524,7 +506,7 @@ class Network:
             key=lambda config: (
                 config.total_score,
                 config.confidence_score,
-                config.avg_judge_score,
+                config.avg_verifier_score,
             ),
         )
         return result_by_agent[winner_config.agent_id]
@@ -590,14 +572,11 @@ class Network:
 
     def _get_slm_agent(self, config: AgentConfig) -> SLM_Agent:
         """
-        從任務內快取取得 SLM_Agent，若尚未建立則依 AgentConfig 建立。
-
+        敺遙?敹怠??? SLM_Agent嚗撠撱箇??? AgentConfig 撱箇???
         Args:
-            - config: 指定 agent_id、model_name 與 temperature 的 AgentConfig。
-
+            - config: ?? agent_id?odel_name ??temperature ??AgentConfig??
         Returns:
-            - SLM_Agent: 可重複使用的模型呼叫物件。
-        """
+            - SLM_Agent: ?舫?銴蝙?函?璅∪??澆?拐辣??        """
         with self._slm_agents_lock:
             agent = self._slm_agents.get(config.agent_id)
             if agent is None:
@@ -610,14 +589,11 @@ class Network:
 
     def _reset_token_usage(self) -> None:
         """
-        重置本次任務的 Stage1、Stage2 與 total token usage 統計。
-
+        ?蔭?祆活隞餃???Stage1?tage2 ??total token usage 蝯梯???
         Args:
-            - 無。
-
+            - ?～?
         Returns:
-            - None。
-        """
+            - None??        """
         with self._token_usage_lock:
             self._token_usage = {
                 "stage1": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
@@ -633,16 +609,11 @@ class Network:
         completion_tokens: int,
     ) -> None:
         """
-        累加指定階段的 prompt token、completion token 與 total token。
-
+        蝝臬????挾??prompt token?ompletion token ??total token??
         Args:
-            - stage: token usage 所屬階段，例如 stage1 或 stage2。
-            - prompt_tokens: 本次呼叫消耗的 prompt token 數。
-            - completion_tokens: 本次呼叫產生的 completion token 數。
-
+            - stage: token usage ?撅祇?畾蛛?靘? stage1 ??stage2??            - prompt_tokens: ?祆活?澆瘨? prompt token ?詻?            - completion_tokens: ?祆活?澆?Ｙ???completion token ?詻?
         Returns:
-            - None。
-        """
+            - None??        """
         prompt_tokens = int(prompt_tokens or 0)
         completion_tokens = int(completion_tokens or 0)
         total_tokens = prompt_tokens + completion_tokens
@@ -662,14 +633,11 @@ class Network:
 
     def _token_usage_snapshot(self) -> dict[str, dict[str, int]]:
         """
-        建立目前 token usage 的安全快照，供 NetworkSummary metadata 使用。
-
+        撱箇??桀? token usage ???典翰?改?靘?NetworkSummary metadata 雿輻??
         Args:
-            - 無。
-
+            - ?～?
         Returns:
-            - dict[str, dict[str, int]]: 各階段與 total 的 token 統計。
-        """
+            - dict[str, dict[str, int]]: ??畾菔? total ??token 蝯梯???        """
         with self._token_usage_lock:
             return {
                 stage: dict(values)

@@ -63,6 +63,7 @@ class ToolManager:
         from .calculator import CalculatorTool
         from .attachment_reader_tool import AttachmentReaderTool
         from .deterministic_solver_tool import DeterministicSolverTool
+        from .video_evidence_tool import VideoEvidenceTool
         from .video_transcript_tool import VideoTranscriptTool
 
         calculator = CalculatorTool()
@@ -76,6 +77,10 @@ class ToolManager:
         deterministic_solver = DeterministicSolverTool()
         self.register_tool(deterministic_solver)
         self.enabled_tools.add(deterministic_solver.name)
+
+        video_evidence = VideoEvidenceTool()
+        self.register_tool(video_evidence)
+        self.enabled_tools.add(video_evidence.name)
 
         video_transcript = VideoTranscriptTool()
         self.register_tool(video_transcript)
@@ -242,7 +247,7 @@ class ToolManager:
         tool_name: str,
         parameters: dict[str, Any],
     ) -> tuple[str, dict[str, Any]]:
-        if str(tool_name or "") != "video_transcript":
+        if str(tool_name or "") not in {"video_transcript", "video_evidence"}:
             return tool_name, parameters
 
         params = dict(parameters or {})
@@ -257,7 +262,7 @@ class ToolManager:
                     params.get("question") or params.get("input") or params.get("query") or "",
                 )
                 routed["attachment"] = dict(attachment)
-                routed["rerouted_from"] = "video_transcript"
+                routed["rerouted_from"] = str(tool_name or "")
                 return "attachment_reader", routed
 
         value = str(
@@ -275,7 +280,7 @@ class ToolManager:
                 "question",
                 params.get("question") or params.get("input") or params.get("query") or "",
             )
-            routed["rerouted_from"] = "video_transcript"
+            routed["rerouted_from"] = str(tool_name or "")
             return "attachment_reader", routed
 
         return tool_name, parameters

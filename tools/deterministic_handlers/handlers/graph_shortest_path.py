@@ -143,6 +143,13 @@ class GraphShortestPathRouterHandler:
                 "answer_is_hop_count": bool(inputs.get("asks_count")),
             },
             confidence=0.96,
+            output_type="final_answer",
+            semantic_role=task_type,
+            supporting_inputs=[
+                str(start),
+                str(end),
+                *[f"{left}->{right}:{weight}" for left, right, weight in edges[:8]],
+            ],
         )
 
     def _attachment_rows(self, handler_input: HandlerInput) -> list[list[str]]:

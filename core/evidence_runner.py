@@ -19,6 +19,7 @@ from tools.tool_planner import ToolPlanningRunner
 from tools.tool_capability_registry import ToolCapabilityRegistry
 from tools.tool_result import ToolExecutionResult, failure_result
 from tools.validation import ToolResultValidator
+from tools.video_evidence_tool import VideoEvidenceTool
 from tools.video_transcript_tool import VideoTranscriptTool
 from utils.network_utils import normalize_text
 
@@ -83,6 +84,7 @@ class EvidenceRunner:
         self.tool_result_validator = tool_result_validator or ToolResultValidator()
         self.handler_trust_gate = handler_trust_gate or HandlerTrustGate()
         self.tool_capability_registry = ToolCapabilityRegistry()
+        self.video_evidence_tool = VideoEvidenceTool()
         self.video_transcript_tool = VideoTranscriptTool()
         self.span_builder = span_builder or SpanBuilder()
         self.evidence_converter = evidence_converter or EvidenceConverter(
@@ -237,6 +239,14 @@ class EvidenceRunner:
                         result_text,
                     )
                 tool_usage.extend(result_usage)
+            elif tool_name == "video_evidence":
+                result_text, result_usage = self._build_video_evidence()
+                if result_text:
+                    attachment_result = self._merge_contexts(
+                        attachment_result,
+                        result_text,
+                    )
+                tool_usage.extend(result_usage)
             elif tool_name == "search":
                 if search_result:
                     continue
@@ -309,8 +319,14 @@ class EvidenceRunner:
         handler_plans = list(getattr(plan, "handler_plans", []) or [])
         for status in ("ready", "missing_input"):
             for handler_plan in handler_plans:
-                if getattr(handler_plan, "status", "") == status and getattr(handler_plan, "handler_name", ""):
+                if getattr(handler_plan, "status", "") == status and (
+                    getattr(handler_plan, "handler_name", "")
+                    or getattr(handler_plan, "required_handler_role", "")
+                ):
                     return handler_plan
+        for handler_plan in handler_plans:
+            if getattr(handler_plan, "required_handler_role", ""):
+                return handler_plan
         return next(
             (
                 handler_plan
@@ -319,6 +335,86 @@ class EvidenceRunner:
             ),
             None,
         )
+
+    def _build_video_evidence(self) -> tuple[str, list[dict[str, Any]]]:
+        """
+        Build visual evidence from a remote video URL.
+
+        Args:
+            - None.
+
+        Returns:
+            - str: Prompt-ready visual video evidence.
+            - list[dict[str, Any]]: video_evidence tool execution records.
+        """
+        url = self.tool_capability_registry.extract_video_url(self.question)
+        if not url:
+            result = failure_result(
+                "video_evidence",
+                status="unsupported",
+                error_code="missing_video_url",
+                error_message="No remote video URL found in the question.",
+                retry_hint="Use search or attachment_reader if the video is provided another way.",
+            )
+            return self._validate_tool_context("video_evidence", "", [result])
+
+        answer_role = ""
+        try:
+            from tools.search_result_builder.next_hop_query import AnswerTargetExtractor
+
+            answer_role = AnswerTargetExtractor().extract(self.question).role
+        except Exception:
+            answer_role = ""
+        answer_role = answer_role or self._infer_video_answer_role(self.question)
+
+        try:
+            raw = self.video_evidence_tool.run(
+                {
+                    "url": url,
+                    "question": self.question,
+                    "answer_role": answer_role,
+                }
+            )
+        except Exception as exc:
+            result = failure_result(
+                "video_evidence",
+                status="retryable_failure",
+                error_code="video_evidence_exception",
+                error_message=f"{type(exc).__name__}: {exc}",
+                retryable=True,
+                retry_hint="Retry with transcript or search fallback.",
+            )
+            return self._validate_tool_context("video_evidence", "", [result])
+
+        result = dict(raw) if isinstance(raw, dict) else {}
+        if not result:
+            output_text = str(raw or "").strip()
+            result = ToolExecutionResult(
+                ok=bool(output_text),
+                tool_name="video_evidence",
+                status="success" if output_text else "partial",
+                output_text=output_text,
+                raw_result={"url": url, "output": output_text},
+                evidence_valid=bool(output_text),
+            ).to_dict()
+        result.setdefault("tool_name", "video_evidence")
+        output_text = str(result.get("output_text") or "").strip()
+        if result.get("ok") and output_text:
+            result.setdefault("evidence_valid", True)
+            return self._validate_tool_context("video_evidence", output_text, [result])
+        result.setdefault("output_text", "")
+        result.setdefault("error", result.get("error_message"))
+        return self._validate_tool_context("video_evidence", "", [result])
+
+    def _infer_video_answer_role(self, question: str) -> str:
+        lowered = normalize_text(question).lower()
+        if "species" in lowered:
+            return "species"
+        if "highest number" in lowered or "how many" in lowered or "number of" in lowered:
+            return "count"
+        if "visible" in lowered or "camera" in lowered or "frame" in lowered:
+            return "visual"
+        return ""
 
     def _merge_contexts(self, left: str, right: str) -> str:
         parts = [part.strip() for part in (left, right) if str(part or "").strip()]
@@ -1147,6 +1243,7 @@ class EvidenceRunner:
                 attachment_result=attachment_context,
                 search_result=search_context,
                 handler_name=handler_name,
+                required_handler_role=str((handler_plan or {}).get("required_handler_role") or ""),
             )
             payload = result.to_dict()
             trust = self.handler_trust_gate.validate(
@@ -1155,6 +1252,7 @@ class EvidenceRunner:
                 handler_plan=handler_plan or {},
             )
             context = trust.evidence_text if trust.trusted else ""
+            evidence_valid = bool(trust.trusted and result.output_type == "final_answer")
             next_action_hint = result.next_action_hint or (
                 "Recover missing deterministic inputs: " + ", ".join(result.missing_inputs)
                 if result.missing_inputs
@@ -1162,17 +1260,22 @@ class EvidenceRunner:
             )
             return context, [
                 {
-                    "ok": trust.trusted,
+                    "ok": evidence_valid,
                     "tool_name": "deterministic_handler_router",
                     "handler_name": result.handler_name,
                     "planned_handler_name": handler_name,
+                    "required_handler_role": str((handler_plan or {}).get("required_handler_role") or ""),
                     "handler_plan": handler_plan or {},
                     "handler_trust": trust.to_dict(),
                     "status": result.status,
+                    "output_type": result.output_type,
+                    "semantic_role": result.semantic_role,
+                    "supporting_inputs": list(result.supporting_inputs or []),
                     "output_text": context,
                     "raw_result": payload,
                     "missing_inputs": list(result.missing_inputs or []),
                     "next_action_hint": next_action_hint,
+                    "evidence_valid": evidence_valid,
                     "error": result.error or None,
                 }
             ]

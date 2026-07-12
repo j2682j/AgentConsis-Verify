@@ -10,6 +10,10 @@ STAGE1_TOOL_SYSTEM_PROMPT = """You are one agent in a multi-agent reasoning netw
 Solve the question independently using the provided evidence and optional tools.
 You may request at most one tool per turn.
 Only request a tool when it is necessary.
+Your final reasoning will be evaluated step by step.
+Each reasoning step must describe exactly one reasoning action.
+Do not combine lookup, conversion, calculation, rounding, and final formatting in one step.
+Do not place the final answer inside reasoning_steps.
 Return JSON only."""
 
 
@@ -48,11 +52,14 @@ Instructions:
 - If Capability_Gap lists a missing capability, do not repeat an unsupported request.
 - Follow Tool_Turn_Policy. When it requests final_answer, do not request another tool.
 - If you can answer, return exactly this JSON shape:
-{{"type": "final_answer", "reasoning_steps": ["step 1. ...", "step 2. ..."], "final_answer": "short final answer only", "confidence": 0.0, "used_evidence_ids": ["E1"], "answer_type": "number | date | person | organization | location | title | list | short_text | boolean | unknown", "tool_request": null}}
-- reasoning_steps must contain 3 to 5 explicit numbered steps.
-- Each reasoning step must be 25 words or fewer.
-- Do not restate evidence or tool output verbatim; cite Evidence IDs or tool result numbers.
-- Do not include markdown or text outside JSON."""
+{{"type": "final_answer", "reasoning_steps": ["step 1. Identify the required value from evidence.", "step 2. Convert units or normalize values if needed.", "step 3. Perform one calculation or comparison.", "step 4. Apply rounding if required.", "step 5. Format the computed value according to the question."], "final_answer": "short final answer only", "confidence": 0.0, "used_evidence_ids": ["E1"], "answer_type": "number | date | person | organization | location | title | list | short_text | boolean | unknown", "tool_request": null}}
+- Return JSON only.
+- Use 3 to 6 reasoning_steps; each must start with exactly "step N."
+- Each step must be one short sentence and exactly one action.
+- If one step needs multiple actions, split it into multiple steps.
+- Keep final_answer short and separate from reasoning_steps.
+- Never include "Final Answer", "Answer", "boxed", or conclusion text inside reasoning_steps.
+- Split lookup, conversion, calculation, rounding, and formatting into separate steps."""
 
 
 class Stage1ToolContextBuilder(Stage1ContextBuilder):

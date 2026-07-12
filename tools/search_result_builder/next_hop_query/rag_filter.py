@@ -9,6 +9,7 @@ from typing import Any
 from utils.network_utils import normalize_text
 
 from ..config import EvidenceItem
+from .filter_input_builder import FilterInputBuilder, QueryInfoTokenRecord
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 PROJECT_FILTER_CHECKPOINT = PROJECT_ROOT / "models" / "filter_mixed_v1" / "filter_mixed_v1"
@@ -95,6 +96,7 @@ class EfficientRAGFilterAdapter:
         device: str | None = None,
         max_filter_info_items: int = 4,
         max_filter_info_chars: int = 240,
+        filter_input_builder: FilterInputBuilder | None = None,
     ) -> None:
         self.max_question_tokens = max_question_tokens
         self.max_evidence_tokens = max_evidence_tokens
@@ -104,6 +106,7 @@ class EfficientRAGFilterAdapter:
         self.device = device or os.getenv("SEARCH_FILTER_DEVICE", "cpu")
         self.max_filter_info_items = max(1, max_filter_info_items)
         self.max_filter_info_chars = max(80, max_filter_info_chars)
+        self.filter_input_builder = filter_input_builder or FilterInputBuilder()
         self._tokenizer: Any | None = None
         self._model: Any | None = None
         self._model_device: str | None = None
@@ -138,12 +141,18 @@ class EfficientRAGFilterAdapter:
         info_list = self._evidence_info_list(evidence_items)
         if not info_list:
             return None
+        record = self.filter_input_builder.build(
+            query=question,
+            info_items=info_list,
+        )
+        if not record.info_tokens:
+            return None
 
         try:
             self._load_filter_model()
-            sentence = self._build_query_info_sentence(info_list=info_list, query=question)
-            tokenized = self._build_filter_input(sentence)
-            query = self._predict_filtered_query(tokenized)
+            tokenized = self._build_filter_input(record.query_info_tokens)
+            selected_tokens, predicted_labels = self._predict_filtered_query(tokenized)
+            query = self._compose_query_from_tokens(selected_tokens)
         except Exception as exc:
             fallback = self._build_fallback_query(question=question, evidence_items=evidence_items)
             fallback.fallback_used = True
@@ -151,6 +160,7 @@ class EfficientRAGFilterAdapter:
                 **fallback.metadata,
                 "filter_checkpoint": self.filter_checkpoint,
                 "model_error": f"{type(exc).__name__}: {exc}",
+                "query_info_tokens": record.query_info_tokens,
             }
             return fallback
 
@@ -162,7 +172,8 @@ class EfficientRAGFilterAdapter:
                 **fallback.metadata,
                 "method": "efficientrag_filter_model_empty_fallback",
                 "filter_checkpoint": self.filter_checkpoint,
-                "filter_input": sentence,
+                "query_info_tokens": record.query_info_tokens,
+                "predicted_query_info_labels": predicted_labels,
             }
             return fallback
 
@@ -180,7 +191,10 @@ class EfficientRAGFilterAdapter:
             metadata={
                 "method": "efficientrag_filter_model",
                 "filter_checkpoint": self.filter_checkpoint,
-                "filter_input": sentence,
+                "query_info_tokens": record.query_info_tokens,
+                "predicted_query_info_labels": predicted_labels,
+                "selected_query_info_tokens": selected_tokens,
+                "filter_input": self._record_to_text(record),
                 "device": self._model_device or "",
             },
         )
@@ -191,6 +205,11 @@ class EfficientRAGFilterAdapter:
         question: str,
         evidence_items: list[EvidenceItem],
     ) -> RAGFilterResult:
+        info_list = self._evidence_info_list(evidence_items)
+        record = self.filter_input_builder.build(
+            query=question,
+            info_items=info_list,
+        )
         question_tokens = self._ordered_keywords(question)[: self.max_question_tokens]
         evidence_tokens: list[str] = []
         for item in evidence_items:
@@ -211,7 +230,11 @@ class EfficientRAGFilterAdapter:
             kept_question_tokens=question_tokens,
             kept_evidence_tokens=evidence_tokens,
             fallback_used=fallback_used,
-            metadata={"method": "efficientrag_filter_fallback"},
+            metadata={
+                "method": "efficientrag_filter_fallback",
+                "query_info_tokens": record.query_info_tokens,
+                "filter_input": self._record_to_text(record),
+            },
         )
 
     def _load_filter_model(self) -> None:
@@ -252,29 +275,38 @@ class EfficientRAGFilterAdapter:
     def _evidence_info_list(self, evidence_items: list[EvidenceItem]) -> list[str]:
         infos: list[str] = []
         for item in evidence_items[: self.max_filter_info_items]:
-            text = normalize_text(item.text)
+            text = normalize_text(" ".join(item.matched_terms or []) or item.text)
             if text:
                 infos.append(text[: self.max_filter_info_chars])
         return infos
 
-    def _build_query_info_sentence(self, *, info_list: list[str], query: str) -> str:
-        info_str = "; ".join(f"Info: {normalize_text(info)}" for info in info_list if normalize_text(info))
-        return normalize_text(f"Query: {query} {info_str}")
+    def _record_to_text(self, record: QueryInfoTokenRecord) -> str:
+        return self._compose_query_from_tokens(record.query_info_tokens)
 
-    def _build_filter_input(self, sentence: str) -> dict[str, Any]:
+    def _build_filter_input(self, query_info_tokens: list[str]) -> dict[str, Any]:
         assert self._tokenizer is not None
-        words = [CLS_TOKEN] + self._spacify(sentence) + [SEP_TOKEN]
+        words = [CLS_TOKEN] + list(query_info_tokens) + [SEP_TOKEN]
         tokens: list[str] = []
+        word_ranges: list[tuple[int, int]] = []
         for word in words:
-            tokens.extend(self._tokenizer.tokenize(word))
+            start = len(tokens)
+            pieces = self._tokenizer.tokenize(word)
+            tokens.extend(pieces)
+            word_ranges.append((start, len(tokens)))
         input_ids = self._tokenizer.convert_tokens_to_ids(tokens[:FILTER_MAX_LENGTH])
-        return self._tokenizer.pad(
+        model_inputs = self._tokenizer.pad(
             {"input_ids": [input_ids]},
             max_length=FILTER_MAX_LENGTH,
             return_attention_mask=True,
             padding="max_length",
             return_tensors="pt",
         )
+        return {
+            "model_inputs": model_inputs,
+            "word_tokens": words,
+            "word_ranges": word_ranges,
+            "query_info_tokens": list(query_info_tokens),
+        }
 
     def _spacify(self, text: str) -> list[str]:
         try:
@@ -285,24 +317,65 @@ class EfficientRAGFilterAdapter:
         except Exception:
             return re.findall(r"[A-Za-z0-9_.-]+|[^\w\s]", normalize_text(text))
 
-    def _predict_filtered_query(self, tokenized: dict[str, Any]) -> str:
+    def _predict_filtered_query(self, tokenized: dict[str, Any]) -> tuple[list[str], list[bool]]:
         import torch
 
         assert self._tokenizer is not None
         assert self._model is not None
         assert self._model_device is not None
 
+        model_inputs = tokenized["model_inputs"]
         tokenized_on_device = {
             key: value.to(self._model_device)
-            for key, value in tokenized.items()
+            for key, value in model_inputs.items()
         }
         with torch.no_grad():
             outputs = self._model(**tokenized_on_device)
         labels = outputs.logits.argmax(dim=-1).detach().cpu()[0]
-        input_ids = tokenized["input_ids"][0]
-        attention_mask = tokenized["attention_mask"][0]
-        selected_ids = input_ids[(labels == 1) & (attention_mask == 1)]
-        return self._tokenizer.decode(selected_ids, skip_special_tokens=True)
+        attention_mask = model_inputs["attention_mask"][0]
+        word_tokens: list[str] = tokenized["word_tokens"]
+        word_ranges: list[tuple[int, int]] = tokenized["word_ranges"]
+        query_info_tokens: list[str] = tokenized["query_info_tokens"]
+
+        selected_tokens: list[str] = []
+        predicted_labels: list[bool] = []
+        for word_index, (word, token_range) in enumerate(zip(word_tokens, word_ranges)):
+            if word_index == 0 or word_index == len(word_tokens) - 1:
+                continue
+            start, end = token_range
+            if start >= FILTER_MAX_LENGTH:
+                predicted_labels.append(False)
+                continue
+            end = min(end, FILTER_MAX_LENGTH)
+            active_positions = [
+                position
+                for position in range(start, end)
+                if int(attention_mask[position].item()) == 1
+            ]
+            keep = bool(
+                active_positions
+                and any(int(labels[position].item()) == 1 for position in active_positions)
+            )
+            predicted_labels.append(keep)
+            if keep and not self._is_control_token(word):
+                selected_tokens.append(word)
+
+        if len(predicted_labels) < len(query_info_tokens):
+            predicted_labels.extend([False] * (len(query_info_tokens) - len(predicted_labels)))
+        return selected_tokens, predicted_labels[: len(query_info_tokens)]
+
+    def _compose_query_from_tokens(self, tokens: list[str]) -> str:
+        text = " ".join(token for token in tokens if normalize_text(token))
+        text = re.sub(r"\s+([,.;:!?])", r"\1", text)
+        text = re.sub(r"([(\[])\s+", r"\1", text)
+        text = re.sub(r"\s+([)\]])", r"\1", text)
+        return normalize_text(text)
+
+    def _is_control_token(self, token: str) -> bool:
+        cleaned = normalize_text(token)
+        if cleaned in {CLS_TOKEN, SEP_TOKEN, "Query", "Info", ":"}:
+            return True
+        return bool(re.fullmatch(r"[^\w\s]", cleaned))
 
     def _clean_query(self, query: str) -> str:
         cleaned = normalize_text(query)

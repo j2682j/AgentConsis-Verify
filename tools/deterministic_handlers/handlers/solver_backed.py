@@ -98,6 +98,9 @@ class SolverBackedRouterHandler:
             evidence_text=self._render_evidence(result),
             structured_result=structured_result,
             confidence=float(result.confidence or 0.0),
+            output_type="final_answer",
+            semantic_role=str(result.task_type or self.name),
+            supporting_inputs=self._supporting_inputs(evidence),
         )
 
     def _render_evidence(self, result: DeterministicSolverResult) -> str:
@@ -123,6 +126,17 @@ class SolverBackedRouterHandler:
                 text = text[:400].rstrip() + " ..."
             parts.append(f"{key}={text}")
         return "; ".join(parts)
+
+    def _supporting_inputs(self, evidence: dict[str, Any]) -> list[str]:
+        result: list[str] = []
+        for value in evidence.values():
+            if isinstance(value, (list, tuple)):
+                result.extend(str(item) for item in value[:8])
+            elif isinstance(value, dict):
+                result.extend(f"{key}={item}" for key, item in list(value.items())[:8])
+            elif value is not None:
+                result.append(str(value))
+        return [item for item in result if item][:12]
 
 
 __all__ = ["SolverBackedRouterHandler"]

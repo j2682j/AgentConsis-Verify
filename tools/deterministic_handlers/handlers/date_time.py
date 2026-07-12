@@ -116,6 +116,9 @@ class DateTimeRouterHandler:
             ),
             structured_result=structured,
             confidence=0.95,
+            output_type="final_answer",
+            semantic_role=task_type,
+            supporting_inputs=structured["dates"],
         )
 
     def _operation(self, question: str) -> str:

@@ -30,6 +30,7 @@ class ToolPlanStep:
 class HandlerPlan:
     tool_name: str = "deterministic_handler"
     handler_name: str = ""
+    required_handler_role: str = ""
     reason: str = ""
     required_inputs: list[str] = field(default_factory=list)
     available_inputs: dict[str, Any] = field(default_factory=dict)

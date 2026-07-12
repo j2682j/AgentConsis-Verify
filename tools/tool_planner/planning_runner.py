@@ -181,14 +181,57 @@ class ToolPlanningRunner:
         )
         merged: list[HandlerPlan] = []
         seen: set[str] = set()
-        for handler_plan in generated + existing_handler_plans:
-            if not handler_plan.handler_name or handler_plan.handler_name in seen:
+        prepared_existing = [
+            self._resolve_handler_role_plan(handler_plan)
+            for handler_plan in existing_handler_plans
+        ]
+        for handler_plan in prepared_existing + generated:
+            key = handler_plan.handler_name or f"role:{handler_plan.required_handler_role}"
+            if not key or key in seen:
                 continue
-            if not self._handler_exists(handler_plan.handler_name):
+            if handler_plan.handler_name and not self._handler_exists(handler_plan.handler_name):
                 continue
             merged.append(handler_plan)
-            seen.add(handler_plan.handler_name)
+            seen.add(key)
         return merged[:3]
+
+    def _resolve_handler_role_plan(self, handler_plan: HandlerPlan) -> HandlerPlan:
+        role = str(handler_plan.required_handler_role or "").strip()
+        if not role:
+            return handler_plan
+        registry = getattr(self.deterministic_handler_router, "registry", None)
+        finder = getattr(registry, "find_by_role", None)
+        if not callable(finder):
+            return handler_plan
+        handlers = list(finder(role) or [])
+        if not handlers:
+            return HandlerPlan(
+                tool_name="deterministic_handler",
+                handler_name="",
+                required_handler_role=role,
+                reason=handler_plan.reason or f"No deterministic handler registered for role {role}.",
+                required_inputs=list(handler_plan.required_inputs or []),
+                available_inputs=dict(handler_plan.available_inputs or {}),
+                missing_inputs=[f"handler:{role}"],
+                status="unavailable",
+                next_action_hint="Do not fallback to a generic deterministic handler.",
+                confidence=float(handler_plan.confidence or 0.0),
+            )
+        if handler_plan.handler_name:
+            return handler_plan
+        selected = handlers[0]
+        return HandlerPlan(
+            tool_name="deterministic_handler",
+            handler_name=selected.name,
+            required_handler_role=role,
+            reason=handler_plan.reason,
+            required_inputs=list(handler_plan.required_inputs or []),
+            available_inputs=dict(handler_plan.available_inputs or {}),
+            missing_inputs=list(handler_plan.missing_inputs or []),
+            status=handler_plan.status,
+            next_action_hint=handler_plan.next_action_hint,
+            confidence=float(handler_plan.confidence or 0.0),
+        )
 
     def _handler_exists(self, handler_name: str) -> bool:
         registry = getattr(self.deterministic_handler_router, "registry", None)
@@ -225,6 +268,7 @@ class ToolPlanningRunner:
                 HandlerPlan(
                     tool_name="deterministic_handler",
                     handler_name=match.handler_name,
+                    required_handler_role=self._role_for_handler(match.handler_name),
                     reason=match.reason,
                     required_inputs=list(match.required_inputs or []),
                     available_inputs={
@@ -240,6 +284,16 @@ class ToolPlanningRunner:
             if len(plans) >= 3:
                 break
         return plans
+
+    def _role_for_handler(self, handler_name: str) -> str:
+        registry = getattr(self.deterministic_handler_router, "registry", None)
+        getter = getattr(registry, "role_for_handler", None)
+        if callable(getter):
+            try:
+                return str(getter(handler_name) or "")
+            except Exception:
+                return ""
+        return ""
 
     def _handler_available_inputs(self, *, attachment: dict[str, Any] | None) -> dict[str, bool]:
         attachment = attachment or {}

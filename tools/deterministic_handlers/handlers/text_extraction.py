@@ -116,6 +116,12 @@ class TextExtractionRouterHandler:
             ),
             structured_result=structured,
             confidence=0.91,
+            output_type="final_answer",
+            semantic_role=f"text_{operation}",
+            supporting_inputs=[
+                str(inputs.get("target") or ""),
+                str(inputs.get("ordinal") or ""),
+            ],
         )
 
     def _source_text(self, handler_input: HandlerInput) -> str:

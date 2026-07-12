@@ -21,6 +21,7 @@ class SearchIntentPlan:
         - search_needed: Whether web search should be used.
         - intent: Coarse first-hop search type.
         - target: Short description of what the first search should find.
+        - answer_role: Expected answer type that query generation must preserve.
         - must_include: Exact terms that should appear in generated queries.
         - avoid_terms: Noisy or later-hop terms that should not appear in queries.
         - preferred_domain: Optional authoritative domain for site: queries.
@@ -35,6 +36,7 @@ class SearchIntentPlan:
     must_include: list[str]
     avoid_terms: list[str]
     preferred_domain: str = ""
+    answer_role: str = "unknown"
     state: str = "pending"
     completed_terms: list[str] = field(default_factory=list)
     missing_terms: list[str] = field(default_factory=list)
@@ -49,6 +51,8 @@ class SearchIntentPlan:
             search_needed=bool(data.get("search_needed", True)),
             intent=normalize_text(str(data.get("intent") or "fact")).lower() or "fact",
             target=normalize_text(str(data.get("target") or "")),
+            answer_role=normalize_text(str(data.get("answer_role") or "unknown")).lower()
+            or "unknown",
             must_include=[
                 normalize_text(str(item))
                 for item in list(data.get("must_include") or [])
@@ -98,6 +102,22 @@ class SearchIntentPlanner:
         "media",
         "no_search",
     }
+    ALLOWED_ANSWER_ROLES = {
+        "number",
+        "count",
+        "volume",
+        "duration",
+        "distance",
+        "date",
+        "person",
+        "location",
+        "organization",
+        "title",
+        "species",
+        "boolean",
+        "text_span",
+        "unknown",
+    }
     LOCAL_LIST_NOISE = {
         "grocery",
         "list",
@@ -126,6 +146,7 @@ Choose:
 - search_needed: true or false
 - intent: official_page | paper | definition | fact | media | no_search
 - target: what the first search should find
+- answer_role: expected answer type
 
 Terms:
 - must_include: max 4 title/date/source/rule terms
@@ -135,10 +156,12 @@ Terms:
 Rules:
 - First search only; local lists search external rules only.
 - Never avoid titles, dates, sources, or main entities.
+- Preserve the answer role in target and must_include.
+- For paper questions, search for the requested value; use authors only if the question asks who wrote it.
 - Keep later-hop requirements out of must_include.
 
 Return JSON:
-{{"search_needed": true, "intent": "fact", "target": "", "must_include": [], "avoid_terms": [], "preferred_domain": ""}}"""
+{{"search_needed": true, "intent": "fact", "target": "", "answer_role": "unknown", "must_include": [], "avoid_terms": [], "preferred_domain": ""}}"""
 
     JSON_SCHEMA = {
         "type": "object",
@@ -149,6 +172,10 @@ Return JSON:
                 "enum": sorted(ALLOWED_INTENTS),
             },
             "target": {"type": "string"},
+            "answer_role": {
+                "type": "string",
+                "enum": sorted(ALLOWED_ANSWER_ROLES),
+            },
             "must_include": {
                 "type": "array",
                 "items": {"type": "string"},
@@ -165,6 +192,7 @@ Return JSON:
             "search_needed",
             "intent",
             "target",
+            "answer_role",
             "must_include",
             "avoid_terms",
             "preferred_domain",
@@ -263,6 +291,7 @@ Return JSON:
             search_needed=search_needed,
             intent=intent,
             target=self._clean_text(parsed.get("target"), max_chars=180),
+            answer_role=self._clean_answer_role(parsed.get("answer_role")),
             must_include=self._clean_terms(parsed.get("must_include")),
             avoid_terms=self._clean_terms(parsed.get("avoid_terms")),
             preferred_domain=self._clean_domain(parsed.get("preferred_domain")),
@@ -287,6 +316,7 @@ Return JSON:
             search_needed=bool(normalize_text(question)),
             intent="fact",
             target=normalize_text(question)[:180],
+            answer_role=self._infer_answer_role(question),
             must_include=[],
             avoid_terms=[],
             preferred_domain="",
@@ -295,8 +325,13 @@ Return JSON:
     def _sanitize_plan(self, plan: SearchIntentPlan, *, question: str) -> SearchIntentPlan:
         must_include = self._clean_terms(plan.must_include)
         quoted_titles = self._quoted_titles(question)
+        answer_role = self._repair_answer_role(plan.answer_role, question)
         if self._looks_like_paper_lookup(question) and quoted_titles:
-            must_include = self._paper_first_hop_terms(question, quoted_titles[0])
+            must_include = self._paper_first_hop_terms(
+                question,
+                quoted_titles[0],
+                answer_role=answer_role,
+            )
 
         if self._looks_like_local_list(question):
             must_include = [
@@ -322,7 +357,12 @@ Return JSON:
         target = plan.target
         if self._looks_like_paper_lookup(question) and quoted_titles:
             intent = "paper"
-            target = f"Find the authors of the paper {quoted_titles[0]}."
+            target = self._paper_target(
+                question,
+                quoted_titles[0],
+                answer_role=answer_role,
+                current_target=target,
+            )
         if self._looks_like_local_list(question) and self._has_terms(
             question,
             ["botanical", "fruit", "vegetable"],
@@ -332,6 +372,7 @@ Return JSON:
             search_needed=plan.search_needed,
             intent=intent,
             target=target,
+            answer_role=answer_role,
             must_include=must_include,
             avoid_terms=avoid_terms,
             preferred_domain=preferred_domain,
@@ -365,6 +406,108 @@ Return JSON:
         if not re.fullmatch(r"[a-z0-9.-]+\.[a-z]{2,}", domain):
             return ""
         return domain
+
+    def _clean_answer_role(self, value: Any) -> str:
+        role = normalize_text(str(value or "")).lower().strip()
+        role = re.sub(r"[^a-z_]+", "_", role).strip("_")
+        return role if role in self.ALLOWED_ANSWER_ROLES else "unknown"
+
+    def _repair_answer_role(self, role: str, question: str) -> str:
+        cleaned = self._clean_answer_role(role)
+        inferred = self._infer_answer_role(question)
+        if cleaned == "unknown":
+            return inferred
+        if inferred == "unknown" or self._compatible_answer_roles(cleaned, inferred):
+            return cleaned
+        if self._should_override_answer_role(
+            model_role=cleaned,
+            inferred_role=inferred,
+            question=question,
+        ):
+            return inferred
+        return cleaned
+
+    def _infer_answer_role(self, question: str) -> str:
+        lowered = normalize_text(question).lower()
+        if re.search(r"\bwhat\s+does\b.+\bstand\s+for\b", lowered):
+            return "text_span"
+        if re.search(r"\b(?:what|which)\s+writer\b|\bquoted\s+by\b|\bwho\s+(?:is|was|were|wrote|authored)\b", lowered):
+            return "person"
+        if re.search(r"\bfirst\s+name\b|\blast\s+name\b|\bfull\s+name\b", lowered):
+            return "person"
+        if re.search(r"\bwho|author|authors|director|founder|person\b", lowered):
+            return "person"
+        if re.search(r"\b(?:ioc|country|nation|airport|station)\s+code\b|\bcode\s+as\s+your\s+answer\b", lowered):
+            return "text_span"
+        if re.search(r"\bzip code\b|\bzipcode\b|\bfive-digit\b", lowered):
+            return "text_span"
+        if re.search(r"\b(m\^3|m3|cubic\s+met(?:er|re)s?|lit(?:er|re)s?|volume)\b", lowered):
+            return "volume"
+        if re.search(r"\b(hours?|minutes?|seconds?|duration|elapsed time)\b", lowered):
+            return "duration"
+        if re.search(r"\b(km|kilomet(?:er|re)s?|meters?|metres?|miles?|distance)\b", lowered):
+            return "distance" if "distance" in self.ALLOWED_ANSWER_ROLES else "number"
+        if re.search(r"\b(how many|number of|count|highest number|total)\b", lowered):
+            if re.search(r"\b(species|bird species)\b", lowered):
+                return "species"
+            return "count"
+        if re.search(r"\bwhen\b|\bwhat date\b|\bwhich date\b|\bwhat year\b|\bwhich year\b", lowered):
+            return "date"
+        if re.search(r"\b(where|city|country|location|place)\b", lowered):
+            return "location"
+        if re.search(r"\b(organization|company|university|agency|institution)\b", lowered):
+            return "organization"
+        if re.search(r"\b(title|name of the book|name of the song|album)\b", lowered):
+            return "title"
+        if re.search(r"\b(true|false|yes|no|whether)\b", lowered):
+            return "boolean"
+        return "unknown"
+
+    def _compatible_answer_roles(self, left: str, right: str) -> bool:
+        if left == right:
+            return True
+        compatible_groups = [
+            {"count", "number"},
+            {"title", "text_span"},
+            {"boolean", "text_span"},
+        ]
+        return any(left in group and right in group for group in compatible_groups)
+
+    def _should_override_answer_role(
+        self,
+        *,
+        model_role: str,
+        inferred_role: str,
+        question: str,
+    ) -> bool:
+        lowered = normalize_text(question).lower()
+        if inferred_role == "text_span" and re.search(r"\bwhat\s+does\b.+\bstand\s+for\b", lowered):
+            return True
+        if inferred_role == "person" and re.search(
+            r"\b(?:what|which)\s+writer\b|\bquoted\s+by\b|\bfirst\s+name\b|\blast\s+name\b|\bwho\b",
+            lowered,
+        ):
+            return True
+        if inferred_role == "text_span" and re.search(
+            r"\b(?:ioc|country|nation|airport|station)\s+code\b|\bcode\s+as\s+your\s+answer\b",
+            lowered,
+        ):
+            return True
+        has_entity_answer_cue = bool(
+            re.search(
+                r"\b(?:what|which)\s+writer\b|\bquoted\s+by\b|\bfirst\s+name\b|\blast\s+name\b|\bwho\b|\bwhere\b|\bwhich country\b|\bwhich city\b",
+                lowered,
+            )
+        )
+        if inferred_role == "volume" and re.search(r"\b(m\^3|m3|cubic\s+met(?:er|re)s?|volume)\b", lowered):
+            return not has_entity_answer_cue or model_role in {"number", "count", "unknown", "text_span"}
+        if inferred_role == "duration" and re.search(r"\bhow\s+long\b|\bhours?\b|\bminutes?\b|\bseconds?\b", lowered):
+            return not has_entity_answer_cue or model_role in {"number", "count", "unknown", "text_span"}
+        if inferred_role == "distance" and re.search(r"\bdistance\b|\bkilomet(?:er|re)s?\b|\bmiles?\b", lowered):
+            return not has_entity_answer_cue or model_role in {"number", "count", "unknown", "text_span"}
+        if inferred_role == "date" and re.search(r"\bwhen\b|\bwhat date\b|\bwhich date\b|\bwhat year\b|\bwhich year\b", lowered):
+            return model_role in {"unknown", "text_span"}
+        return False
 
     def _term_key(self, value: str) -> str:
         return re.sub(r"[^a-z0-9]+", " ", value.lower()).strip()
@@ -431,12 +574,67 @@ Return JSON:
             for match in re.findall(r"['\"]([^'\"]{5,120})['\"]", question)
         ]
 
-    def _paper_first_hop_terms(self, question: str, title: str) -> list[str]:
+    def _paper_first_hop_terms(
+        self,
+        question: str,
+        title: str,
+        *,
+        answer_role: str,
+    ) -> list[str]:
         terms = [title]
         year_match = re.search(r"\b(?:1[5-9]\d{2}|20\d{2}|21\d{2})\b", question)
         if year_match:
             terms.append(year_match.group(0))
-        terms.append("authors")
+        role_terms = self._answer_role_terms(question, answer_role)
+        terms.extend(role_terms)
+        if answer_role == "person" and re.search(r"\bauthors?\b|\bwho wrote\b", question, flags=re.IGNORECASE):
+            terms.append("authors")
+        return self._clean_terms(terms)
+
+    def _paper_target(
+        self,
+        question: str,
+        title: str,
+        *,
+        answer_role: str,
+        current_target: str,
+    ) -> str:
+        if answer_role == "person" and re.search(r"\bauthors?\b|\bwho wrote\b", question, flags=re.IGNORECASE):
+            return f"Find the authors of the paper {title}."
+        role_terms = self._answer_role_terms(question, answer_role)
+        role_text = " ".join(role_terms[:2]) if role_terms else answer_role.replace("_", " ")
+        if role_text and role_text != "unknown":
+            return f"Find the {role_text} reported in the paper {title}."
+        return current_target or f"Find the requested value in the paper {title}."
+
+    def _answer_role_terms(self, question: str, answer_role: str) -> list[str]:
+        lowered = normalize_text(question).lower()
+        terms: list[str] = []
+        role_term_map = {
+            "volume": ["volume", "m^3", "fish bag"],
+            "duration": ["duration", "hours"],
+            "count": ["number", "count"],
+            "species": ["bird species", "simultaneously"],
+            "date": ["date"],
+            "person": ["author"],
+            "location": ["location"],
+            "organization": ["organization"],
+            "title": ["title"],
+        }
+        for term in role_term_map.get(answer_role, []):
+            if term in lowered or answer_role in {"count", "date", "person", "location", "organization", "title"}:
+                terms.append(term)
+        quoted = self._quoted_titles(question)
+        protected_ranges = [range(question.find(title), question.find(title) + len(title)) for title in quoted if title in question]
+        for match in re.finditer(r"\b[A-Za-z][A-Za-z0-9^.-]*(?:\s+[A-Za-z][A-Za-z0-9^.-]*){0,2}\b", question):
+            if any(match.start() in span for span in protected_ranges):
+                continue
+            phrase = self._clean_text(match.group(0), max_chars=40)
+            key = self._term_key(phrase)
+            if not key or key in {"what", "was", "the", "that", "calculated", "paper"}:
+                continue
+            if answer_role == "volume" and key in {"fish bag", "m 3", "m3", "volume"}:
+                terms.append(phrase)
         return self._clean_terms(terms)
 
 

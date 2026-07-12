@@ -96,6 +96,16 @@ class NumericReasoningRouterHandler:
             "numbers": [str(item) for item in numbers],
             "round_places": inputs.get("round_places"),
         }
+        output_type = self._output_type(
+            question=str(inputs.get("question") or ""),
+            operation=operation,
+            numbers=numbers,
+        )
+        semantic_role = (
+            f"numeric_{operation}"
+            if output_type == "final_answer"
+            else f"intermediate_numeric_{operation}"
+        )
         return HandlerResult(
             handler_name=self.name,
             status="ok",
@@ -110,7 +120,35 @@ class NumericReasoningRouterHandler:
             ),
             structured_result=structured,
             confidence=0.94,
+            output_type=output_type,
+            semantic_role=semantic_role,
+            supporting_inputs=structured["numbers"],
         )
+
+    def _output_type(
+        self,
+        *,
+        question: str,
+        operation: str,
+        numbers: list[Decimal],
+    ) -> str:
+        lowered = str(question or "").lower()
+        multi_step_signals = {
+            "pace",
+            "distance",
+            "perigee",
+            "indefinitely",
+            "would it take",
+            "if ",
+            "using",
+            "calculate",
+            "calculation",
+        }
+        if operation == "round" and len(numbers) <= 1:
+            return "intermediate_value"
+        if any(signal in lowered for signal in multi_step_signals) and len(numbers) <= 2:
+            return "intermediate_value"
+        return "final_answer"
 
     def _operation(self, question: str) -> str:
         lowered = str(question or "").lower()

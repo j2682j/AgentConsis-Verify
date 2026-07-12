@@ -428,6 +428,9 @@ class TableExactRouterHandler:
             evidence_text=evidence_text,
             structured_result=structured,
             confidence=0.96,
+            output_type="final_answer",
+            semantic_role=task_type,
+            supporting_inputs=self._supporting_inputs(structured),
         )
 
     def _structured(self, inputs: dict[str, Any]) -> dict[str, Any]:
@@ -444,6 +447,16 @@ class TableExactRouterHandler:
             "groups": dict(inputs.get("groups") or {}),
             "sorted_rows": list(inputs.get("sorted_rows") or []),
         }
+
+    def _supporting_inputs(self, structured: dict[str, Any]) -> list[str]:
+        result: list[str] = []
+        for key in ("operation", "target_column", "group_column", "sort_spec", "filters"):
+            value = structured.get(key)
+            if value:
+                result.append(f"{key}={value}")
+        for row in list(structured.get("rows") or [])[:3]:
+            result.append(f"row={row}")
+        return result[:12]
 
     def _best_header(self, text: str, headers: list[str]) -> str:
         normalized = normalize_text(text).casefold()

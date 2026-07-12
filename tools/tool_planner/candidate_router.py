@@ -22,6 +22,8 @@ class ToolCandidateRouter:
         routing = routing or {}
         attachment = attachment or {}
         needs_video = self._has_video_url(question)
+        needs_visual_video = self._needs_visual_video(question)
+        needs_transcript_video = self._needs_transcript_video(question)
         deterministic_gap = (
             routing.get("deterministic_tool_gap")
             if isinstance(routing.get("deterministic_tool_gap"), dict)
@@ -35,14 +37,24 @@ class ToolCandidateRouter:
         candidates: list[ToolCandidate] = []
 
         if needs_video:
-            candidates.append(
-                ToolCandidate(
-                    tool_name="video_transcript",
-                    capability="Extract transcript evidence from YouTube or remote video URLs.",
-                    priority_hint="Run before search when the question asks about video content.",
-                    required=True,
+            if needs_visual_video or not needs_transcript_video:
+                candidates.append(
+                    ToolCandidate(
+                        tool_name="video_evidence",
+                        capability="Extract visual frame evidence from YouTube or remote video URLs.",
+                        priority_hint="Run first when the question asks about visible video content, objects, counts, or camera evidence.",
+                        required=True,
+                    )
                 )
-            )
+            if needs_transcript_video:
+                candidates.append(
+                    ToolCandidate(
+                        tool_name="video_transcript",
+                        capability="Extract transcript evidence from YouTube or remote video URLs.",
+                        priority_hint="Run when the question asks about speech, captions, subtitles, or transcript content.",
+                        required=True,
+                    )
+                )
 
         needs_attachment_for_gap = bool(
             attachment
@@ -131,6 +143,31 @@ class ToolCandidateRouter:
                 str(question or ""),
                 flags=re.IGNORECASE,
             )
+        )
+
+    def _needs_visual_video(self, question: str) -> bool:
+        lowered = str(question or "").lower()
+        return any(
+            term in lowered
+            for term in (
+                "camera",
+                "visible",
+                "shown",
+                "seen",
+                "watch",
+                "frame",
+                "simultaneously",
+                "appears",
+                "appear",
+                "highest number",
+            )
+        )
+
+    def _needs_transcript_video(self, question: str) -> bool:
+        lowered = str(question or "").lower()
+        return any(
+            term in lowered
+            for term in ("transcript", "caption", "subtitles", "said", "spoken", "says")
         )
 
 
