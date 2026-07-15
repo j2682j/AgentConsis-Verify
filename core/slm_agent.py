@@ -143,11 +143,17 @@ class SLM_Agent:
         if verbose:
             print(f"[LLM] calling model={self.model}")
         try:
-            result = self.llm_client.chat(
-                model=self.model,
-                messages=messages,
-                **self._completion_options(kwargs),
-            )
+            options = self._completion_options(kwargs)
+            if getattr(self.llm_client, "provider", "") == "ollama":
+                result = self._ollama_native_chat(messages, options)
+            else:
+                options.pop("keep_alive", None)
+                options.pop("unload_after_call", None)
+                result = self.llm_client.chat(
+                    model=self.model,
+                    messages=messages,
+                    **options,
+                )
             if verbose:
                 print(f"[LLM] model={self.model} response received")
             return result
@@ -155,6 +161,62 @@ class SLM_Agent:
             raise AgentsException(
                 f"SLM chat 呼叫失敗: {type(exc).__name__}: {exc}"
             ) from exc
+
+    def _ollama_native_chat(
+        self,
+        messages: list[dict[str, str]],
+        options: dict[str, Any],
+    ) -> LLMChatResult:
+        temperature = options.pop("temperature", self.temperature)
+        max_tokens = options.pop("max_tokens", self.max_tokens)
+        enable_thinking = bool(options.pop("enable_thinking", self.enable_thinking))
+        options.pop("reasoning_effort", None)
+        keep_alive = options.pop("keep_alive", None)
+        if bool(options.pop("unload_after_call", False)):
+            keep_alive = 0
+        return self.llm_client.ollama_native_chat(
+            model=self.model,
+            messages=messages,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            think=enable_thinking,
+            keep_alive=keep_alive,
+            **options,
+        )
+
+    def unload(self) -> dict[str, Any]:
+        if getattr(self.llm_client, "provider", "") != "ollama":
+            return {
+                "model": self.model,
+                "provider": getattr(self.llm_client, "provider", ""),
+                "unload_method": "none",
+                "unloaded": False,
+                "warning": "provider_is_not_ollama",
+            }
+        try:
+            self.llm_client.ollama_native_chat(
+                model=self.model,
+                messages=[{"role": "user", "content": ""}],
+                temperature=0,
+                max_tokens=1,
+                think=False,
+                keep_alive=0,
+            )
+            return {
+                "model": self.model,
+                "provider": "ollama",
+                "unload_method": "keep_alive_0",
+                "unloaded": True,
+                "warning": "",
+            }
+        except Exception as exc:
+            return {
+                "model": self.model,
+                "provider": "ollama",
+                "unload_method": "keep_alive_0",
+                "unloaded": False,
+                "warning": f"{type(exc).__name__}: {exc}",
+            }
 
     def think(
         self,

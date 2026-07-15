@@ -75,6 +75,7 @@ class SearchIntentPlannerTests(unittest.TestCase):
         self.assertIn("Merriam-Webster", plan.must_include)
         self.assertEqual(len(client.native_calls), 1)
         self.assertFalse(client.native_calls[0]["think"])
+        self.assertEqual(client.native_calls[0]["keep_alive"], 0)
 
     def test_query_generator_prefers_intent_seed_and_drops_avoid_terms(self):
         intent = SearchIntentPlan(

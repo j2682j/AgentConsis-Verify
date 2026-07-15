@@ -12,7 +12,7 @@ from parsers.tool_request_parser import ToolRequestParser
 from tools.tool_cache import ToolCache
 
 
-class Stage1TrajectoryRunner:
+class Stage1ToolUseRunner:
     """
     執行單次 Stage1 tool-use trajectory，讓 Agent 可在回答前多回合請求工具。
 
@@ -65,6 +65,7 @@ class Stage1TrajectoryRunner:
         evidence_packets: list[Any],
         run_index: int,
         attachment: dict[str, Any] | None = None,
+        unload_after_run: bool = False,
     ) -> tuple[EachAgentReply, int, int]:
         """
         執行單一 Agent 的 tool-use reasoning 回合，直到產生 final answer 或達到工具上限。
@@ -638,4 +639,4 @@ class Stage1TrajectoryRunner:
         return "\n".join(lines)
 
 
-__all__ = ["Stage1TrajectoryRunner"]
+__all__ = ["Stage1ToolUseRunner"]

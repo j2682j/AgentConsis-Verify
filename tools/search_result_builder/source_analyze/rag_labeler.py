@@ -16,7 +16,7 @@ TERMINATE_TAG = "<TERMINATE>"
 SEQUENCE_LABELS_TWO = {0: CONTINUE_TAG, 1: TERMINATE_TAG}
 SEQUENCE_LABELS_THREE = {0: CONTINUE_TAG, 1: TERMINATE_TAG, 2: FINISH_TAG}
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
-PROJECT_LABELER_CHECKPOINT = PROJECT_ROOT / "models" / "labeler_mixed_v1"
+PROJECT_LABELER_CHECKPOINT = PROJECT_ROOT / "models" / "labeler_v2"
 _MODEL_CACHE: dict[tuple[str, str], tuple[Any, Any, str]] = {}
 _SPACY_CACHE: dict[str, Any] = {}
 
@@ -29,7 +29,7 @@ def _default_labeler_checkpoint() -> Path:
         - 無。
 
     Returns:
-        - Path: `<repo>/models/labeler_mixed_v1` 絕對路徑。
+        - Path: `<repo>/models/labeler_v2` 絕對路徑。
     """
     return PROJECT_LABELER_CHECKPOINT
 

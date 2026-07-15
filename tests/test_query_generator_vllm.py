@@ -95,6 +95,7 @@ class QueryGeneratorVLLMTests(unittest.TestCase):
         self.assertEqual(client.calls, [])
         self.assertEqual(len(client.native_calls), 1)
         self.assertFalse(client.native_calls[0]["think"])
+        self.assertEqual(client.native_calls[0]["keep_alive"], 0)
         self.assertEqual(
             client.native_calls[0]["json_format"],
             generator.QUERY_JSON_SCHEMA,

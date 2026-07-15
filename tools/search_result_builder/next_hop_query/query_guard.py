@@ -36,6 +36,7 @@ class NextHopQueryGuardResult:
     must_include_coverage: float = 0.0
     missing_terms: list[str] = field(default_factory=list)
     retained_terms: list[str] = field(default_factory=list)
+    support_requirements: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, object]:
         return asdict(self)
@@ -151,6 +152,7 @@ class NextHopQueryGuard:
             proposed,
             intent_plan,
         )
+        support_requirements = self._support_requirements(intent_plan)
 
         reject_reason = self._reject_reason(
             proposed=proposed,
@@ -170,6 +172,7 @@ class NextHopQueryGuard:
                 must_include_coverage=coverage,
                 missing_terms=missing,
                 retained_terms=retained,
+                support_requirements=support_requirements,
             )
 
         selected = fallback if fallback else proposed
@@ -185,6 +188,7 @@ class NextHopQueryGuard:
             must_include_coverage=coverage,
             missing_terms=missing,
             retained_terms=retained,
+            support_requirements=support_requirements,
         )
 
     def build_fallback_query(
@@ -216,6 +220,8 @@ class NextHopQueryGuard:
 
         if intent_plan is not None:
             for term in list(intent_plan.missing_terms or []) + list(intent_plan.must_include or []):
+                if self._is_internal_requirement(term):
+                    continue
                 if not self._contains_equivalent(parts, term):
                     parts.append(term)
         else:
@@ -269,11 +275,9 @@ class NextHopQueryGuard:
     ) -> tuple[float, list[str], list[str]]:
         if intent_plan is None:
             return 1.0, [], []
-        terms = [
-            term
-            for term in list(intent_plan.missing_terms or []) or list(intent_plan.must_include or [])
-            if normalize_text(term)
-        ]
+        missing_terms = self._search_terms(intent_plan.missing_terms or [])
+        must_include_terms = self._search_terms(intent_plan.must_include or [])
+        terms = missing_terms or must_include_terms
         if not terms:
             return 1.0, [], []
         missing: list[str] = []
@@ -284,6 +288,49 @@ class NextHopQueryGuard:
             else:
                 missing.append(term)
         return round(len(retained) / len(terms), 6), missing, retained
+
+    def _support_requirements(self, intent_plan: SearchIntentPlan | None) -> list[str]:
+        if intent_plan is None:
+            return []
+        result: list[str] = []
+        seen: set[str] = set()
+        for term in list(intent_plan.missing_terms or []) + list(intent_plan.must_include or []):
+            cleaned = normalize_text(str(term or "")).strip()
+            if not cleaned or not self._is_support_requirement(cleaned):
+                continue
+            key = cleaned.casefold()
+            if key in seen:
+                continue
+            seen.add(key)
+            result.append(cleaned)
+        return result
+
+    def _search_terms(self, terms: Iterable[str]) -> list[str]:
+        result: list[str] = []
+        seen: set[str] = set()
+        for term in terms:
+            cleaned = normalize_text(str(term or "")).strip()
+            if not cleaned or self._is_internal_requirement(cleaned):
+                continue
+            key = cleaned.casefold()
+            if key in seen:
+                continue
+            seen.add(key)
+            result.append(cleaned)
+        return result
+
+    def _is_support_requirement(self, term: str) -> bool:
+        return str(term or "").strip().casefold().startswith("answer_support:")
+
+    def _is_internal_requirement(self, term: str) -> bool:
+        text = str(term or "").strip().casefold()
+        return text.startswith(
+            (
+                "answer_support:",
+                "answer_candidate:",
+                "preferred_domain:",
+            )
+        )
 
     def _term_covered(self, term: str, query: str) -> bool:
         term_tokens = self._keywords(term)

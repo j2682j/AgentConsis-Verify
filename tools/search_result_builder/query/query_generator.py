@@ -37,6 +37,7 @@ class QueryGenerator:
         precision_needed: bool = True,
     ) -> None:
         resolved_query_model = query_model_name or os.getenv("QUERY_GENERATOR_MODEL", "qwen3:4b")
+        self.query_model_name = resolved_query_model
         self.generator = generator or MaskSalienceQueryGenerator(
             query_model_name=resolved_query_model,
             llm_client=llm_client,
@@ -49,6 +50,12 @@ class QueryGenerator:
         self.precision_needed = precision_needed
 
     def plan(self, question: str, max_queries: int = 5) -> dict[str, Any]:
+        try:
+            return self._plan_impl(question, max_queries=max_queries)
+        finally:
+            self._stop_query_model_after_generation()
+
+    def _plan_impl(self, question: str, max_queries: int = 5) -> dict[str, Any]:
         """
         依照原始問題產生排序後的 query list。
 
@@ -164,6 +171,9 @@ class QueryGenerator:
 
     def _normalize_query_key(self, query: str) -> str:
         return re.sub(r"\s+", " ", normalize_text(query).lower()).strip()
+
+    def _stop_query_model_after_generation(self) -> None:
+        return
 
 
 __all__ = ["QueryGenerator"]

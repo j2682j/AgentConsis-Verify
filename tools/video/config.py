@@ -25,6 +25,7 @@ class VideoEvidenceConfig:
     max_video_seconds: int = 900
     timeout_sec: int = 240
     max_tokens: int = 384
+    cookiefile: str = ""
 
     @classmethod
     def from_env(cls) -> "VideoEvidenceConfig":
@@ -35,6 +36,11 @@ class VideoEvidenceConfig:
             max_video_seconds=int(os.getenv("VIDEO_EVIDENCE_MAX_VIDEO_SECONDS", "900")),
             timeout_sec=int(os.getenv("VIDEO_EVIDENCE_TIMEOUT", "240")),
             max_tokens=int(os.getenv("VIDEO_EVIDENCE_MAX_TOKENS", "384")),
+            cookiefile=(
+                os.getenv("VIDEO_EVIDENCE_COOKIEFILE")
+                or os.getenv("YTDLP_COOKIEFILE")
+                or ""
+            ),
         )
 
 

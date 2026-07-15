@@ -4,7 +4,7 @@ import json
 import unittest
 
 from core.config import AgentConfig
-from core.stage1_trajectory_runner import Stage1TrajectoryRunner
+from core.stage1_tool_use_runner import Stage1ToolUseRunner
 from tools.base import Tool, ToolParameter
 from tools.tool_manager import ToolManager
 
@@ -85,7 +85,7 @@ class ToolCapabilityTests(unittest.TestCase):
         manager = ToolManager()
         manager.register_tool(EchoTool())
         manager.enabled_tools.add("dynamic_echo")
-        runner = Stage1TrajectoryRunner(
+        runner = Stage1ToolUseRunner(
             tool_manager=manager,
             max_tool_turns=1,
         )

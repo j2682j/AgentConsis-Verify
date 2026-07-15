@@ -16,7 +16,7 @@ class ToolManager:
         - 無。
 
     Returns:
-        - ToolManager: 可供 EvidenceRunner 與 Stage1TrajectoryRunner 呼叫的工具管理器。
+        - ToolManager: 可供 EvidenceRunner 與 Stage1ToolUseRunner 呼叫的工具管理器。
     """
 
     def __init__(self) -> None:

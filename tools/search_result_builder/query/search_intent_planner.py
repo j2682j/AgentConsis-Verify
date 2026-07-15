@@ -264,6 +264,7 @@ Return JSON:
                 max_tokens=384,
                 think=False,
                 json_format=self.JSON_SCHEMA,
+                keep_alive=0,
             )
         else:
             result = self.llm_client.chat(

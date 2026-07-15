@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass, field
+import gc
 from typing import Any
 
 from parsers.reasoning_parser import extract_reasoning_steps
@@ -322,6 +323,42 @@ class VersaPRMScorer:
         self._tokenizer = tokenizer
         self._model = model
         self._used_load_mode = used_load_mode
+
+    def unload(self) -> dict[str, Any]:
+        """
+        Release the loaded VersaPRM model and clear CUDA cache when possible.
+
+        Args:
+            - None.
+
+        Returns:
+            - dict[str, Any]: Unload status for runtime metadata.
+        """
+        was_loaded = self._model is not None or self._tokenizer is not None
+        torch_module = self._torch
+        device = self._resolved_device
+
+        self._model = None
+        self._tokenizer = None
+        gc.collect()
+
+        cuda_cache_cleared = False
+        if torch_module is not None:
+            cuda = getattr(torch_module, "cuda", None)
+            if cuda is not None and callable(getattr(cuda, "is_available", None)):
+                try:
+                    if cuda.is_available():
+                        cuda.empty_cache()
+                        cuda.ipc_collect()
+                        cuda_cache_cleared = True
+                except Exception:
+                    cuda_cache_cleared = False
+
+        return {
+            "was_loaded": was_loaded,
+            "device": device,
+            "cuda_cache_cleared": cuda_cache_cleared,
+        }
 
     def build_input(
         self,

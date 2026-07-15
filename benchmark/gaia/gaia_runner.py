@@ -179,6 +179,7 @@ def run_sample(
     stage1_runs_per_agent: int,
     model_specs: str | None,
     temperature: float,
+    max_stage1_workers: int | None,
     stage2_max_tokens: int,
     enable_stage2_score: bool,
     enable_stage1_early_stop: bool,
@@ -206,6 +207,7 @@ def run_sample(
         attachment=build_attachment(sample),
         tool_manager=tool_manager,
         stage1_runs_per_agent=stage1_runs_per_agent,
+        max_stage1_workers=max_stage1_workers,
         stage2_max_tokens=stage2_max_tokens,
         enable_stage2_score=enable_stage2_score,
         enable_stage1_early_stop=enable_stage1_early_stop,
@@ -505,6 +507,7 @@ def write_markdown_report(results: dict[str, Any], output_path: str | Path) -> P
                 f"- Compact search evidence enabled: {network_metadata.get('enable_compact_search_evidence', False)}",
                 f"- Query planner: {network_metadata.get('query_planner', 'signal')}",
                 f"- Evidence-driven search enabled: {network_metadata.get('enable_evidence_driven_search', False)}",
+                f"- Max Stage1 workers: {network_metadata.get('max_stage1_workers', 0)}",
                 f"- Max parallel next-hop queries: {network_metadata.get('max_parallel_next_hop_queries', 0)}",
                 f"- Max Stage1 tool turns: {network_metadata.get('max_stage1_tool_turns', 0)}",
                 f"- Stage1 early stop used: {network_metadata.get('stage1_early_stop', False)}",
@@ -686,6 +689,29 @@ def write_markdown_report(results: dict[str, Any], output_path: str | Path) -> P
         else:
             lines.append("| - | - | - | 0 | - |")
 
+        if stage1_results:
+            lines.extend(
+                [
+                    "",
+                    "**Stage1 Answer Aggregation / Self-Review**",
+                    "",
+                    "| Agent | Aggregation Status | Needs Review | Review Applied | Tool Used | Review Answer | Review Error |",
+                    "|---|---|---|---|---|---|---|",
+                ]
+            )
+            for item in stage1_results:
+                aggregation = item.get("aggregation_metadata", {}) or {}
+                review = item.get("self_review_metadata", {}) or {}
+                lines.append(
+                    f"| {item.get('agent_id', '')} | "
+                    f"{aggregation.get('status', '-') or '-'} | "
+                    f"{aggregation.get('needs_review', False)} | "
+                    f"{review.get('applied', False)} | "
+                    f"{review.get('tool_used', False)} | "
+                    f"{short_cell(review.get('answer', '') or '-', 100)} | "
+                    f"{short_cell(review.get('error', '') or '-', 120)} |"
+                )
+
         lines.extend(
             [
                 "",
@@ -782,6 +808,7 @@ def run_gaia_evaluation(args: argparse.Namespace) -> dict[str, Any]:
     print(f"[INFO] GAIA data_dir={data_dir}")
     print(f"[INFO] split={args.split} level={args.level or 'all'} samples={len(items)}")
     print(f"[INFO] stage1_runs_per_agent={args.stage1_runs_per_agent}")
+    print(f"[INFO] max_stage1_workers={args.max_stage1_workers or 'auto'}")
     print(f"[INFO] stage2_max_tokens={args.stage2_max_tokens}")
     print(f"[INFO] enable_stage2_score={not args.without_stage2_score}")
     print(f"[INFO] stage2_verifier={args.stage2_verifier}")
@@ -806,6 +833,7 @@ def run_gaia_evaluation(args: argparse.Namespace) -> dict[str, Any]:
     print(f"[INFO] report_md={report_md.resolve()}")
 
     previous_best_agent_id: str | None = None
+    agent_exact_counts: dict[str, int] = {}
     for index, sample in enumerate(items, 1):
         print(f"\n========== GAIA {index}/{len(items)} task_id={sample.get('task_id', '')} ==========")
         result = run_sample(
@@ -815,6 +843,7 @@ def run_gaia_evaluation(args: argparse.Namespace) -> dict[str, Any]:
             stage1_runs_per_agent=args.stage1_runs_per_agent,
             model_specs=args.models,
             temperature=args.temperature,
+            max_stage1_workers=args.max_stage1_workers,
             stage2_max_tokens=args.stage2_max_tokens,
             enable_stage2_score=not args.without_stage2_score,
             enable_stage1_early_stop=args.enable_stage1_early_stop,
@@ -835,7 +864,13 @@ def run_gaia_evaluation(args: argparse.Namespace) -> dict[str, Any]:
             versa_prm_dtype=args.versa_prm_dtype,
             versa_prm_local_files_only=args.versa_prm_local_files_only,
         )
-        previous_best_agent_id = result.get("winner_agent_id") or previous_best_agent_id
+        if result.get("exact_match") and result.get("winner_agent_id"):
+            winner_id = str(result.get("winner_agent_id") or "")
+            agent_exact_counts[winner_id] = agent_exact_counts.get(winner_id, 0) + 1
+            previous_best_agent_id = max(
+                agent_exact_counts,
+                key=lambda agent_id: (agent_exact_counts[agent_id], agent_id),
+            )
         task_json_path = write_task_json(result, output_dir, index)
         result["task_json_path"] = str(task_json_path)
         detailed_results.append(result)
@@ -872,6 +907,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--level", type=int, default=None, choices=[1, 2, 3])
     parser.add_argument("--max-samples", type=int, default=1)
     parser.add_argument("--stage1-runs-per-agent", type=int, default=3)
+    parser.add_argument(
+        "--max-stage1-workers",
+        type=int,
+        default=None,
+        help="Maximum number of Stage1 agent runs executed in parallel. Omit for automatic.",
+    )
     parser.add_argument("--stage2-max-tokens", type=int, default=512)
     parser.add_argument(
         "--stage2-verifier",

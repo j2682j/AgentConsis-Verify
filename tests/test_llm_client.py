@@ -204,6 +204,7 @@ class LLMClientTests(unittest.TestCase):
             max_tokens=256,
             think=False,
             json_format=True,
+            keep_alive=0,
         )
 
         request, timeout = calls[0]
@@ -214,6 +215,7 @@ class LLMClientTests(unittest.TestCase):
         self.assertFalse(payload["stream"])
         self.assertEqual(payload["options"]["num_predict"], 256)
         self.assertEqual(payload["options"]["temperature"], 0.1)
+        self.assertEqual(payload["keep_alive"], 0)
         self.assertEqual(timeout, client.timeout)
         self.assertEqual(
             result.content,

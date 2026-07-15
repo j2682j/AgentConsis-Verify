@@ -7,9 +7,9 @@ from context.context_builder import ContextPacket
 from context.stage1_context import Stage1ContextBuilder
 from core.config import AgentConfig, AgentReasoningSummary, EachAgentReply
 from core.slm_agent import SLM_Agent
-from core.stage1_trajectory_runner import Stage1TrajectoryRunner
-from parsers import Stage1ReplyParser
-from score import Stage1Aggregator
+from core.stage1_tool_use_runner import Stage1ToolUseRunner
+from parsers import SelfReviewParser, Stage1ReplyParser
+from score import AgentAnswerAggregator, Stage1Aggregator
 
 
 class Stage1Runner:
@@ -54,7 +54,10 @@ class Stage1Runner:
         context_builder: Stage1ContextBuilder | None = None,
         parser: Stage1ReplyParser | None = None,
         aggregator: Stage1Aggregator | None = None,
-        trajectory_runner: Stage1TrajectoryRunner | None = None,
+        answer_aggregator: AgentAnswerAggregator | None = None,
+        self_review_parser: SelfReviewParser | None = None,
+        trajectory_runner: Stage1ToolUseRunner | None = None,
+        unload_previous_slm_on_switch: bool = True,
     ) -> None:
         self.question = question
         self.agents = agents
@@ -68,10 +71,16 @@ class Stage1Runner:
         self.context_builder = context_builder or Stage1ContextBuilder()
         self.parser = parser or Stage1ReplyParser()
         self.aggregator = aggregator or Stage1Aggregator()
-        self.trajectory_runner = trajectory_runner or Stage1TrajectoryRunner(
+        self.answer_aggregator = answer_aggregator or AgentAnswerAggregator()
+        self.self_review_parser = self_review_parser or SelfReviewParser()
+        self.trajectory_runner = trajectory_runner or Stage1ToolUseRunner(
             tool_manager=tool_manager,
             max_tool_turns=self.max_tool_turns,
         )
+        self.tool_manager = tool_manager
+        self.unload_previous_slm_on_switch = bool(unload_previous_slm_on_switch)
+        self.model_lifecycle_records: list[dict[str, Any]] = []
+        self.model_switch_stop_records = self.model_lifecycle_records
 
     def run(self, evidence: dict[str, Any]) -> list[AgentReasoningSummary]:
         """
@@ -89,6 +98,11 @@ class Stage1Runner:
         }
         if not self.agents or self.stage1_runs_per_agent <= 0:
             return []
+
+        self.model_lifecycle_records = []
+        self.model_switch_stop_records = self.model_lifecycle_records
+        if self.unload_previous_slm_on_switch:
+            return self._run_sequential_with_model_switch_unload(evidence)
 
         for run_index in range(1, self.stage1_runs_per_agent + 1):
             with ThreadPoolExecutor(max_workers=self.worker_count()) as executor:
@@ -120,8 +134,441 @@ class Stage1Runner:
         results: list[AgentReasoningSummary] = []
         for config in self.agents:
             runs = sorted(runs_by_agent.get(config.agent_id, []), key=lambda run: run.run_index)
-            results.append(self.aggregator.summarize(config, runs))
-        return results
+            results.append(self._summarize_with_aggregation(config, runs))
+        return self._apply_self_review_fallback_if_needed(results, runs_by_agent)
+
+    def _run_sequential_with_model_switch_unload(
+        self,
+        evidence: dict[str, Any],
+    ) -> list[AgentReasoningSummary]:
+        """
+        以單 worker 序列方式執行 Stage1，並在切換到下一個 SLM 前卸載上一個 SLM。
+
+        Args:
+            - evidence: EvidenceRunner 輸出的 search、attachment、solver evidence。
+
+        Returns:
+            - list[AgentReasoningSummary]: 每個 Agent 的 Stage1 聚合結果。
+        """
+        runs_by_agent: dict[str, list[EachAgentReply]] = {
+            config.agent_id: [] for config in self.agents
+        }
+        for config in self.agents:
+            for run_index in range(1, self.stage1_runs_per_agent + 1):
+                unload_after_call = (
+                    not self.enable_tool_use
+                    and run_index == self.stage1_runs_per_agent
+                )
+                runs_by_agent[config.agent_id].append(
+                    self._safe_run_single_agent(
+                        config,
+                        run_index,
+                        evidence,
+                        unload_after_call=unload_after_call,
+                    )
+                )
+            if self.enable_tool_use:
+                self._unload_agent_model(
+                    config=config,
+                    phase="after_agent_stage1_tool_use_complete",
+                )
+            else:
+                self.model_lifecycle_records.append(
+                    {
+                        "phase": "after_agent_stage1_complete",
+                        "agent_id": config.agent_id,
+                        "model": config.model_name,
+                        "unload_method": "keep_alive_0",
+                        "unloaded": True,
+                        "trigger": "last_stage1_call",
+                        "warning": "",
+                    }
+                )
+
+        results: list[AgentReasoningSummary] = []
+        for config in self.agents:
+            runs = sorted(runs_by_agent.get(config.agent_id, []), key=lambda run: run.run_index)
+            results.append(self._summarize_with_aggregation(config, runs))
+        return self._apply_self_review_fallback_if_needed(results, runs_by_agent)
+
+    def _summarize_with_aggregation(
+        self,
+        config: AgentConfig,
+        runs: list[EachAgentReply],
+    ) -> AgentReasoningSummary:
+        """
+        做單一 Agent 內部答案聚合，但不立刻觸發 self-review。
+
+        Args:
+         - config: 目前 Agent 設定。
+         - runs: 該 Agent 的 Stage1 多次回答。
+
+        Returns:
+         - AgentReasoningSummary: 已寫入 aggregation metadata 的 summary。
+        """
+        summary = self.aggregator.summarize(config, runs)
+        aggregation = self.answer_aggregator.aggregate(runs)
+        summary.aggregation_metadata = aggregation.to_dict()
+        if aggregation.answer and aggregation.status == "needs_review":
+            summary.compressed_answer = aggregation.answer
+            summary.confidence_score = aggregation.confidence_score
+            config.confidence_score = aggregation.confidence_score
+        return summary
+
+    def _apply_self_review_fallback_if_needed(
+        self,
+        summaries: list[AgentReasoningSummary],
+        runs_by_agent: dict[str, list[EachAgentReply]],
+    ) -> list[AgentReasoningSummary]:
+        """
+        只有當所有 Agent 都無法形成 2/3 或 3/3 聚合答案時，才啟用 self-review fallback。
+
+        Args:
+         - summaries: 每個 Agent 的內部聚合結果。
+         - runs_by_agent: 每個 Agent 的原始 Stage1 runs。
+
+        Returns:
+         - list[AgentReasoningSummary]: 必要時已套用 review answer 的 summaries。
+        """
+        if not summaries:
+            return summaries
+        if any(not self._summary_needs_review_fallback(summary) for summary in summaries):
+            for summary in summaries:
+                summary.self_review_metadata = {
+                    "applied": False,
+                    "skipped": True,
+                    "skip_reason": "at_least_one_agent_has_aggregate_answer",
+                }
+            return summaries
+
+        config_by_agent = {config.agent_id: config for config in self.agents}
+        for summary in summaries:
+            config = config_by_agent.get(summary.agent_id)
+            if config is None:
+                continue
+            aggregation = summary.aggregation_metadata or {}
+            review = self._run_self_review(
+                config=config,
+                runs=sorted(
+                    runs_by_agent.get(summary.agent_id, []),
+                    key=lambda run: run.run_index,
+                ),
+                aggregation=aggregation,
+            )
+            self._unload_agent_model(
+                config=config,
+                phase="after_agent_self_review_complete",
+            )
+            review["fallback_scope"] = "all_agents_need_review"
+            summary.self_review_metadata = review
+            if review.get("applied") and review.get("answer"):
+                answer = str(review.get("answer") or "").strip()
+                summary.compressed_answer = answer
+                summary.compressed_reasoning = (
+                    "step 1. Review the three previous final answers because no Agent "
+                    "formed an internal majority.\n"
+                    "step 2. Select the best short final answer after self-review."
+                )
+                summary.confidence_score = 0.67
+                summary.active = True
+                summary.winner_selection_eligible = True
+                summary.winner_selection_status = "answerable"
+                config.confidence_score = 0.67
+        return summaries
+
+    def _summary_needs_review_fallback(self, summary: AgentReasoningSummary) -> bool:
+        aggregation = summary.aggregation_metadata or {}
+        if bool(aggregation.get("needs_review")):
+            return True
+        status = str(aggregation.get("status", "") or "").strip()
+        return status in {"needs_review", "no_valid_answers"}
+
+    def _run_self_review(
+        self,
+        *,
+        config: AgentConfig,
+        runs: list[EachAgentReply],
+        aggregation: Any,
+    ) -> dict[str, Any]:
+        answers = [str(run.final_answer or "").strip() for run in runs[:3]]
+        while len(answers) < 3:
+            answers.append("")
+        trigger = (
+            aggregation.get("reason", "")
+            if isinstance(aggregation, dict)
+            else getattr(aggregation, "reason", "")
+        )
+        metadata: dict[str, Any] = {
+            "applied": False,
+            "trigger": trigger,
+            "previous_answers": list(answers),
+            "tool_used": False,
+            "tool_calls": [],
+            "tool_results": [],
+            "raw_reply": "",
+            "final_raw_reply": "",
+            "answer": "",
+            "parse_completed": False,
+            "error": "",
+        }
+        messages = self._build_self_review_messages(answers)
+        try:
+            raw_reply, prompt_tokens, completion_tokens = self.get_agent(config).invoke_with_usage(messages)
+            self.record_token_usage(
+                stage="stage1",
+                prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens,
+            )
+        except Exception as exc:
+            metadata["error"] = f"self_review_call_failed:{type(exc).__name__}: {exc}"
+            return metadata
+
+        metadata["raw_reply"] = raw_reply
+        parsed = self.self_review_parser.parse(raw_reply)
+        metadata["initial_parse"] = parsed.to_dict()
+
+        if parsed.reply_type == "final_answer" and parsed.answer:
+            metadata.update(
+                {
+                    "applied": True,
+                    "answer": parsed.answer,
+                    "parse_completed": bool(parsed.parse_completed),
+                    "validator_passed": bool(parsed.parse_completed),
+                    "error": parsed.error,
+                }
+            )
+            return metadata
+
+        if parsed.reply_type != "tool_request" or not parsed.parse_completed:
+            metadata["error"] = parsed.error or "self_review_parse_failed"
+            return metadata
+
+        if self.tool_manager is None:
+            metadata["error"] = "tool_manager_unavailable"
+            return metadata
+
+        tool_name = self._normalize_review_tool_name(parsed.tool_name)
+        tool_args = self._normalize_review_tool_args(tool_name, parsed.tool_args)
+        tool_call = {"tool_name": tool_name, "tool_args": tool_args}
+        metadata["tool_calls"].append(tool_call)
+        tool_result = self.tool_manager.execute_tool(
+            tool_name,
+            tool_args,
+            agent_id=config.agent_id,
+            stage="stage1_self_review",
+        )
+        metadata["tool_used"] = True
+        metadata["tool_results"].append(tool_result)
+
+        final_messages = self._build_self_review_after_tool_messages(
+            answers=answers,
+            tool_result=tool_result,
+        )
+        try:
+            final_raw, prompt_tokens, completion_tokens = self.get_agent(config).invoke_with_usage(final_messages)
+            self.record_token_usage(
+                stage="stage1",
+                prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens,
+            )
+        except Exception as exc:
+            metadata["error"] = f"self_review_final_call_failed:{type(exc).__name__}: {exc}"
+            return metadata
+
+        metadata["final_raw_reply"] = final_raw
+        final_parsed = self.self_review_parser.parse(final_raw)
+        metadata["final_parse"] = final_parsed.to_dict()
+        if final_parsed.reply_type == "final_answer" and final_parsed.answer:
+            metadata.update(
+                {
+                    "applied": True,
+                    "answer": final_parsed.answer,
+                    "parse_completed": bool(final_parsed.parse_completed),
+                    "validator_passed": bool(final_parsed.parse_completed),
+                    "error": final_parsed.error,
+                }
+            )
+            return metadata
+        metadata["error"] = final_parsed.error or "self_review_final_parse_failed"
+        return metadata
+
+    def _build_self_review_messages(self, answers: list[str]) -> list[dict[str, str]]:
+        content = (
+            "You are reviewing your own previous final answers.\n\n"
+            f"Question:\n{self.question}\n\n"
+            "Your previous final answers:\n"
+            f"<answer>\n{answers[0]}\n</answer>\n"
+            f"<answer>\n{answers[1]}\n</answer>\n"
+            f"<answer>\n{answers[2]}\n</answer>\n\n"
+            "Task:\n"
+            "Decide the best final answer. If the previous answers are inconsistent, choose the answer that best satisfies the question. "
+            "If you cannot decide from the previous answers alone, request one tool call.\n\n"
+            "Rules:\n"
+            "- Use only the question, previous final answers, and tool result if a tool is used.\n"
+            "- Do not invent new facts.\n"
+            "- Prefer a short final answer.\n"
+            "- If the question asks for a number, output only the number.\n"
+            "- If the question asks for a name, title, place, or yes/no answer, output only that answer.\n"
+            "- Do not answer with a candidate number, candidate letter, or index.\n"
+            "- You may request at most one tool call.\n"
+            "- Output JSON only.\n\n"
+            "If you can answer now:\n"
+            "{\"type\":\"final_answer\",\"answer\":\"...\"}\n\n"
+            "If you need a tool:\n"
+            "{\"type\":\"tool_request\",\"tool_name\":\"...\",\"arguments\":{}}\n"
+        )
+        return [{"role": "user", "content": content}]
+
+    def _build_self_review_after_tool_messages(
+        self,
+        *,
+        answers: list[str],
+        tool_result: dict[str, Any],
+    ) -> list[dict[str, str]]:
+        content = (
+            "You requested a tool during self-review.\n\n"
+            f"Question:\n{self.question}\n\n"
+            "Your previous final answers:\n"
+            f"<answer>\n{answers[0]}\n</answer>\n"
+            f"<answer>\n{answers[1]}\n</answer>\n"
+            f"<answer>\n{answers[2]}\n</answer>\n\n"
+            f"Tool result:\n{self._format_review_tool_result(tool_result)}\n\n"
+            "Task:\n"
+            "Use the tool result to decide the final answer.\n\n"
+            "Rules:\n"
+            "- Use only the question, previous final answers, and tool result.\n"
+            "- Do not request another tool.\n"
+            "- Do not invent new facts.\n"
+            "- Prefer a short final answer.\n"
+            "- Do not answer with a candidate number, candidate letter, or index.\n"
+            "- Output JSON only.\n\n"
+            "Return:\n"
+            "{\"type\":\"final_answer\",\"answer\":\"...\"}\n"
+        )
+        return [{"role": "user", "content": content}]
+
+    def _normalize_review_tool_name(self, tool_name: str) -> str:
+        name = str(tool_name or "").strip()
+        if name in {"calculator", "python"}:
+            return "python_calculator"
+        if name in {"deterministic", "solver"}:
+            return "deterministic_solver"
+        if name in {"attachment", "file_reader", "reader"}:
+            return "attachment_reader"
+        if name in {"wikipedia_search", "web_search", "internet_search", "google_search"}:
+            return "search"
+        return name
+
+    def _normalize_review_tool_args(self, tool_name: str, tool_args: dict[str, Any]) -> dict[str, Any]:
+        args = dict(tool_args or {})
+        if tool_name == "search":
+            if "input" not in args and "query" in args:
+                args["input"] = args["query"]
+            args.setdefault("input", self.question)
+            args.setdefault("mode", "text")
+        elif tool_name == "python_calculator":
+            if "input" not in args and "expression" in args:
+                args["input"] = args["expression"]
+        elif tool_name == "deterministic_solver":
+            args.setdefault("input", args.get("question") or args.get("query") or self.question)
+        elif tool_name == "attachment_reader":
+            args.setdefault("question", args.get("input") or args.get("query") or self.question)
+            if isinstance(self.attachment, dict) and self.attachment:
+                args.setdefault("attachment", self.attachment)
+                file_path = self.attachment.get("file_path") or self.attachment.get("path")
+                if file_path:
+                    args.setdefault("file_path", file_path)
+        return args
+
+    def _format_review_tool_result(self, tool_result: dict[str, Any]) -> str:
+        output = str(tool_result.get("output_text", "") or "").strip()
+        if len(output) > 4000:
+            output = output[:4000] + "\n...[truncated]"
+        return (
+            f"tool_name={tool_result.get('tool_name', '')}\n"
+            f"status={tool_result.get('status', '')}\n"
+            f"ok={tool_result.get('ok', False)}\n"
+            f"output={output}"
+        )
+
+    def _safe_run_single_agent(
+        self,
+        config: AgentConfig,
+        run_index: int,
+        evidence: dict[str, Any],
+        *,
+        unload_after_call: bool = False,
+    ) -> EachAgentReply:
+        """
+        執行單一 Agent run，並將例外轉成可寫入報告的 Stage1 reply。
+
+        Args:
+            - config: 本次執行的 Agent 設定。
+            - run_index: Stage1 run 編號。
+            - evidence: EvidenceRunner 輸出的 evidence。
+
+        Returns:
+            - EachAgentReply: 正常或錯誤狀態的 Agent 回覆。
+        """
+        try:
+            return self._run_single_agent(
+                config,
+                run_index,
+                evidence,
+                unload_after_call=unload_after_call,
+            )
+        except Exception as exc:
+            return EachAgentReply(
+                agent_id=config.agent_id,
+                model_name=config.model_name,
+                run_index=run_index,
+                raw_reply=f"[stage1_error] {type(exc).__name__}: {exc}",
+                reasoning="",
+                final_answer="",
+                parse_completed=False,
+                tool_context=self.format_tool_context(evidence),
+                prompt_tokens=0,
+                completion_tokens=0,
+                total_tokens=0,
+                context_budget={},
+            )
+
+    def _unload_agent_model(
+        self,
+        *,
+        config: AgentConfig,
+        phase: str,
+    ) -> None:
+        """
+        在下一個 SLM 開始回答前，透過 Ollama CLI 卸載上一個 SLM。
+
+        Args:
+            - previous_config: 剛完成回答的 Agent 設定。
+            - next_config: 即將開始回答的 Agent 設定。
+            - run_index: 即將執行的 Stage1 run 編號。
+
+        Returns:
+            - None
+        """
+        unload = getattr(self.get_agent(config), "unload", None)
+        if callable(unload):
+            record = dict(unload())
+        else:
+            record = {
+                "model": config.model_name,
+                "provider": "",
+                "unload_method": "none",
+                "unloaded": False,
+                "warning": "agent_has_no_unload_method",
+            }
+        record.update(
+            {
+                "phase": phase,
+                "agent_id": config.agent_id,
+                "model": config.model_name,
+            }
+        )
+        self.model_lifecycle_records.append(record)
 
     def worker_count(self) -> int:
         """
@@ -133,6 +580,8 @@ class Stage1Runner:
         Returns:
             - int: 依 Agent 數、run 數與 max_workers 限制後的 worker 數。
         """
+        if self.unload_previous_slm_on_switch:
+            return 1
         total_runs = max(1, len(self.agents))
         if self.max_workers is None:
             return total_runs
@@ -202,6 +651,8 @@ class Stage1Runner:
         config: AgentConfig,
         run_index: int,
         evidence: dict[str, Any],
+        *,
+        unload_after_call: bool = False,
     ) -> EachAgentReply:
         """
         執行單一 Agent 的一次 Stage1 run，依設定選擇一般模式或 tool-use 模式。
@@ -222,6 +673,7 @@ class Stage1Runner:
                 evidence_packets=self.evidence_to_context_packets(evidence),
                 run_index=run_index,
                 attachment=self.attachment,
+                unload_after_run=unload_after_call,
             )
             self.record_token_usage(
                 stage="stage1",
@@ -248,7 +700,10 @@ class Stage1Runner:
         prompt_tokens = 0
         completion_tokens = 0
         try:
-            raw_reply, prompt_tokens, completion_tokens = self.get_agent(config).invoke_with_usage(messages)
+            raw_reply, prompt_tokens, completion_tokens = self.get_agent(config).invoke_with_usage(
+                messages,
+                unload_after_call=unload_after_call,
+            )
             self.record_token_usage(
                 stage="stage1",
                 prompt_tokens=prompt_tokens,

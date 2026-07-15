@@ -729,9 +729,10 @@ class IterativeRetrievalControl:
         if intent_plan is None:
             return normalize_text(result.query)
         useful_spans = list(result.kept_evidence_tokens or [])
-        useful_spans.extend(round_trace.useful_tokens or [])
-        for document in round_trace.documents:
-            useful_spans.extend(document.bridge_spans or [])
+        if not str(result.metadata.get("method", "")).startswith("external_"):
+            useful_spans.extend(round_trace.useful_tokens or [])
+            for document in round_trace.documents:
+                useful_spans.extend(document.bridge_spans or [])
         guard_result = self.query_guard.validate(
             original_question=original_question,
             current_query=current_query,
@@ -741,18 +742,20 @@ class IterativeRetrievalControl:
             seen_query_keys=seen_query_keys,
         )
         selected_query = normalize_text(guard_result.query)
+        external_fallback_disabled = False
         if (
             not guard_result.accepted
             and str(result.metadata.get("method", "")).startswith("external_")
         ):
-            selected_query = ""
+            proposed_key = self._query_key(result.query)
+            selected_key = self._query_key(selected_query)
+            if not selected_query or selected_key == proposed_key:
+                selected_query = ""
+                external_fallback_disabled = True
         round_trace.filter_metadata = {
             **round_trace.filter_metadata,
             "query_guard": guard_result.to_dict(),
-            "query_guard_external_fallback_disabled": (
-                not guard_result.accepted
-                and str(result.metadata.get("method", "")).startswith("external_")
-            ),
+            "query_guard_external_fallback_disabled": external_fallback_disabled,
         }
         return selected_query
 
@@ -950,20 +953,6 @@ class IterativeRetrievalControl:
             "selected_char_count": metadata.get("selected_char_count", 0),
             "sentence_selection_used": bool(metadata.get("sentence_selection_used", False)),
             "sentence_selection_truncated": bool(metadata.get("sentence_selection_truncated", False)),
-            "evidence_unit_selector_used": bool(metadata.get("evidence_unit_selector_used", False)),
-            "evidence_unit_count": metadata.get("evidence_unit_count", 0),
-            "evidence_unit_selected_count": metadata.get("evidence_unit_selected_count", 0),
-            "evidence_unit_dropped_count": metadata.get("evidence_unit_dropped_count", 0),
-            "evidence_unit_empty_fallback": bool(metadata.get("evidence_unit_empty_fallback", False)),
-            "evidence_unit_should_fallback": bool(metadata.get("evidence_unit_should_fallback", False)),
-            "evidence_unit_empty_reason": metadata.get("evidence_unit_empty_reason", ""),
-            "evidence_unit_retried_raw_text": bool(metadata.get("evidence_unit_retried_raw_text", False)),
-            "evidence_unit_selected_types": metadata.get("evidence_unit_selected_types", []),
-            "evidence_unit_dropped_flags": metadata.get("evidence_unit_dropped_flags", []),
-            "evidence_unit_avg_relevance": metadata.get("evidence_unit_avg_relevance", 0.0),
-            "evidence_unit_avg_novelty": metadata.get("evidence_unit_avg_novelty", 0.0),
-            "evidence_unit_passage": metadata.get("evidence_unit_passage", ""),
-            "evidence_unit_selected": metadata.get("evidence_unit_selected", []),
             "span_recovery_triggered": bool(metadata.get("span_recovery_triggered", False)),
             "span_recovery_mode": metadata.get("span_recovery_mode", ""),
             "recovered_span_count": metadata.get("recovered_span_count", 0),

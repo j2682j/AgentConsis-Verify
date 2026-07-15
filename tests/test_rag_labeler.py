@@ -14,7 +14,7 @@ from tools.search_result_builder.source_analyze.rag_labeler import (
 
 
 class RAGLabelerTests(unittest.TestCase):
-    def test_default_checkpoint_uses_project_mixed_labeler_directory(self):
+    def test_default_checkpoint_uses_project_labeler_v2_directory(self):
         labeler = EfficientRAGLabelerAdapter()
 
         self.assertEqual(

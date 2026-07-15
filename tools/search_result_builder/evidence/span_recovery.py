@@ -30,6 +30,7 @@ class RecoveredSpans:
     bridge_spans: list[str] = field(default_factory=list)
     answer_role: str = "unknown"
     reasons: list[str] = field(default_factory=list)
+    span_sources: dict[str, str] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -48,17 +49,20 @@ class SpanRecovery:
         - SpanRecovery: Lightweight fallback span recovery helper.
     """
 
-    _NUMBER_RE = re.compile(r"(?<![A-Za-z0-9])[-+]?\d+(?:,\d{3})*(?:\.\d+)?%?(?![A-Za-z0-9])")
+    _NUMBER_RE = re.compile(r"(?<![A-Za-z0-9])[-+]?\d+(?:[,\s]\d{3})*(?:\.\d+)?%?(?![A-Za-z0-9])")
     _VOLUME_RE = re.compile(
-        r"(?<![A-Za-z0-9])[-+]?\d+(?:,\d{3})*(?:\.\d+)?\s*(?:m\^?3|m3|cubic\s+met(?:er|re)s?|lit(?:er|re)s?|l)\b",
+        r"(?<![A-Za-z0-9])[-+]?\d+(?:[,\s]\d{3})*(?:\.\d+)?\s*(?:m\^?3|m3|cubic\s+met(?:er|re)s?|lit(?:er|re)s?|l)\b",
         re.IGNORECASE,
     )
     _DURATION_RE = re.compile(
-        r"(?<![A-Za-z0-9])[-+]?\d+(?:,\d{3})*(?:\.\d+)?\s*(?:hours?|hrs?|minutes?|mins?|seconds?|secs?)\b",
+        r"(?<![A-Za-z0-9])[-+]?\d+(?:[,\s]\d{3})*(?:\.\d+)?\s*(?:hours?|hrs?|minutes?|mins?|seconds?|secs?)\b",
         re.IGNORECASE,
     )
+    _TIME_FORMAT_RE = re.compile(
+        r"(?<![A-Za-z0-9])\d{1,2}:\d{2}(?::\d{2})?(?:\.\d+)?(?![A-Za-z0-9])"
+    )
     _DISTANCE_RE = re.compile(
-        r"(?<![A-Za-z0-9])[-+]?\d+(?:,\d{3})*(?:\.\d+)?\s*(?:km|kilomet(?:er|re)s?|miles?|meters?|metres?)\b",
+        r"(?<![A-Za-z0-9])[-+]?\d+(?:[,\s]\d{3})*(?:\.\d+)?\s*(?:km|kilomet(?:er|re)s?|miles?|meters?|metres?)\b",
         re.IGNORECASE,
     )
     _DATE_RE = re.compile(
@@ -76,25 +80,35 @@ class SpanRecovery:
         "about",
         "after",
         "also",
+        "and",
         "answer",
+        "as",
+        "at",
         "article",
         "before",
         "between",
+        "by",
         "content",
         "document",
+        "for",
         "from",
         "have",
+        "in",
         "into",
         "many",
+        "of",
+        "on",
         "page",
         "question",
         "search",
         "source",
         "that",
+        "the",
         "their",
         "there",
         "these",
         "this",
+        "to",
         "what",
         "when",
         "where",
@@ -102,6 +116,55 @@ class SpanRecovery:
         "while",
         "with",
         "would",
+    }
+    _PAGE_STRUCTURE_TERMS = {
+        "advertisement",
+        "archive",
+        "caption",
+        "category",
+        "citation",
+        "comments",
+        "content",
+        "copyright",
+        "current community",
+        "external links",
+        "headings",
+        "home",
+        "image alt",
+        "introduction",
+        "lists",
+        "login",
+        "metadata",
+        "navigation",
+        "privacy",
+        "references",
+        "related articles",
+        "search",
+        "section",
+        "sign in",
+        "source",
+        "structured data",
+        "suggested searches",
+        "table",
+        "terms",
+        "title",
+        "user name",
+    }
+    _SOURCE_NAME_TERMS = {
+        "britannica",
+        "facebook",
+        "fandom",
+        "github",
+        "google",
+        "instagram",
+        "linkedin",
+        "nasa science",
+        "researchgate",
+        "stack exchange",
+        "twitter",
+        "wikipedia",
+        "wikimedia commons",
+        "youtube",
     }
 
     def __init__(
@@ -137,7 +200,8 @@ class SpanRecovery:
         Returns:
             - RecoveredSpans: Answer-like spans and bridge clue spans.
         """
-        source_text = normalize_text(" ".join(part for part in [title, text] if part))
+        body_text = self._body_text(text)
+        source_text = normalize_text(body_text or " ".join(part for part in [title, text] if part))
         if not source_text:
             return RecoveredSpans(reasons=["empty_recovery_text"])
         scan_text = source_text[: self.max_scan_chars]
@@ -162,6 +226,12 @@ class SpanRecovery:
             bridge_spans=bridge_spans[: self.max_bridge_spans],
             answer_role=role,
             reasons=reasons,
+            span_sources=self._span_sources(
+                answer_spans=answer_spans,
+                bridge_spans=bridge_spans,
+                title=title,
+                text=scan_text,
+            ),
         )
 
     def recover_restricted(
@@ -226,13 +296,22 @@ class SpanRecovery:
             bridge_spans=bridge_spans[: self.max_bridge_spans],
             answer_role=role,
             reasons=reasons,
+            span_sources=self._span_sources(
+                answer_spans=answer_spans,
+                bridge_spans=bridge_spans,
+                title=title,
+                text=passage,
+            ),
         )
 
     def _answer_spans(self, text: str, answer_role: str) -> list[str]:
         if answer_role == "volume":
             return self._regex_spans(self._VOLUME_RE, text)
         if answer_role == "duration":
-            return self._regex_spans(self._DURATION_RE, text)
+            return self._dedupe(
+                self._regex_spans(self._TIME_FORMAT_RE, text)
+                + self._regex_spans(self._DURATION_RE, text)
+            )
         if answer_role == "distance":
             return self._regex_spans(self._DISTANCE_RE, text)
         if answer_role == "date":
@@ -241,7 +320,7 @@ class SpanRecovery:
             return [
                 span
                 for span in self._regex_spans(self._NUMBER_RE, text)
-                if not self._is_year_like(span)
+                if not self._is_year_like(span) and not self._is_metadata_number(span)
             ]
         if answer_role in {"person", "organization", "location"}:
             return self._entity_spans(text, answer_role)
@@ -259,24 +338,43 @@ class SpanRecovery:
         answer_spans: list[str],
     ) -> list[str]:
         spans: list[str] = []
-        combined = normalize_text(" ".join([title, text]))
+        body = self._body_text(text)
+        title_text = normalize_text(title)
+        combined = normalize_text(" ".join([body, title_text]))
+        answer_keys = {self._normalize_key(item) for item in answer_spans}
+
+        value_spans = self._value_spans(body)
+        spans.extend(value_spans)
+        semantic_spans: list[str] = []
         for term in self._intent_terms(intent_plan):
-            if self._contains_term(combined, term):
-                spans.append(term)
+            if self._contains_term(body, term):
+                semantic_spans.append(term)
         for phrase in self._quoted_terms(question):
-            if self._contains_term(combined, phrase):
-                spans.append(phrase)
-        spans.extend(self._title_like_spans(title)[:4])
-        spans.extend(self._capital_phrases(text)[:8])
+            if self._contains_term(body, phrase):
+                semantic_spans.append(phrase)
+
+        spans.extend(semantic_spans)
+        if len(value_spans) < 2:
+            spans.extend(self._entity_spans(body, "any")[:8])
+            spans.extend(self._capital_phrases(body)[:8])
         if len(self._dedupe(spans)) < 3:
-            spans.extend(self._entity_spans(text, "any")[:6])
+            spans.extend(self._title_like_spans(title_text)[:1])
         spans = [
             span
             for span in spans
-            if self._is_informative(span)
-            and self._normalize_key(span) not in {self._normalize_key(item) for item in answer_spans}
+            if self._is_good_bridge_span(span, question=question, body=body, title=title_text)
+            and self._normalize_key(span) not in answer_keys
         ]
         return self._dedupe(spans)[: self.max_bridge_spans]
+
+    def _value_spans(self, text: str) -> list[str]:
+        return self._dedupe(
+            self._regex_spans(self._DISTANCE_RE, text)
+            + self._regex_spans(self._DURATION_RE, text)
+            + self._regex_spans(self._TIME_FORMAT_RE, text)
+            + self._regex_spans(self._DATE_RE, text)
+            + self._regex_spans(self._VOLUME_RE, text)
+        )
 
     def _entity_spans(self, text: str, answer_role: str) -> list[str]:
         nlp = self._load_spacy()
@@ -307,6 +405,7 @@ class SpanRecovery:
             normalize_text(match.group(0))
             for match in self._CAPITAL_PHRASE_RE.finditer(text)
             if self._is_informative(match.group(0))
+            and not self._crosses_sentence_boundary(match.group(0))
         ]
         return self._dedupe(spans)
 
@@ -316,6 +415,21 @@ class SpanRecovery:
             for match in pattern.finditer(text)
             if normalize_text(match.group(0))
         )
+
+    def _body_text(self, text: str) -> str:
+        cleaned = normalize_text(text)
+        if not cleaned:
+            return ""
+        marker = re.search(r"\bContent\s*:\s*", cleaned, flags=re.IGNORECASE)
+        if marker:
+            cleaned = cleaned[marker.end() :]
+        cleaned = re.sub(
+            r"\b(?:Metadata|Structured Data|Headings|Source|Title|URL)\s*:\s*",
+            " ",
+            cleaned,
+            flags=re.IGNORECASE,
+        )
+        return normalize_text(cleaned)
 
     def _quoted_terms(self, text: str) -> list[str]:
         return self._dedupe(
@@ -383,6 +497,63 @@ class SpanRecovery:
         cleaned = normalize_text(value).replace(",", "").rstrip("%")
         return bool(re.fullmatch(r"(?:18|19|20)\d{2}", cleaned))
 
+    def _is_metadata_number(self, value: str) -> bool:
+        cleaned = normalize_text(value).replace(",", "").rstrip("%")
+        return bool(re.fullmatch(r"0\d", cleaned))
+
+    def _is_good_bridge_span(self, value: str, *, question: str, body: str, title: str) -> bool:
+        if not self._is_informative(value):
+            return False
+        cleaned = normalize_text(value).strip(" ,.;:!?()[]{}'\"")
+        key = self._normalize_key(cleaned)
+        if not key:
+            return False
+        if self._is_page_structure_span(cleaned):
+            return False
+        if self._is_source_name_span(cleaned):
+            return False
+        if self._crosses_sentence_boundary(cleaned):
+            return False
+        if self._has_bad_phrase_boundary(cleaned):
+            return False
+        if self._contains_term(question, cleaned) and not self._has_value_signal(cleaned):
+            return False
+        if self._contains_term(title, cleaned) and not self._contains_term(body, cleaned):
+            return len(cleaned.split()) >= 3 and not self._is_source_name_span(cleaned)
+        return True
+
+    def _is_page_structure_span(self, value: str) -> bool:
+        key = self._normalize_key(value)
+        tokens = key.split()
+        if not tokens:
+            return True
+        hits = sum(1 for term in self._PAGE_STRUCTURE_TERMS if term in key)
+        return hits > 0 and (len(tokens) <= 4 or hits / max(1, len(tokens)) >= 0.25)
+
+    def _is_source_name_span(self, value: str) -> bool:
+        key = self._normalize_key(value)
+        return any(term in key for term in self._SOURCE_NAME_TERMS)
+
+    def _has_value_signal(self, value: str) -> bool:
+        text = normalize_text(value)
+        return any(
+            pattern.search(text)
+            for pattern in (
+                self._DISTANCE_RE,
+                self._DURATION_RE,
+                self._TIME_FORMAT_RE,
+                self._DATE_RE,
+                self._VOLUME_RE,
+            )
+        )
+
+    def _crosses_sentence_boundary(self, value: str) -> bool:
+        return bool(re.search(r"[.!?]\s+[A-Z0-9]", normalize_text(value)))
+
+    def _has_bad_phrase_boundary(self, value: str) -> bool:
+        tokens = self._normalize_key(value).split()
+        return bool(tokens and tokens[-1] in {"and", "for", "in", "of", "on", "the", "to"})
+
     def _is_informative(self, value: str) -> bool:
         cleaned = normalize_text(value).strip(" ,.;:!?()[]{}'\"")
         key = cleaned.casefold()
@@ -403,6 +574,26 @@ class SpanRecovery:
 
     def _normalize_key(self, value: str) -> str:
         return re.sub(r"[^a-z0-9]+", " ", normalize_text(value).casefold()).strip()
+
+    def _span_sources(
+        self,
+        *,
+        answer_spans: list[str],
+        bridge_spans: list[str],
+        title: str,
+        text: str,
+    ) -> dict[str, str]:
+        title_text = normalize_text(title)
+        body = self._body_text(text)
+        sources: dict[str, str] = {}
+        for span in self._dedupe(list(answer_spans) + list(bridge_spans)):
+            if self._contains_term(body, span):
+                sources[span] = "body"
+            elif self._contains_term(title_text, span):
+                sources[span] = "title"
+            else:
+                sources[span] = "unknown"
+        return sources
 
     def _dedupe(self, values: Any) -> list[str]:
         result: list[str] = []

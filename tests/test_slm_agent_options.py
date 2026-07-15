@@ -9,9 +9,11 @@ from core.slm_agent import SLM_Agent
 
 
 class FakeLLMClient:
-    def __init__(self, result=None):
+    def __init__(self, result=None, provider="fake"):
         self.calls = []
+        self.native_calls = []
         self.stream_calls = []
+        self.provider = provider
         self.result = result or LLMChatResult(
             content="FINAL_ANSWER=OK",
             prompt_tokens=10,
@@ -21,6 +23,10 @@ class FakeLLMClient:
 
     def chat(self, **kwargs):
         self.calls.append(kwargs)
+        return self.result
+
+    def ollama_native_chat(self, **kwargs):
+        self.native_calls.append(kwargs)
         return self.result
 
     def stream(self, **kwargs):
@@ -102,6 +108,31 @@ class SLMAgentOptionTests(unittest.TestCase):
         self.assertGreater(prompt_tokens, 0)
         self.assertGreater(completion_tokens, 0)
         self.assertEqual(chunks, ["one", " two"])
+
+    def test_ollama_provider_uses_native_chat_and_keep_alive_unload(self):
+        client = FakeLLMClient(provider="ollama")
+        agent = SLM_Agent(
+            model_name="qwen3:4b",
+            temperature=0.3,
+            max_tokens=64,
+            llm_client=client,
+        )
+
+        content, prompt_tokens, completion_tokens = agent.invoke_with_usage(
+            [{"role": "user", "content": "Hello"}],
+            unload_after_call=True,
+        )
+
+        self.assertEqual(content, "FINAL_ANSWER=OK")
+        self.assertEqual(client.calls, [])
+        self.assertEqual(len(client.native_calls), 1)
+        self.assertEqual(client.native_calls[0]["model"], "qwen3:4b")
+        self.assertEqual(client.native_calls[0]["temperature"], 0.3)
+        self.assertEqual(client.native_calls[0]["max_tokens"], 64)
+        self.assertFalse(client.native_calls[0]["think"])
+        self.assertEqual(client.native_calls[0]["keep_alive"], 0)
+        self.assertEqual(prompt_tokens, 10)
+        self.assertEqual(completion_tokens, 3)
 
 
 if __name__ == "__main__":

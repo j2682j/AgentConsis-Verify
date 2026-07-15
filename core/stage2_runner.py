@@ -147,6 +147,21 @@ class Stage2Runner:
         active_count = sum(1 for result in stage1_results if result.active)
         return max(1, active_count)
 
+    def unload(self) -> dict:
+        """
+        Release the lazy-loaded VersaPRM scorer after a task finishes scoring.
+
+        Args:
+         - None.
+
+        Returns:
+         - dict: VersaPRM unload status.
+        """
+        unload = getattr(self.versa_scorer, "unload", None)
+        if not callable(unload):
+            return {"was_loaded": False, "warning": "versa_scorer has no unload()"}
+        return dict(unload())
+
     def _reasoning_steps(self, reasoning: str) -> list[tuple[int, str]]:
         steps = extract_reasoning_steps(reasoning)
         if steps:

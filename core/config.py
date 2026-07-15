@@ -69,6 +69,8 @@ class AgentReasoningSummary:
     run_validity_labels: list[str] = field(default_factory=list)
     winner_selection_eligible: bool = True
     winner_selection_status: str = "answerable"
+    aggregation_metadata: dict = field(default_factory=dict)
+    self_review_metadata: dict = field(default_factory=dict)
 
 @dataclass
 class VerifierScoreByReasoning:

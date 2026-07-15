@@ -68,6 +68,7 @@ class SLMToolPlanner:
                 max_tokens=self.max_tokens,
                 think=False,
                 json_format=True,
+                keep_alive=0,
             )
         else:
             result = client.chat(

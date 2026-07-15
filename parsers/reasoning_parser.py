@@ -23,8 +23,12 @@ _NUMBERED_STEP_PATTERN = re.compile(
 )
 
 _MARKDOWN_RULE_PATTERN = re.compile(r"(?m)^\s*-{3,}\s*$")
+_MARKDOWN_HEADING_PATTERN = re.compile(r"(?im)^\s*#{2,6}\s+(.+?)\s*$")
 _FINAL_ANSWER_TAIL_PATTERN = re.compile(
     r"(?is)(?:^|[\s#>\*\-_`])final[_\s-]*answer\s*[:：]?"
+)
+_PLAIN_FINAL_ANSWER_LINE_PATTERN = re.compile(
+    r"(?im)^\s*(?:#{1,6}\s*)?(?:\*\*)?\s*final\s+answer\s*(?:\*\*)?\s*[:：]"
 )
 
 
@@ -58,7 +62,12 @@ def extract_reasoning_steps(reasoning: str) -> list[tuple[int, str]]:
     steps = _extract_by_pattern(text, _NUMBERED_STEP_PATTERN, require_sequence=True)
     if steps:
         return steps
-    return []
+
+    steps = _extract_markdown_heading_steps(text)
+    if steps:
+        return steps
+
+    return _extract_paragraph_steps(text)
 
 
 def format_reasoning_steps(reasoning: str) -> str:
@@ -189,6 +198,68 @@ def _clean_step_text(text: str) -> str:
     text = text.replace("\n", " ")
     text = " ".join(text.split())
     return text.strip(" -:")
+
+
+def _extract_markdown_heading_steps(text: str) -> list[tuple[int, str]]:
+    markers = list(_MARKDOWN_HEADING_PATTERN.finditer(text))
+    if not markers:
+        return []
+
+    steps: list[tuple[int, str]] = []
+    preface = text[: markers[0].start()].strip(" -\n")
+    if preface:
+        content = _clean_step_text(preface)
+        if content:
+            steps.append((1, content))
+
+    for marker_index, marker in enumerate(markers):
+        content_start = marker.start()
+        content_end = (
+            markers[marker_index + 1].start()
+            if marker_index + 1 < len(markers)
+            else len(text)
+        )
+        raw_content = text[content_start:content_end]
+        if marker_index == len(markers) - 1:
+            raw_content = _strip_final_answer_tail(raw_content)
+        content = _clean_step_text(raw_content.strip(" -\n"))
+        if content:
+            steps.append((len(steps) + 1, content))
+    return steps
+
+
+def _extract_paragraph_steps(text: str) -> list[tuple[int, str]]:
+    text = _strip_final_answer_tail(text)
+    text = _PLAIN_FINAL_ANSWER_LINE_PATTERN.split(text, maxsplit=1)[0].strip()
+    if not text:
+        return []
+
+    paragraphs = [
+        paragraph.strip()
+        for paragraph in re.split(r"\n\s*\n+", text)
+        if paragraph.strip()
+    ]
+    if not paragraphs:
+        return []
+    if len(paragraphs) == 1:
+        content = _clean_step_text(paragraphs[0])
+        return [(1, content)] if content else []
+
+    steps: list[tuple[int, str]] = []
+    buffer: list[str] = []
+    for paragraph in paragraphs:
+        buffer.append(paragraph)
+        joined = "\n\n".join(buffer)
+        if len(joined) >= 260 or paragraph.endswith((".", ":", "?", "!")):
+            content = _clean_step_text(joined)
+            if content:
+                steps.append((len(steps) + 1, content))
+            buffer = []
+    if buffer:
+        content = _clean_step_text("\n\n".join(buffer))
+        if content:
+            steps.append((len(steps) + 1, content))
+    return steps
 
 
 def _strip_final_answer_tail(text: str) -> str:

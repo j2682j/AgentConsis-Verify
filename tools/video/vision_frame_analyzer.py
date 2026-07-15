@@ -66,6 +66,7 @@ class VisionFrameAnalyzer:
             ],
             "stream": False,
             "think": False,
+            "keep_alive": 0,
             "options": {
                 "temperature": 0,
                 "num_predict": self.config.max_tokens,

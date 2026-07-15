@@ -117,6 +117,7 @@ class LLMClient:
         max_tokens: int | None = None,
         think: bool = False,
         json_format: bool | dict[str, Any] = False,
+        keep_alive: int | str | None = None,
         **kwargs: Any,
     ) -> LLMChatResult:
         """
@@ -153,6 +154,8 @@ class LLMClient:
             payload["format"] = (
                 json_format if isinstance(json_format, dict) else "json"
             )
+        if keep_alive is not None:
+            payload["keep_alive"] = keep_alive
 
         request = Request(
             self._ollama_native_url(),

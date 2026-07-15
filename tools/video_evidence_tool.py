@@ -109,6 +109,21 @@ class VideoEvidenceTool(Tool):
         except (TypeError, ValueError):
             max_frames = self.config.max_frames
 
+        return self._run_visual_pipeline(
+            url=url,
+            question=question,
+            answer_role=answer_role,
+            max_frames=max_frames,
+        )
+
+    def _run_visual_pipeline(
+        self,
+        *,
+        url: str,
+        question: str,
+        answer_role: str,
+        max_frames: int,
+    ) -> dict[str, Any]:
         with tempfile.TemporaryDirectory(prefix="scp_video_evidence_") as tmp:
             root = Path(tmp)
             download = self.downloader.download(url, root / "download")

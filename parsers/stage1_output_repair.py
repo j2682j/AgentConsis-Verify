@@ -42,6 +42,11 @@ class Stage1OutputRepairer:
         if final_answer:
             data["final_answer"] = final_answer
             actions.append("extract_final_answer_label")
+        elif reasoning_steps:
+            final_answer = self._extract_unlabeled_trailing_answer(raw_reply)
+            if final_answer:
+                data["final_answer"] = final_answer
+                actions.append("fallback_trailing_line_as_answer")
 
         evidence_ids = self._extract_evidence_ids(raw_reply)
         if evidence_ids:
@@ -107,6 +112,21 @@ class Stage1OutputRepairer:
             if candidate:
                 return candidate
         return ""
+
+    def _extract_unlabeled_trailing_answer(self, text: str) -> str:
+        lines = self._nonempty_lines(text)
+        if len(lines) < 2:
+            return ""
+        candidate = self.validator.clean(lines[-1])
+        if not candidate or not self.validator.is_valid(candidate):
+            return ""
+        if re.match(r"step\s*\d+\s*[.:]", candidate, re.IGNORECASE):
+            return ""
+        if re.match(r"(reasoning|weights)\s*[:=]", candidate, re.IGNORECASE):
+            return ""
+        if self.validator.is_too_verbose(candidate):
+            return ""
+        return candidate
 
     def _repair_labeled_answer(self, text: str) -> str:
         candidate = self.validator.clean(text)

@@ -6,6 +6,17 @@ from .config import VideoEvidenceConfig
 from .models import VideoDownloadResult
 
 
+class _QuietYtdlpLogger:
+    def debug(self, message: str) -> None:
+        pass
+
+    def warning(self, message: str) -> None:
+        pass
+
+    def error(self, message: str) -> None:
+        pass
+
+
 class VideoDownloader:
     """
     Download a remote video into a task-local temporary directory.
@@ -43,14 +54,32 @@ class VideoDownloader:
         output_dir.mkdir(parents=True, exist_ok=True)
         outtmpl = str(output_dir / "%(id)s.%(ext)s")
         ydl_opts = {
-            "format": "bestvideo[height<=480][ext=mp4]+bestaudio[ext=m4a]/best[height<=480]/best",
+            "format": "bestvideo[height<=480][ext=mp4]+bestaudio[ext=m4a]/best[height<=480]/worst[ext=mp4]/worst/best",
             "outtmpl": outtmpl,
             "quiet": True,
             "no_warnings": True,
+            "noprogress": True,
             "noplaylist": True,
             "socket_timeout": self.config.timeout_sec,
             "merge_output_format": "mp4",
+            "logger": _QuietYtdlpLogger(),
+            "http_headers": {
+                "User-Agent": (
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/126.0.0.0 Safari/537.36"
+                ),
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                "Accept-Language": "en-US,en;q=0.9",
+            },
+            "extractor_args": {
+                "youtube": {
+                    "player_client": ["android", "web"],
+                },
+            },
         }
+        if self.config.cookiefile:
+            ydl_opts["cookiefile"] = self.config.cookiefile
         try:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(url, download=True)

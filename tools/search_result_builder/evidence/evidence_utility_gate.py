@@ -164,12 +164,25 @@ class EvidenceUtilityGate:
                 reasons.append("continue_label_bridge")
             if not label_contract_valid:
                 reasons.extend(self._list_field(document, "invalid_reasons"))
+            bridge_spans = self._quality_bridge_spans(
+                useful_spans,
+                question=question,
+                document=document,
+                intent_plan=intent_plan,
+                reasons=reasons,
+            )
+            if not bridge_spans:
+                return self._unsupported(
+                    "bridge_span_quality_gate_failed",
+                    extra_reasons=reasons,
+                )
+            bridge_context, bridge_matches = self.span_builder.build_context(text, bridge_spans)
             return EvidenceUtilityResult(
                 support_level=BRIDGE,
                 answer_spans=[],
-                bridge_spans=useful_spans,
-                matched_spans=matched_span_dicts,
-                supporting_context=context,
+                bridge_spans=bridge_spans,
+                matched_spans=[asdict(span) for span in bridge_matches] or matched_span_dicts,
+                supporting_context=bridge_context or context,
                 reasons=self._clean_items(reasons),
                 can_support_sufficient=False,
                 valid_for_evidence=True,
@@ -289,6 +302,14 @@ class EvidenceUtilityGate:
         bridge_spans = self._clean_items(
             list(recovery.answer_spans) + list(recovery.bridge_spans)
         )
+        bridge_spans = self._quality_bridge_spans(
+            bridge_spans,
+            question=question,
+            document=document,
+            intent_plan=intent_plan,
+            reasons=reasons,
+            span_sources=recovery.span_sources,
+        )
         if bridge_spans:
             context, matched_spans = self.span_builder.build_context(
                 self._field(document, "text"),
@@ -378,6 +399,75 @@ class EvidenceUtilityGate:
             "normalized_constraints": constraints,
         }
 
+    def _quality_bridge_spans(
+        self,
+        spans: list[str],
+        *,
+        question: str,
+        document: Any,
+        intent_plan: Any | None,
+        reasons: list[str],
+        span_sources: dict[str, str] | None = None,
+    ) -> list[str]:
+        role = self._answer_role(question, intent_plan)
+        text = self._field(document, "text")
+        title = self._field(document, "title")
+        effective: list[str] = []
+        for span in self._clean_items(spans):
+            ok, reason = self._bridge_span_is_effective(
+                span,
+                question=question,
+                text=text,
+                title=title,
+                role=role,
+                intent_plan=intent_plan,
+                span_source=(span_sources or {}).get(span, ""),
+            )
+            if ok:
+                effective.append(span)
+            elif reason:
+                reasons.append(f"bridge_span_rejected:{reason}:{span}")
+        return self._clean_items(effective)
+
+    def _bridge_span_is_effective(
+        self,
+        span: str,
+        *,
+        question: str,
+        text: str,
+        title: str,
+        role: str,
+        intent_plan: Any | None,
+        span_source: str = "",
+    ) -> tuple[bool, str]:
+        cleaned = normalize_text(span)
+        if not cleaned:
+            return False, "empty"
+        if self._is_page_structure_span(cleaned):
+            return False, "page_structure"
+        if self._is_source_name_span(cleaned):
+            return False, "source_name"
+        if self._crosses_sentence_boundary(cleaned):
+            return False, "sentence_boundary"
+        if self._has_bad_phrase_boundary(cleaned):
+            return False, "bad_phrase_boundary"
+        if role != "date" and self._is_date_only_span(cleaned):
+            return False, "date_only_non_date_task"
+        if self._contains_span(question, cleaned) and not self._has_value_signal(cleaned):
+            return False, "question_echo"
+        if span_source == "title" and not self._contains_span(text, cleaned):
+            return False, "title_only"
+
+        if self._span_matches_role(cleaned, role) or self._has_value_signal(cleaned):
+            return True, ""
+        for term in self._intent_terms(intent_plan):
+            if self._contains_span(cleaned, term) or self._contains_span(term, cleaned):
+                return True, ""
+        words = re.findall(r"[A-Za-z0-9][A-Za-z0-9'_-]{2,}", cleaned)
+        if len(words) >= 2 and self._contains_span(text, cleaned):
+            return True, ""
+        return False, "weak_or_contextless"
+
     def _answer_role(self, question: str, intent_plan: Any | None) -> str:
         planned = self._field(intent_plan, "answer_role") if intent_plan else ""
         if planned and planned != "unknown":
@@ -392,14 +482,107 @@ class EvidenceUtilityGate:
         if not text:
             return False
         role_patterns = {
-            "number": r"(?<![A-Za-z0-9])[-+]?\d+(?:,\d{3})*(?:\.\d+)?%?(?![A-Za-z0-9])",
+            "number": r"(?<![A-Za-z0-9])[-+]?\d+(?:[,\s]\d{3})*(?:\.\d+)?%?(?![A-Za-z0-9])",
             "volume": r"(?<![A-Za-z0-9])[-+]?\d+(?:,\d{3})*(?:\.\d+)?\s*(?:m\^?3|m3|m³|cubic\s+met(?:er|re)s?|lit(?:er|re)s?|l)\b",
-            "duration": r"(?<![A-Za-z0-9])[-+]?\d+(?:,\d{3})*(?:\.\d+)?\s*(?:thousand\s+)?(?:hours?|hrs?|minutes?|mins?|seconds?|secs?)\b",
-            "distance": r"(?<![A-Za-z0-9])[-+]?\d+(?:,\d{3})*(?:\.\d+)?\s*(?:km|kilomet(?:er|re)s?|miles?|meters?|metres?)\b",
+            "duration": r"(?<![A-Za-z0-9])[-+]?\d+(?:[,\s]\d{3})*(?:\.\d+)?\s*(?:thousand\s+)?(?:hours?|hrs?|minutes?|mins?|seconds?|secs?)\b",
+            "distance": r"(?<![A-Za-z0-9])[-+]?\d+(?:[,\s]\d{3})*(?:\.\d+)?\s*(?:km|kilomet(?:er|re)s?|miles?|meters?|metres?)\b",
             "date": r"\b(?:18|19|20)\d{2}\b|\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)[a-z]*\.?\s+\d{1,2},?\s+(?:18|19|20)\d{2}\b|\b\d{1,2}/\d{1,2}/(?:\d{2}|\d{4})\b",
             "zip_code": r"\b\d{5}(?:-\d{4})?\b",
         }
         return bool(re.search(role_patterns.get(role, ""), text, flags=re.IGNORECASE))
+
+    def _has_value_signal(self, span: str) -> bool:
+        text = normalize_text(span)
+        value_patterns = [
+            r"(?<![A-Za-z0-9])[-+]?\d+(?:[,\s]\d{3})*(?:\.\d+)?\s*(?:km|kilomet(?:er|re)s?|miles?|meters?|metres?)\b",
+            r"(?<![A-Za-z0-9])[-+]?\d+(?:[,\s]\d{3})*(?:\.\d+)?\s*(?:hours?|hrs?|minutes?|mins?|seconds?|secs?)\b",
+            r"(?<![A-Za-z0-9])\d{1,2}:\d{2}(?::\d{2})?(?:\.\d+)?(?![A-Za-z0-9])",
+            r"(?<![A-Za-z0-9])[-+]?\d+(?:,\d{3})*(?:\.\d+)?\s*(?:m\^?3|m3|m糧|cubic\s+met(?:er|re)s?|lit(?:er|re)s?|l)\b",
+        ]
+        return any(re.search(pattern, text, flags=re.IGNORECASE) for pattern in value_patterns)
+
+    def _is_date_only_span(self, span: str) -> bool:
+        text = normalize_text(span)
+        return bool(
+            re.fullmatch(
+                r"(?:18|19|20)\d{2}|(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)[a-z]*\.?\s+\d{1,2},?\s+(?:18|19|20)\d{2}|\d{1,2}/\d{1,2}/(?:\d{2}|\d{4})",
+                text,
+                flags=re.IGNORECASE,
+            )
+        )
+
+    def _crosses_sentence_boundary(self, span: str) -> bool:
+        return bool(re.search(r"[.!?]\s+[A-Z0-9]", normalize_text(span)))
+
+    def _has_bad_phrase_boundary(self, span: str) -> bool:
+        tokens = self._canonical_key(span).split()
+        return bool(tokens and tokens[-1] in {"and", "for", "in", "of", "on", "the", "to"})
+
+    def _is_page_structure_span(self, span: str) -> bool:
+        key = self._canonical_key(span)
+        terms = {
+            "advertisement",
+            "caption",
+            "category",
+            "comments",
+            "content",
+            "copyright",
+            "current community",
+            "external links",
+            "headings",
+            "image alt",
+            "introduction",
+            "lists",
+            "login",
+            "metadata",
+            "navigation",
+            "privacy",
+            "references",
+            "related articles",
+            "search",
+            "source",
+            "structured data",
+            "suggested searches",
+            "table",
+            "terms",
+            "title",
+            "user name",
+        }
+        return any(term in key for term in terms)
+
+    def _is_source_name_span(self, span: str) -> bool:
+        key = self._canonical_key(span)
+        terms = {
+            "britannica",
+            "facebook",
+            "fandom",
+            "github",
+            "google",
+            "instagram",
+            "linkedin",
+            "nasa science",
+            "researchgate",
+            "stack exchange",
+            "twitter",
+            "wikipedia",
+            "wikimedia commons",
+            "youtube",
+        }
+        return any(term in key for term in terms)
+
+    def _intent_terms(self, intent_plan: Any | None) -> list[str]:
+        if intent_plan is None:
+            return []
+        terms: list[str] = []
+        target = self._field(intent_plan, "target")
+        if target:
+            terms.append(target)
+        for name in ("must_include", "missing_terms", "completed_terms"):
+            for value in self._list_field(intent_plan, name):
+                text = normalize_text(str(value or ""))
+                if text and not text.startswith("answer_candidate:"):
+                    terms.append(text)
+        return self._clean_items(terms)
 
     def _contains_span(self, context: str, span: str) -> bool:
         return self._canonical_text(span) in self._canonical_text(context)
@@ -466,6 +649,9 @@ class EvidenceUtilityGate:
         text = re.sub(r"\bm\s+3\b", "m3", text)
         text = re.sub(r"\s+", " ", text)
         return f" {text.strip()} "
+
+    def _canonical_key(self, value: Any) -> str:
+        return re.sub(r"[^a-z0-9]+", " ", normalize_text(value).casefold()).strip()
 
     def _field(self, document: Any, name: str) -> str:
         if isinstance(document, dict):

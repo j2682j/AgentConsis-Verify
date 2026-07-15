@@ -14,6 +14,7 @@ from tools.search_result_builder.evidence import (
     SpanBuilder,
 )
 from tools.search_result_builder.retrieval_control import WebRetrievalControl
+from tools.search_result_builder.source_analyze import PROJECT_LABELER_CHECKPOINT
 from tools.system_routing_contract import SystemRoutingContract
 from tools.tool_planner import ToolPlanningRunner
 from tools.tool_capability_registry import ToolCapabilityRegistry
@@ -107,18 +108,25 @@ class EvidenceRunner:
             - dict[str, Any]: Stage1 可使用的 evidence 與工具使用紀錄。
         """
         routing = self._route_stage1_tools()
+        routing["primary_route"] = self._primary_route_from_routing(routing)
         tool_usage: list[dict[str, Any]] = []
         if self.enable_tool_planner:
             return self._run_with_tool_plan(routing)
 
         attachment_result = self._resolve_attachment_result()
         search_result = self.search_result.strip()
+        search_deferred = self._should_defer_search(
+            primary_route=str(routing.get("primary_route", "")),
+            routing=routing,
+            tool_usage=[],
+        )
+        search_skip_reason = "deferred_until_non_search_tools_complete" if search_deferred else ""
 
         evidence_tasks = {}
         with ThreadPoolExecutor(max_workers=2) as executor:
             if not attachment_result and routing.get("use_attachment"):
                 evidence_tasks[executor.submit(self._build_attachment_evidence)] = "attachment"
-            if not search_result and routing.get("use_search"):
+            if not search_result and routing.get("use_search") and not search_deferred:
                 evidence_tasks[executor.submit(self._build_search_evidence)] = "search"
 
             for future in as_completed(evidence_tasks):
@@ -182,9 +190,36 @@ class EvidenceRunner:
                     search_result = self._last_output_for_tool(retry_usage, "search") or search_result
                 tool_usage.extend(retry_usage)
 
+        if search_deferred and not search_result.strip():
+            if self._non_search_tools_are_sufficient(
+                primary_route=str(routing.get("primary_route", "")),
+                attachment_result=attachment_result,
+                solver_result=solver_result,
+                tool_usage=tool_usage,
+            ):
+                search_skip_reason = "non_search_direct_evidence_sufficient"
+            elif self._deferred_search_is_required(
+                primary_route=str(routing.get("primary_route", "")),
+                routing=routing,
+                tool_usage=tool_usage,
+            ):
+                search_text, search_usage = self._build_search_evidence()
+                search_result = search_text
+                tool_usage.extend(search_usage)
+                search_skip_reason = ""
+            else:
+                search_skip_reason = "primary_route_deferred_search_not_required"
+
         deterministic_gap = self._deterministic_gap_from_usage(tool_usage)
         if deterministic_gap:
             routing["deterministic_tool_gap"] = deterministic_gap
+        routing["search_decision"] = self._search_decision_trace(
+            primary_route=str(routing.get("primary_route", "")),
+            search_executed=bool(search_result.strip()),
+            search_skipped=search_deferred and not search_result.strip(),
+            skip_reason=search_skip_reason,
+            tool_usage=tool_usage,
+        )
         return {
             "search_result": search_result.strip(),
             "attachment_result": attachment_result.strip(),
@@ -201,6 +236,8 @@ class EvidenceRunner:
         attachment_result = self._resolve_attachment_result()
         search_result = self.search_result.strip()
         solver_result = ""
+        search_deferred = False
+        search_skip_reason = ""
 
         plan_result = self.tool_planning_runner.plan(
             question=self.question,
@@ -218,8 +255,11 @@ class EvidenceRunner:
             }
         )
 
+        primary_route = str(routing.get("primary_route") or self._primary_route_from_routing(routing))
+        routing["primary_route"] = primary_route
         executed: set[str] = set()
-        for step in plan.tool_sequence:
+        ordered_steps = self._ordered_tool_plan_steps(plan.tool_sequence, primary_route=primary_route)
+        for step in ordered_steps:
             tool_name = step.tool_name
             if tool_name in executed:
                 continue
@@ -249,6 +289,14 @@ class EvidenceRunner:
                 tool_usage.extend(result_usage)
             elif tool_name == "search":
                 if search_result:
+                    continue
+                if self._should_defer_search(
+                    primary_route=primary_route,
+                    routing=routing,
+                    tool_usage=tool_usage,
+                ):
+                    search_deferred = True
+                    search_skip_reason = "deferred_until_non_search_tools_complete"
                     continue
                 result_text, result_usage = self._build_search_evidence()
                 search_result = result_text
@@ -281,8 +329,29 @@ class EvidenceRunner:
                     if retry_result:
                         solver_result = "\n\n".join(
                             part for part in [solver_result.strip(), retry_result.strip()] if part
-                        )
+                    )
                     tool_usage.extend(retry_usage)
+
+        if search_deferred and not search_result.strip():
+            if self._non_search_tools_are_sufficient(
+                primary_route=primary_route,
+                attachment_result=attachment_result,
+                solver_result=solver_result,
+                tool_usage=tool_usage,
+            ):
+                search_skip_reason = "non_search_direct_evidence_sufficient"
+            elif self._deferred_search_is_required(
+                primary_route=primary_route,
+                routing=routing,
+                tool_usage=tool_usage,
+            ):
+                result_text, result_usage = self._build_search_evidence()
+                search_result = result_text
+                tool_usage.extend(result_usage)
+                executed.add("search")
+                search_skip_reason = ""
+            else:
+                search_skip_reason = "primary_route_deferred_search_not_required"
 
         if (
             not solver_result
@@ -297,6 +366,7 @@ class EvidenceRunner:
             tool_usage.extend(result_usage)
 
         deterministic_gap = self._deterministic_gap_from_usage(tool_usage)
+        search_executed = bool(search_result.strip())
         return {
             "search_result": search_result.strip(),
             "attachment_result": attachment_result.strip(),
@@ -306,8 +376,126 @@ class EvidenceRunner:
                 "tool_planner_enabled": True,
                 "tool_plan": plan.to_dict(),
                 "deterministic_tool_gap": deterministic_gap,
+                "search_decision": self._search_decision_trace(
+                    primary_route=primary_route,
+                    search_executed=search_executed,
+                    search_skipped=search_deferred and not search_executed,
+                    skip_reason=search_skip_reason,
+                    tool_usage=tool_usage,
+                ),
             },
             "tool_usage": tool_usage,
+        }
+
+    def _primary_route_from_routing(self, routing: dict[str, Any]) -> str:
+        task_type = str(routing.get("task_type") or "").strip().lower()
+        if task_type in {"hybrid_search_and_solver"}:
+            return "hybrid"
+        if task_type in {"factual_search"}:
+            return "factual_search"
+        if task_type in {"attachment_evidence", "closed_world_attachment"}:
+            return "attachment"
+        if task_type in {"deterministic_solver", "closed_world_puzzle", "attachment_deterministic_solver"}:
+            return "deterministic"
+        if routing.get("use_attachment"):
+            return "attachment"
+        if routing.get("use_deterministic_solver") or routing.get("use_python_solver"):
+            return "deterministic"
+        if routing.get("use_search"):
+            return "factual_search"
+        return "unknown"
+
+    def _ordered_tool_plan_steps(self, steps: list[Any], *, primary_route: str) -> list[Any]:
+        if primary_route in {"factual_search", "hybrid"}:
+            return list(steps)
+        search_steps = [step for step in steps if getattr(step, "tool_name", "") == "search"]
+        other_steps = [step for step in steps if getattr(step, "tool_name", "") != "search"]
+        return other_steps + search_steps
+
+    def _should_defer_search(
+        self,
+        *,
+        primary_route: str,
+        routing: dict[str, Any],
+        tool_usage: list[dict[str, Any]],
+    ) -> bool:
+        if primary_route in {"factual_search", "hybrid"}:
+            return False
+        if self._deterministic_gap_requires_search(tool_usage):
+            return False
+        if not routing.get("use_search"):
+            return True
+        return primary_route in {"attachment", "deterministic", "media", "unknown"}
+
+    def _deferred_search_is_required(
+        self,
+        *,
+        primary_route: str,
+        routing: dict[str, Any],
+        tool_usage: list[dict[str, Any]],
+    ) -> bool:
+        if primary_route in {"factual_search", "hybrid"}:
+            return True
+        if self._deterministic_gap_requires_search(tool_usage):
+            return True
+        return bool(routing.get("use_search") and primary_route not in {"attachment", "deterministic", "media"})
+
+    def _non_search_tools_are_sufficient(
+        self,
+        *,
+        primary_route: str,
+        attachment_result: str,
+        solver_result: str,
+        tool_usage: list[dict[str, Any]],
+    ) -> bool:
+        if self._has_trusted_deterministic_final(tool_usage) or solver_result.strip():
+            return True
+        if primary_route in {"attachment", "media"} and attachment_result.strip():
+            return not self._deterministic_gap_requires_search(tool_usage)
+        return False
+
+    def _has_trusted_deterministic_final(self, tool_usage: list[dict[str, Any]]) -> bool:
+        for item in reversed(tool_usage):
+            if item.get("tool_name") != "deterministic_handler_router":
+                continue
+            trust = item.get("handler_trust") if isinstance(item.get("handler_trust"), dict) else {}
+            if (
+                item.get("ok")
+                and item.get("evidence_valid")
+                and item.get("output_type") == "final_answer"
+                and trust.get("trusted", True)
+            ):
+                return True
+        return False
+
+    def _deterministic_gap_requires_search(self, tool_usage: list[dict[str, Any]]) -> bool:
+        gap = self._deterministic_gap_from_usage(tool_usage)
+        if not gap:
+            return False
+        missing = {str(item).strip() for item in gap.get("missing_inputs", []) or []}
+        return bool(missing & self._SEARCH_GAP_INPUTS)
+
+    def _search_decision_trace(
+        self,
+        *,
+        primary_route: str,
+        search_executed: bool,
+        search_skipped: bool,
+        skip_reason: str,
+        tool_usage: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        return {
+            "primary_route": primary_route,
+            "search_executed": bool(search_executed),
+            "search_skipped": bool(search_skipped),
+            "skip_reason": skip_reason,
+            "non_search_sufficient": self._has_trusted_deterministic_final(tool_usage),
+            "deterministic_gap_requires_search": self._deterministic_gap_requires_search(tool_usage),
+            "tools_seen": [
+                str(item.get("tool_name") or "")
+                for item in tool_usage
+                if str(item.get("tool_name") or "")
+            ],
         }
 
     def _render_tool_plan(self, steps: list[Any]) -> str:
@@ -402,6 +590,18 @@ class EvidenceRunner:
         if result.get("ok") and output_text:
             result.setdefault("evidence_valid", True)
             return self._validate_tool_context("video_evidence", output_text, [result])
+        if str(result.get("error_code") or "") == "video_download_failed":
+            transcript_text, transcript_usage = self._build_video_transcript_evidence()
+            if transcript_text.strip():
+                result.setdefault("output_text", "")
+                result.setdefault("error", result.get("error_message"))
+                result["fallback_used"] = "video_transcript"
+                validated_text, validated_usage = self._validate_tool_context(
+                    "video_transcript",
+                    transcript_text,
+                    transcript_usage,
+                )
+                return validated_text, [result] + validated_usage
         result.setdefault("output_text", "")
         result.setdefault("error", result.get("error_message"))
         return self._validate_tool_context("video_evidence", "", [result])
@@ -757,7 +957,7 @@ class EvidenceRunner:
                 max_pages_to_fetch=6,
                 max_chunks_per_url=10,
                 max_corpus_records=120,
-                max_iter=3 if self.enable_evidence_driven_search else 1,
+                max_iter=5 if self.enable_evidence_driven_search else 1,
                 top_k=10,
                 min_retrieval_score=0.0,
                 relative_score_margin=1.0,
@@ -929,7 +1129,7 @@ class EvidenceRunner:
                     "position": "after_faiss_retrieval_before_filter",
                     "adapter": "EfficientRAGLabelerAdapter",
                     "implementation": "efficientrag_pretrained_sequence_token_model",
-                    "checkpoint": str(PROJECT_ROOT / "models" / "labeler_mixed_v1"),
+                    "checkpoint": str(PROJECT_LABELER_CHECKPOINT),
                     "device": "cpu",
                 },
                 "source_count": source_count,

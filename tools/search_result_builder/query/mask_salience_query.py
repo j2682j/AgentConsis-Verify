@@ -377,6 +377,7 @@ Return exactly this JSON shape:
                 max_tokens=768,
                 think=False,
                 json_format=self.QUERY_JSON_SCHEMA,
+                keep_alive=0,
             )
         else:
             result = self.llm_client.chat(

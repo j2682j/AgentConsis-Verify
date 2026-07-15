@@ -122,6 +122,7 @@ class NextHopQueryComposer:
             if selected.role_tokens and evidence_spans
             else list(selected.selected_tokens)
         )
+        query_tokens = [token for token in query_tokens if not self._is_internal_requirement(token)]
         query = self._compose_query(
             selected_query_tokens=query_tokens,
             evidence_spans=evidence_spans,
@@ -214,6 +215,12 @@ class NextHopQueryComposer:
 
     def _clean_query(self, query: str) -> str:
         text = normalize_text(query)
+        text = re.sub(
+            r"\b(?:answer_support|answer_candidate|preferred_domain):[A-Za-z0-9_.:-]+\b",
+            " ",
+            text,
+            flags=re.IGNORECASE,
+        )
         text = re.sub(r"\s+([,.;:!?])", r"\1", text)
         text = re.sub(r"\b(?:Query|Info)\s*:\s*", " ", text, flags=re.IGNORECASE)
         text = re.sub(r"\s+", " ", text).strip(" \"'`.,;:-")
@@ -221,6 +228,8 @@ class NextHopQueryComposer:
 
     def _clean_span(self, span: str) -> str:
         text = normalize_text(str(span or "")).strip(" \"'`.,;:")
+        if self._is_internal_requirement(text):
+            return ""
         if len(text) < 3 or len(text) > 100:
             return ""
         tokens = self._keywords(text)
@@ -240,6 +249,8 @@ class NextHopQueryComposer:
         seen: set[str] = set()
         for value in values:
             text = normalize_text(str(value or "")).strip(" \"'`.,;:")
+            if self._is_internal_requirement(text):
+                continue
             key = self._match_key(text)
             if not text or not key or key in seen:
                 continue
@@ -264,6 +275,19 @@ class NextHopQueryComposer:
 
     def _match_key(self, text: str) -> str:
         return " ".join(self._keywords(text))
+
+    def _is_support_requirement(self, value: str) -> bool:
+        return str(value or "").strip().casefold().startswith("answer_support:")
+
+    def _is_internal_requirement(self, value: str) -> bool:
+        text = str(value or "").strip().casefold()
+        return text.startswith(
+            (
+                "answer_support:",
+                "answer_candidate:",
+                "preferred_domain:",
+            )
+        )
 
 
 __all__ = ["NextHopComposition", "NextHopQueryComposer"]

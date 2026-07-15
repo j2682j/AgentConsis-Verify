@@ -4,7 +4,7 @@ import json
 import unittest
 
 from core.config import AgentConfig
-from core.stage1_trajectory_runner import Stage1TrajectoryRunner
+from core.stage1_tool_use_runner import Stage1ToolUseRunner
 from core.tool_turn_policy import AdaptiveToolTurnPolicy
 
 
@@ -118,7 +118,7 @@ class AdaptiveToolTurnTests(unittest.TestCase):
         agent = ScriptedAgent(
             [tool_request(1), tool_request(2), tool_request(3), final_answer()]
         )
-        runner = Stage1TrajectoryRunner(
+        runner = Stage1ToolUseRunner(
             tool_manager=manager,
             max_tool_turns=2,
             hard_max_tool_turns=4,
@@ -145,7 +145,7 @@ class AdaptiveToolTurnTests(unittest.TestCase):
         agent = ScriptedAgent(
             [tool_request(1), tool_request(2), final_answer()]
         )
-        runner = Stage1TrajectoryRunner(
+        runner = Stage1ToolUseRunner(
             tool_manager=manager,
             max_tool_turns=2,
             hard_max_tool_turns=4,
@@ -171,7 +171,7 @@ class AdaptiveToolTurnTests(unittest.TestCase):
     def test_trajectory_retries_final_answer_after_invalid_reply(self):
         manager = ScriptedToolManager([])
         agent = ScriptedAgent([{}, final_answer()])
-        runner = Stage1TrajectoryRunner(
+        runner = Stage1ToolUseRunner(
             tool_manager=manager,
             max_tool_turns=2,
             hard_max_tool_turns=4,
@@ -210,7 +210,7 @@ class AdaptiveToolTurnTests(unittest.TestCase):
                 },
             ]
         )
-        runner = Stage1TrajectoryRunner(
+        runner = Stage1ToolUseRunner(
             tool_manager=manager,
             max_tool_turns=2,
             hard_max_tool_turns=4,
@@ -236,7 +236,7 @@ class AdaptiveToolTurnTests(unittest.TestCase):
     def test_repair_turn_tool_request_is_not_treated_as_final_answer(self):
         manager = ScriptedToolManager([no_progress_result()])
         agent = ScriptedAgent([tool_request(1), tool_request(2)])
-        runner = Stage1TrajectoryRunner(
+        runner = Stage1ToolUseRunner(
             tool_manager=manager,
             max_tool_turns=2,
             hard_max_tool_turns=4,
