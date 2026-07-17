@@ -28,13 +28,12 @@ class MediaAttachmentReader:
         endpoint = self._ollama_chat_endpoint()
         prompt = (
             "You are extracting evidence from an image attachment for a GAIA benchmark question.\n"
-            "Read the image carefully. Return concise structured text only.\n"
+            "Read the image carefully. Return one JSON object only.\n"
             "Do not include reasoning, chain-of-thought, or <think> text.\n"
-            "Include:\n"
-            "- visible text/OCR, if any\n"
-            "- important objects, layout, chart/table values, board positions, symbols, numbers, colors, and labels\n"
-            "- facts directly relevant to the question\n"
-            "- uncertainties if the image is ambiguous\n\n"
+            "Schema: {\"ocr_blocks\":[{\"text\":\"\",\"region\":\"\"}],"
+            "\"objects\":[],\"numbers\":[],\"colors\":[],"
+            "\"spatial_relations\":[],\"uncertainties\":[],\"summary\":\"\"}.\n"
+            "Use optional grid and candidate_words fields only when they are visibly present.\n\n"
             f"Question:\n{question}"
         )
         payload = {
@@ -49,6 +48,7 @@ class MediaAttachmentReader:
             "stream": False,
             "think": False,
             "keep_alive": 0,
+            "format": "json",
             "options": {
                 "temperature": 0,
                 "num_predict": 1024,
@@ -74,13 +74,18 @@ class MediaAttachmentReader:
         content = str(message.get("content", "") or "").strip()
         if not content:
             content = str(data.get("response", "") or "").strip()
-        if not content:
-            content = str(message.get("thinking", "") or "").strip()
         content = self._strip_thinking(content)
         if not content:
-            raise RuntimeError("Ollama vision response did not include text content")
+            raise RuntimeError("Ollama vision response did not include non-reasoning JSON content")
 
-        return f"Ollama vision model: {self.config.vision_model}\n{content}"
+        parsed = self._json_object(content)
+        if parsed is None:
+            raise RuntimeError("Ollama vision response was not a valid JSON object")
+
+        return (
+            f"Ollama vision model: {self.config.vision_model}\n"
+            f"{json.dumps(parsed, ensure_ascii=False)}"
+        )
 
     @staticmethod
     def _strip_thinking(text: str) -> str:
@@ -88,6 +93,22 @@ class MediaAttachmentReader:
         cleaned = re.sub(r"<think>.*?</think>", "", cleaned, flags=re.IGNORECASE | re.DOTALL)
         cleaned = re.sub(r"^\s*<think>.*?(?=\{|\w)", "", cleaned, flags=re.IGNORECASE | re.DOTALL)
         return cleaned.strip()
+
+    @staticmethod
+    def _json_object(text: str) -> dict[str, object] | None:
+        try:
+            value = json.loads(text)
+            return value if isinstance(value, dict) else None
+        except Exception:
+            start = text.find("{")
+            end = text.rfind("}")
+            if start < 0 or end <= start:
+                return None
+            try:
+                value = json.loads(text[start:end + 1])
+                return value if isinstance(value, dict) else None
+            except Exception:
+                return None
 
     def _ollama_chat_endpoint(self) -> str:
         """_ollama_chat_endpoint 的內部輔助實作。"""

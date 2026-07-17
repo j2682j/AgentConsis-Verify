@@ -3,6 +3,7 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass, field
 import gc
+import os
 from typing import Any
 
 from parsers.reasoning_parser import extract_reasoning_steps
@@ -13,6 +14,110 @@ DEFAULT_VERSA_PRM_BASE_MODEL_ID = "meta-llama/Llama-3.2-3B-Instruct"
 DEFAULT_CANDIDATE_TOKEN_IDS = (12, 10)
 DEFAULT_STEP_REWARD_TOKEN_ID = 23535
 DEFAULT_STEP_SEPARATOR = " \n\n\n\n"
+HF_MODEL_REQUIRED_PATTERNS = (
+    "*.json",
+    "*.safetensors",
+    "*.model",
+    "*.txt",
+    "tokenizer*",
+    "special_tokens_map.json",
+    "generation_config.json",
+    "adapter_config.json",
+)
+
+
+def ensure_versa_prm_model_cache(
+    *,
+    model_id: str = DEFAULT_VERSA_PRM_MODEL_ID,
+    base_model_id: str = DEFAULT_VERSA_PRM_BASE_MODEL_ID,
+    allow_download: bool = True,
+) -> dict[str, Any]:
+    """
+    在正式 Stage2 scoring 前確認 VersaPRM 需要的 HuggingFace cache 已存在。
+
+    Args:
+     - model_id: VersaPRM adapter repo id 或本地路徑。
+     - base_model_id: VersaPRM base model repo id 或本地路徑。
+     - allow_download: 本地 cache 缺檔時是否允許連 HuggingFace 下載。
+
+    Returns:
+     - dict[str, Any]: adapter 與 base model 的 cache 檢查結果。
+    """
+    return {
+        "model": _ensure_hf_repo_cached(model_id, allow_download=allow_download),
+        "base_model": _ensure_hf_repo_cached(base_model_id, allow_download=allow_download),
+    }
+
+
+def _ensure_hf_repo_cached(repo_id_or_path: str, *, allow_download: bool) -> dict[str, Any]:
+    repo_id_or_path = str(repo_id_or_path or "").strip()
+    if not repo_id_or_path:
+        return {
+            "ok": False,
+            "repo_id": "",
+            "source": "empty",
+            "path": "",
+            "error": "empty_repo_id",
+        }
+
+    local_path = os.path.expandvars(os.path.expanduser(repo_id_or_path))
+    if os.path.exists(local_path):
+        return {
+            "ok": True,
+            "repo_id": repo_id_or_path,
+            "source": "local_path",
+            "path": os.path.abspath(local_path),
+            "downloaded": False,
+        }
+
+    try:
+        from huggingface_hub import snapshot_download
+    except Exception as exc:
+        return {
+            "ok": False,
+            "repo_id": repo_id_or_path,
+            "source": "huggingface_cache",
+            "path": "",
+            "downloaded": False,
+            "error": f"{type(exc).__name__}: {exc}",
+        }
+
+    try:
+        cached_path = snapshot_download(
+            repo_id=repo_id_or_path,
+            local_files_only=True,
+            allow_patterns=list(HF_MODEL_REQUIRED_PATTERNS),
+        )
+        return {
+            "ok": True,
+            "repo_id": repo_id_or_path,
+            "source": "huggingface_cache",
+            "path": cached_path,
+            "downloaded": False,
+        }
+    except Exception as cache_exc:
+        if not allow_download:
+            return {
+                "ok": False,
+                "repo_id": repo_id_or_path,
+                "source": "huggingface_cache",
+                "path": "",
+                "downloaded": False,
+                "error": f"{type(cache_exc).__name__}: {cache_exc}",
+            }
+
+    cached_path = snapshot_download(
+        repo_id=repo_id_or_path,
+        local_files_only=False,
+        allow_patterns=list(HF_MODEL_REQUIRED_PATTERNS),
+    )
+    return {
+        "ok": True,
+        "repo_id": repo_id_or_path,
+        "source": "huggingface_download",
+        "path": cached_path,
+        "downloaded": True,
+    }
 
 
 @dataclass
@@ -150,7 +255,7 @@ class VersaPRMScorer:
         candidate_token_ids: tuple[int, int] = DEFAULT_CANDIDATE_TOKEN_IDS,
         step_reward_token_id: int = DEFAULT_STEP_REWARD_TOKEN_ID,
         step_separator: str = DEFAULT_STEP_SEPARATOR,
-        local_files_only: bool = False,
+        local_files_only: bool = True,
     ) -> None:
         self.model_id = model_id
         self.base_model_id = base_model_id
@@ -299,16 +404,17 @@ class VersaPRMScorer:
         import torch
         from transformers import AutoModelForCausalLM, AutoTokenizer
 
+        if self.local_files_only:
+            os.environ.setdefault("HF_HUB_OFFLINE", "1")
+            os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
+
         self._torch = torch
         resolved_device = self._resolve_device(torch)
         resolved_dtype = self._resolve_dtype(torch, resolved_device)
         self._resolved_device = resolved_device
         self._resolved_dtype_name = self._dtype_name(resolved_dtype)
 
-        tokenizer = AutoTokenizer.from_pretrained(
-            self.model_id,
-            local_files_only=self.local_files_only,
-        )
+        tokenizer = self._load_tokenizer(AutoTokenizer)
         tokenizer.pad_token = tokenizer.eos_token
         tokenizer.padding_side = "left"
         tokenizer.truncation_side = "left"
@@ -323,6 +429,18 @@ class VersaPRMScorer:
         self._tokenizer = tokenizer
         self._model = model
         self._used_load_mode = used_load_mode
+
+    def _load_tokenizer(self, AutoTokenizer: Any) -> Any:
+        try:
+            return AutoTokenizer.from_pretrained(
+                self.model_id,
+                local_files_only=self.local_files_only,
+            )
+        except Exception:
+            return AutoTokenizer.from_pretrained(
+                self.base_model_id,
+                local_files_only=self.local_files_only,
+            )
 
     def unload(self) -> dict[str, Any]:
         """
@@ -470,6 +588,7 @@ class VersaPRMScorer:
 __all__ = [
     "DEFAULT_VERSA_PRM_BASE_MODEL_ID",
     "DEFAULT_VERSA_PRM_MODEL_ID",
+    "ensure_versa_prm_model_cache",
     "VersaPRMScorer",
     "VersaPRMScoreResult",
     "VersaPRMStepScore",

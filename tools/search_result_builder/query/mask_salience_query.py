@@ -3,16 +3,19 @@ from __future__ import annotations
 import json
 import os
 import re
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from typing import Any
 
 from core.llm_client import LLMClient
 from core.model_registry import resolve_model_id
 from utils.network_utils import normalize_text
 
-from .search_intent_planner import SearchIntentPlan
+from .question_role_extractor import QuestionRole, QuestionRoleExtractor
+from .relation_plan import RelationPlan
+from .span_classifier import ClassifiedSpan, SpanRoleClassifier
 from .semantic_impact import DEFAULT_HF_MODEL_NAME, SemanticImpactScorer, TokenSalient
 from .span_repair import SalientSpan, SpanRepairer
+from .source_requirement import SearchQueryRequest, SourceRequirement
 
 
 @dataclass
@@ -38,6 +41,33 @@ class SalienceQueryCandidate:
     score: float
     semantic_impact_score: float = 0.0
     source: str = "qwen3:4b"
+    source_requirement: SourceRequirement = field(default_factory=SourceRequirement)
+
+
+@dataclass(frozen=True)
+class QueryGenerationOutput:
+    """
+    保存單次模型呼叫產生的 query requests 與 relation plan。
+
+    Args:
+     - query_requests: 帶有來源需求的查詢候選。
+     - relation_plan: 依序執行的自然語言 relation goals。
+
+    Returns:
+     - QueryGenerationOutput: Query Generator 的結構化模型輸出。
+    """
+
+    query_requests: list[SearchQueryRequest] = field(default_factory=list)
+    relation_plan: RelationPlan = field(default_factory=RelationPlan)
+
+    def __iter__(self):
+        return iter(self.query_requests)
+
+    def __len__(self) -> int:
+        return len(self.query_requests)
+
+    def __getitem__(self, index: int) -> SearchQueryRequest:
+        return self.query_requests[index]
 
 
 class MaskSalienceQueryGenerator:
@@ -60,10 +90,18 @@ class MaskSalienceQueryGenerator:
         - MaskSalienceQueryGenerator: Query generation facade.
     """
 
-    SYSTEM_PROMPT = """You are only a web search query generator.
+    SYSTEM_PROMPT = """You generate retrieval queries and select the required source.
 Return JSON only.
 Do not answer the question.
 Do not explain.
+
+Source types:
+- video: video frames, transcript, audio, or a supplied video URL.
+- academic: papers, authors, citations, or publication metadata.
+- collection: tables, catalogs, archives, or repeated records.
+- web: other ordinary web pages.
+
+Use direct_fetch when the question supplies the exact URL. Preserve URLs exactly.
 """
 
     QUERY_JSON_SCHEMA = {
@@ -71,46 +109,105 @@ Do not explain.
         "properties": {
             "queries": {
                 "type": "array",
-                "items": {"type": "string"},
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "query": {"type": "string"},
+                        "source_kind": {
+                            "type": "string",
+                            "enum": ["web", "video", "academic", "collection"],
+                        },
+                        "access_mode": {
+                            "type": "string",
+                            "enum": ["search", "direct_fetch", "browser"],
+                        },
+                        "source_hint": {"type": "string"},
+                    },
+                    "required": [
+                        "query",
+                        "source_kind",
+                        "access_mode",
+                        "source_hint",
+                    ],
+                    "additionalProperties": False,
+                },
                 "minItems": 1,
                 "maxItems": 3,
-            }
+            },
+            "relation_goals": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "subject": {"type": "string"},
+                        "relation": {"type": "string"},
+                        "target": {"type": "string"},
+                        "source_kind": {
+                            "type": "string",
+                            "enum": ["web", "video", "academic", "collection"],
+                        },
+                        "polarity": {
+                            "type": "string",
+                            "enum": ["positive", "negative"],
+                        },
+                        "verification_scope": {
+                            "type": "string",
+                            "enum": ["passage", "full_document", "collection"],
+                        },
+                    },
+                    "required": [
+                        "subject",
+                        "relation",
+                        "target",
+                        "source_kind",
+                        "polarity",
+                        "verification_scope",
+                    ],
+                    "additionalProperties": False,
+                },
+                "minItems": 1,
+                "maxItems": 3,
+            },
         },
-        "required": ["queries"],
+        "required": ["queries", "relation_goals"],
         "additionalProperties": False,
     }
 
     USER_TEMPLATE = """Question:
 {question}
 
-First search target:
-{target}
+Search clues:
+{search_clues}
 
-Answer role:
-{answer_role}
+Constraints:
+{constraints}
 
-Must include:
-{must_include}
+Answer target:
+{answer_target}
 
-Avoid:
-{avoid_terms}
+Avoid in queries:
+{avoid_in_queries}
 
-Preferred domain:
-{preferred_domain}
+Other important spans:
+{other_spans}
 
-Top semantic-impact spans:
-{spans}
-
-Generate {num_candidates} concise web search queries.
+Generate up to {num_candidates} concise retrieval queries and select a source for each query.
 
 Rules:
-- Use the first search target.
-- Preserve the answer role in every query.
-- Include must_include terms when possible.
-- Avoid avoid_terms and answer guesses.
+- Preserve names, dates, titles, URLs, source names, and answer constraints.
+- Use browser only for rendered or interactive collection pages.
+- Do not treat an answer format or placeholder as a known search fact.
+- Leave source_hint empty unless the question names or supplies a source.
+- Split the information need into at most 3 ordered relation goals.
+- A later goal that depends on the previous result must use an empty subject.
+- Use negative only when the task requires proving that an explicit term is absent.
+- Negative goals must put that explicit term in target.
+- Use full_document when absence cannot be verified from a passage.
+- Use collection when every relevant record in a list must be checked.
+- Do not guess or include a final answer.
 
 Return exactly this JSON shape:
-{{"queries": ["...", "..."]}}"""
+{{"queries": [{{"query": "...", "source_kind": "web|video|academic|collection", "access_mode": "search|direct_fetch|browser", "source_hint": "..."}}], "relation_goals": [{{"subject": "...", "relation": "...", "target": "...", "source_kind": "web|video|academic|collection", "polarity": "positive|negative", "verification_scope": "passage|full_document|collection"}}]}}"""
 
     def __init__(
         self,
@@ -148,15 +245,20 @@ Return exactly this JSON shape:
             merge_gap_chars=merge_gap_chars,
             min_token_chars=min_token_chars,
         )
+        self.question_role_extractor = QuestionRoleExtractor(scorer=self.semantic_scorer)
+        self.span_classifier = SpanRoleClassifier(scorer=self.semantic_scorer)
         self.last_token_salience: list[TokenSalient] = []
         self.last_salient_spans: list[SalientSpan] = []
+        self.last_classified_spans: list[ClassifiedSpan] = []
+        self.last_question_role: QuestionRole = QuestionRole()
+        self.last_relation_plan: RelationPlan = RelationPlan()
 
     def generate(
         self,
         question: str,
         *,
         num_candidates: int = 5,
-        intent_plan: SearchIntentPlan | None = None,
+        intent_plan: Any | None = None,
     ) -> list[SalienceQueryCandidate]:
         """
         Generate search query candidates from a question.
@@ -174,20 +276,29 @@ Return exactly this JSON shape:
 
         token_salience = self.score_tokens(text)
         kept_tokens = self.filter_tokens(token_salience)
-        spans = self.select_top_spans(self.merge_salient_tokens(text, kept_tokens))
-        raw_queries = self.generate_queries_with_model(
+        spans = self.span_repairer.build_spans(
+            text,
+            kept_tokens,
+            scorer=self.semantic_scorer,
+        )
+        question_role = self.question_role_extractor.extract(text)
+        classified_spans = self.classify_spans(text, spans, question_role=question_role)
+        generation_output = self.generate_queries_with_model(
             text,
             spans,
+            classified_spans=classified_spans,
             num_candidates=num_candidates,
-            intent_plan=intent_plan,
         )
-        candidates = self.build_candidates(raw_queries, spans)
+        candidates = self.build_candidates(generation_output.query_requests, spans)
 
         if not candidates:
             candidates = self._fallback_candidates(text, spans)
 
         self.last_token_salience = token_salience
         self.last_salient_spans = spans
+        self.last_classified_spans = classified_spans
+        self.last_question_role = question_role
+        self.last_relation_plan = generation_output.relation_plan
         return candidates[: max(1, num_candidates)]
 
     def score_tokens(self, question: str) -> list[TokenSalient]:
@@ -243,14 +354,35 @@ Return exactly this JSON shape:
         """
         return self.span_repairer.select_top_spans(spans)
 
+    def classify_spans(
+        self,
+        question: str,
+        spans: list[SalientSpan],
+        *,
+        question_role: QuestionRole | None = None,
+    ) -> list[ClassifiedSpan]:
+        """
+        Classify repaired spans into query-generation roles.
+
+        Args:
+            - question: Original task question.
+            - spans: Repaired salient spans.
+
+        Returns:
+            - list[ClassifiedSpan]: Role-labeled spans for prompt sections.
+        """
+        question_role = question_role or self.question_role_extractor.extract(question)
+        return self.span_classifier.classify(question, spans, question_role=question_role)
+
     def generate_queries_with_model(
         self,
         question: str,
         spans: list[SalientSpan],
         *,
+        classified_spans: list[ClassifiedSpan] | None = None,
         num_candidates: int,
-        intent_plan: SearchIntentPlan | None = None,
-    ) -> list[str]:
+        intent_plan: Any | None = None,
+    ) -> QueryGenerationOutput:
         """
         使用目前設定的 OpenAI-compatible model 產生精簡搜尋 query。
 
@@ -260,43 +392,56 @@ Return exactly this JSON shape:
             - num_candidates: Maximum number of raw queries.
 
         Returns:
-            - list[str]: Raw query strings.
+            - QueryGenerationOutput: Query requests and ordered relation goals.
         """
         if not spans:
-            return [question]
+            return QueryGenerationOutput(
+                query_requests=[SearchQueryRequest.fallback(question)]
+            )
 
         messages = self._build_query_messages(
             question,
             spans,
             num_candidates=min(max(1, num_candidates), self.max_query_candidates),
-            intent_plan=intent_plan,
+            classified_spans=classified_spans or [],
         )
         try:
             raw_reply = self._invoke_query_model(messages)
         except Exception:
-            return self._fallback_raw_queries(question, spans)
-        return self._parse_query_json(raw_reply) or self._fallback_raw_queries(question, spans)
+            return QueryGenerationOutput(
+                query_requests=self._fallback_query_requests(question, spans)
+            )
+        parsed = self._parse_query_json(
+            raw_reply,
+            question=question,
+        )
+        if parsed.query_requests:
+            return parsed
+        return QueryGenerationOutput(
+            query_requests=self._fallback_query_requests(question, spans)
+        )
 
     def build_candidates(
         self,
-        queries: list[str],
+        requests: list[SearchQueryRequest],
         spans: list[SalientSpan],
     ) -> list[SalienceQueryCandidate]:
         """
         Attach salient-span coverage metadata to raw query strings.
 
         Args:
-            - queries: Raw query strings.
+            - requests: Query strings bound to source requirements.
             - spans: Top semantic-impact spans.
 
         Returns:
             - list[SalienceQueryCandidate]: Structured query candidates.
         """
-        deduped = self._dedupe_queries(queries)
+        deduped = self._dedupe_query_requests(requests)
         candidates: list[SalienceQueryCandidate] = []
         total_score = sum(max(span.score, 0.0) for span in spans) or 1.0
         max_span_score = max((span.score for span in spans), default=1.0) or 1.0
-        for query in deduped:
+        for request in deduped:
+            query = request.query
             matched = self._matched_spans(query, spans)
             matched_impact = sum(span.score for span in matched)
             coverage_score = matched_impact / total_score
@@ -309,6 +454,7 @@ Return exactly this JSON shape:
                     score=0.0,
                     semantic_impact_score=round(max(0.0, semantic_impact_score), 6),
                     source=self.query_model_name,
+                    source_requirement=request.source_requirement,
                 )
             )
         return candidates
@@ -329,7 +475,10 @@ Return exactly this JSON shape:
             "query_model_name": self.query_model_name,
             "query_provider": self.llm_client.provider,
             "query_base_url": self.llm_client.base_url,
+            "question_role": self.last_question_role.to_dict(),
+            "relation_plan": self.last_relation_plan.to_dict(),
             "salient_spans": [asdict(span) for span in self.last_salient_spans],
+            "classified_spans": [span.to_dict() for span in self.last_classified_spans],
             "token_salience": [asdict(token) for token in self.last_token_salience],
         }
 
@@ -339,30 +488,54 @@ Return exactly this JSON shape:
         spans: list[SalientSpan],
         *,
         num_candidates: int,
-        intent_plan: SearchIntentPlan | None = None,
+        classified_spans: list[ClassifiedSpan] | None = None,
     ) -> list[dict[str, str]]:
-        span_lines = "\n".join(f"- {span.text}" for span in spans[: self.max_salient_spans])
-        must_include = intent_plan.must_include if intent_plan else []
-        avoid_terms = intent_plan.avoid_terms if intent_plan else []
-        preferred_domain = intent_plan.preferred_domain if intent_plan else ""
-        target = intent_plan.target if intent_plan else ""
-        answer_role = intent_plan.answer_role if intent_plan else "unknown"
+        sections = self._classified_prompt_sections(classified_spans or [])
         return [
             {"role": "system", "content": self.SYSTEM_PROMPT},
             {
                 "role": "user",
                 "content": self.USER_TEMPLATE.format(
                     question=question,
-                    target=target or "Find the best first-hop source for the question.",
-                    answer_role=answer_role or "unknown",
-                    must_include=self._format_terms(must_include),
-                    avoid_terms=self._format_terms(avoid_terms),
-                    preferred_domain=preferred_domain or "",
-                    spans=span_lines,
+                    search_clues=self._format_terms(sections["search_clues"]),
+                    constraints=self._format_terms(sections["constraints"]),
+                    answer_target=self._format_terms(sections["answer_target"]),
+                    avoid_in_queries=self._format_terms(sections["avoid_in_queries"]),
+                    other_spans=self._format_terms(sections["other_spans"]),
                     num_candidates=num_candidates,
                 ),
             },
         ]
+
+    def _classified_prompt_sections(
+        self,
+        classified_spans: list[ClassifiedSpan],
+    ) -> dict[str, list[str]]:
+        grouped = self.span_classifier.grouped(classified_spans)
+        sections = {
+            "search_clues": [span.text for span in grouped.get("source_clue", [])],
+            "constraints": [span.text for span in grouped.get("constraint", [])],
+            "answer_target": [span.text for span in grouped.get("answer_target", [])],
+            "avoid_in_queries": [
+                span.text
+                for span in [
+                    *grouped.get("format_instruction", []),
+                    *grouped.get("weak_generic", []),
+                ]
+            ],
+            "other_spans": [span.text for span in grouped.get("other", [])],
+        }
+        if not sections["search_clues"]:
+            fallback = [
+                span.text
+                for span in sorted(
+                    classified_spans,
+                    key=lambda item: (item.score, item.confidence),
+                    reverse=True,
+                )[:3]
+            ]
+            sections["search_clues"] = fallback
+        return sections
 
     def _format_terms(self, terms: list[str]) -> str:
         cleaned = [normalize_text(term) for term in terms if normalize_text(term)]
@@ -389,7 +562,12 @@ Return exactly this JSON shape:
             )
         return result.content
 
-    def _parse_query_json(self, raw_reply: str) -> list[str]:
+    def _parse_query_json(
+        self,
+        raw_reply: str,
+        *,
+        question: str = "",
+    ) -> QueryGenerationOutput:
         cleaned = str(raw_reply or "").strip()
         cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned, flags=re.IGNORECASE)
         cleaned = re.sub(r"\s*```$", "", cleaned)
@@ -412,18 +590,81 @@ Return exactly this JSON shape:
         else:
             raw_queries = []
 
-        queries: list[str] = []
+        requests: list[SearchQueryRequest] = []
         for item in raw_queries:
             if isinstance(item, str):
-                query = item
+                request = SearchQueryRequest.fallback(item)
             elif isinstance(item, dict):
-                query = str(item.get("query", "") or "")
+                request = SearchQueryRequest.from_dict(item)
             else:
                 continue
-            cleaned_query = self._clean_query(query)
+            if request is None:
+                continue
+            request = self._repair_explicit_source_request(
+                request,
+                question=question,
+            )
+            cleaned_query = self._clean_query(request.query)
             if cleaned_query:
-                queries.append(cleaned_query)
-        return self._dedupe_queries(queries)
+                requests.append(
+                    SearchQueryRequest(
+                        query=cleaned_query,
+                        source_requirement=request.source_requirement,
+                    )
+                )
+        relation_specs = (
+            list(parsed.get("relation_goals") or [])
+            if isinstance(parsed, dict)
+            else []
+        )
+        return QueryGenerationOutput(
+            query_requests=self._dedupe_query_requests(requests),
+            relation_plan=RelationPlan.from_specs(relation_specs),
+        )
+
+    def _repair_explicit_source_request(
+        self,
+        request: SearchQueryRequest,
+        *,
+        question: str,
+    ) -> SearchQueryRequest:
+        video_url = self._explicit_video_url(question)
+        if not video_url:
+            return request
+        query = request.query
+        if re.search(r"https?://", query, flags=re.IGNORECASE):
+            query = re.sub(
+                r"https?://[^\s)>\]\"']+",
+                video_url,
+                query,
+                count=1,
+                flags=re.IGNORECASE,
+            )
+        elif video_url not in query:
+            query = f"{query} {video_url}"
+        return SearchQueryRequest(
+            query=normalize_text(query),
+            source_requirement=SourceRequirement(
+                source_kind="video",
+                access_mode="direct_fetch",
+                source_hint=video_url,
+            ),
+        )
+
+    def _explicit_video_url(self, text: str) -> str:
+        match = re.search(
+            r"https?://(?:www\.)?(?:youtube\.com/watch\?v=|youtu\.be/|youtube\.com/shorts/)[^\s)>\]\"']+",
+            str(text or ""),
+            flags=re.IGNORECASE,
+        )
+        if match:
+            return match.group(0).rstrip(".,)")
+        match = re.search(
+            r"https?://[^\s)>\]\"']+\.(?:mp4|mov|mkv|webm)(?:\?[^\s)>\]]*)?",
+            str(text or ""),
+            flags=re.IGNORECASE,
+        )
+        return match.group(0).rstrip(".,)") if match else ""
 
     def _fallback_raw_queries(self, question: str, spans: list[SalientSpan]) -> list[str]:
         span_texts = [span.text for span in spans if span.text]
@@ -435,12 +676,22 @@ Return exactly this JSON shape:
         queries.append(question)
         return self._dedupe_queries(queries)
 
+    def _fallback_query_requests(
+        self,
+        question: str,
+        spans: list[SalientSpan],
+    ) -> list[SearchQueryRequest]:
+        return [
+            SearchQueryRequest.fallback(query)
+            for query in self._fallback_raw_queries(question, spans)
+        ]
+
     def _fallback_candidates(
         self,
         question: str,
         spans: list[SalientSpan],
     ) -> list[SalienceQueryCandidate]:
-        return self.build_candidates(self._fallback_raw_queries(question, spans), spans)
+        return self.build_candidates(self._fallback_query_requests(question, spans), spans)
 
     def _matched_spans(self, query: str, spans: list[SalientSpan]) -> list[SalientSpan]:
         query_key = self._normalize_for_match(query)
@@ -462,6 +713,26 @@ Return exactly this JSON shape:
                 seen.add(key)
         return result
 
+    def _dedupe_query_requests(
+        self,
+        requests: list[SearchQueryRequest],
+    ) -> list[SearchQueryRequest]:
+        result: list[SearchQueryRequest] = []
+        seen: set[str] = set()
+        for request in requests:
+            cleaned = self._clean_query(request.query)
+            key = self._normalize_for_match(cleaned)
+            if not cleaned or not key or key in seen:
+                continue
+            result.append(
+                SearchQueryRequest(
+                    query=cleaned,
+                    source_requirement=request.source_requirement,
+                )
+            )
+            seen.add(key)
+        return result
+
     def _clean_query(self, query: str) -> str:
         cleaned = normalize_text(str(query or "")).strip().strip('"').strip("'")
         cleaned = re.sub(r"\s+", " ", cleaned)
@@ -479,7 +750,10 @@ Return exactly this JSON shape:
 
 __all__ = [
     "MaskSalienceQueryGenerator",
+    "QueryGenerationOutput",
     "SalienceQueryCandidate",
+    "SearchQueryRequest",
+    "SourceRequirement",
     "SalientSpan",
     "TokenSalient",
 ]

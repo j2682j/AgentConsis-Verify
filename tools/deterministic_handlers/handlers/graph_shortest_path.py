@@ -21,7 +21,7 @@ class GraphShortestPathRouterHandler:
         "Find a shortest path, route, station count, stop count, hop count, or graph distance "
         "from an edge list in the question, attachment, or evidence."
     )
-    supported_attachment_types: set[str] = {".csv", ".tsv", ".txt"}
+    supported_attachment_types: set[str] = {".csv", ".tsv", ".txt", ".json", ".jsonld", ".docx"}
     routing_terms = {"graph", "shortest", "path", "route", "station", "stations", "stops", "hops", "edges"}
     input_schema = io_contract(
         name,
@@ -69,9 +69,10 @@ class GraphShortestPathRouterHandler:
         )
 
     def build_input(self, handler_input: HandlerInput) -> dict[str, Any]:
+        adapted = handler_input.adapted_inputs()
         rows = self._attachment_rows(handler_input) or parse_inline_delimited_rows(handler_input.combined_text())
         row_edges = self._edges_from_rows(rows) if len(rows) > 1 else []
-        edges = row_edges or self._edges_from_text(handler_input.combined_text())
+        edges = list(adapted.get("edges") or []) or row_edges or self._edges_from_text(handler_input.combined_text())
         start, end = extract_quoted_or_word_pair(handler_input.question)
         directed = "->" in handler_input.combined_text()
         weighted = any(len(edge) >= 3 for edge in edges)

@@ -6,7 +6,7 @@ from core.evidence_runner import EvidenceRunner
 
 
 class EvidenceRunnerSelectionTests(unittest.TestCase):
-    def test_web_retrieval_evidence_prefers_continue_finish_then_high_score_terminate(self):
+    def test_web_retrieval_evidence_exports_only_direct_contracts(self):
         runner = EvidenceRunner(question="test question")
         output = {
             "retrieval": {
@@ -22,15 +22,35 @@ class EvidenceRunnerSelectionTests(unittest.TestCase):
                                 "retrieval_score": 0.91,
                                 "sequence_tag": "<CONTINUE>",
                                 "useful_tokens": ["bridge"],
+                                "bridge_contracts": [
+                                    {
+                                        "goal_id": "G1",
+                                        "bridge_span": "bridge",
+                                        "context": "Primary continue evidence.",
+                                        "document_id": "D1",
+                                        "next_goal_id": "G2",
+                                    }
+                                ],
                             },
                             {
                                 "document_id": "D2",
                                 "title": "High terminate evidence",
-                                "text": "Secondary terminate evidence with useful token.",
+                                "text": "Secondary terminate evidence with candidate answer.",
                                 "url": "https://example.com/terminate-high",
                                 "retrieval_score": 0.88,
                                 "sequence_tag": "<TERMINATE>",
                                 "useful_tokens": ["candidate"],
+                                "direct_contracts": [
+                                    {
+                                        "goal_id": "G2",
+                                        "answer_span": "candidate",
+                                        "context": "Secondary terminate evidence with candidate answer.",
+                                        "document_id": "D2",
+                                        "source_title": "High terminate evidence",
+                                        "url": "https://example.com/terminate-high",
+                                        "answer_requirement": "test question",
+                                    }
+                                ],
                             },
                             {
                                 "document_id": "D3",
@@ -67,16 +87,17 @@ class EvidenceRunnerSelectionTests(unittest.TestCase):
 
         items = runner._web_retrieval_evidence_items(output, max_items=8)
 
-        self.assertEqual([item["source_id"] for item in items], ["D1", "D2"])
+        self.assertEqual([item["source_id"] for item in items], ["D2"])
         self.assertEqual(
             [item["selection_reason"] for item in items],
-            ["primary_labeler_sequence", "secondary_terminate_with_terms"],
+            ["direct_evidence_contract"],
         )
-        self.assertEqual([item["evidence_id"] for item in items], ["E1", "E2"])
+        self.assertEqual([item["evidence_id"] for item in items], ["E1"])
+        self.assertNotIn("D1", {item["source_id"] for item in items})
         self.assertNotIn("D3", {item["source_id"] for item in items})
         self.assertNotIn("D4", {item["source_id"] for item in items})
 
-    def test_web_retrieval_evidence_uses_fallback_only_when_no_selected_items(self):
+    def test_web_retrieval_evidence_does_not_fallback_without_direct_contract(self):
         runner = EvidenceRunner(question="test question")
         output = {
             "retrieval": {
@@ -110,11 +131,7 @@ class EvidenceRunnerSelectionTests(unittest.TestCase):
 
         items = runner._web_retrieval_evidence_items(output, max_items=2)
 
-        self.assertEqual([item["source_id"] for item in items], ["D1", "D2"])
-        self.assertEqual(
-            [item["selection_reason"] for item in items],
-            ["fallback_retrieval_order", "fallback_retrieval_order"],
-        )
+        self.assertEqual(items, [])
 
     def test_web_retrieval_raw_result_exports_blocked_source_details(self):
         runner = EvidenceRunner(question="test question")

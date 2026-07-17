@@ -9,6 +9,7 @@ from urllib.parse import urlparse
 
 from utils.network_utils import normalize_text
 
+from .evidence_contract import EvidenceSelectionContract
 from .span_builder import SpanBuilder
 
 
@@ -36,22 +37,10 @@ class EvidenceConversionDiagnostics:
 @dataclass(frozen=True)
 class _CandidateEvidence:
     item: dict[str, Any]
-    label_priority: float
-    retrieval_score: float
-    span_score: float
-    coverage_score: float
+    bucket: str
+    bucket_priority: int
+    order: int
     diversity_key: str
-    fallback: bool
-
-    @property
-    def conversion_score(self) -> float:
-        return round(
-            self.label_priority
-            + 0.35 * self.retrieval_score
-            + 0.25 * self.span_score
-            + 0.15 * self.coverage_score,
-            6,
-        )
 
 
 class EvidenceConverter:
@@ -62,7 +51,6 @@ class EvidenceConverter:
         - span_builder: 將 labeler useful tokens 還原成原文 span/context 的工具。
         - max_items: 最多輸出幾條 evidence。
         - max_chars: 單條 evidence 最大字元數。
-        - fallback_items: labeler 沒有可用 span 時保留的 retrieval fallback 數量。
         - duplicate_overlap_threshold: evidence sentence lexical overlap 去重門檻。
 
     Returns:
@@ -86,6 +74,10 @@ class EvidenceConverter:
         "text",
         "unknown",
     }
+    BUCKET_ANSWER_COMPATIBLE = "ANSWER_COMPATIBLE"
+    BUCKET_PRIORITY = {
+        BUCKET_ANSWER_COMPATIBLE: 0,
+    }
 
     def __init__(
         self,
@@ -93,13 +85,11 @@ class EvidenceConverter:
         span_builder: SpanBuilder | None = None,
         max_items: int = 8,
         max_chars: int = 520,
-        fallback_items: int = 2,
         duplicate_overlap_threshold: float = 0.86,
     ) -> None:
         self.span_builder = span_builder or SpanBuilder(max_context_chars=max_chars)
         self.max_items = max(1, max_items)
         self.max_chars = max(120, max_chars)
-        self.fallback_items = max(0, fallback_items)
         self.duplicate_overlap_threshold = max(
             0.0,
             min(1.0, duplicate_overlap_threshold),
@@ -115,7 +105,8 @@ class EvidenceConverter:
         self,
         output_dict: dict[str, Any],
         *,
-        question: str,
+        contract: EvidenceSelectionContract | None = None,
+        question: str = "",
     ) -> list[dict[str, Any]]:
         """
         從 WebRetrievalControl output 建立 Stage1 evidence items。
@@ -127,11 +118,12 @@ class EvidenceConverter:
         Returns:
             - list[dict[str, Any]]: prompt-ready evidence items。
         """
+        evidence_contract = contract or EvidenceSelectionContract.from_parts(question=question)
         retrieval = output_dict.get("retrieval") or {}
         rounds = retrieval.get("rounds") or []
-        question_terms = self._important_terms(question)
         candidates: list[_CandidateEvidence] = []
         dropped_duplicates = 0
+        order = 0
 
         for round_info in rounds:
             round_index = int(round_info.get("round_index", 0) or 0)
@@ -141,11 +133,13 @@ class EvidenceConverter:
                     continue
                 if document.get("duplicate"):
                     continue
+                order += 1
                 candidate = self._candidate_from_document(
                     document,
-                    question_terms=question_terms,
+                    contract=evidence_contract,
                     round_index=round_index,
                     query=query,
+                    order=order,
                 )
                 if candidate is not None:
                     candidates.append(candidate)
@@ -153,21 +147,15 @@ class EvidenceConverter:
         ranked = sorted(
             candidates,
             key=lambda candidate: (
-                candidate.fallback,
-                -candidate.conversion_score,
-                -candidate.retrieval_score,
+                candidate.bucket_priority,
+                candidate.order,
             ),
         )
         selected: list[_CandidateEvidence] = []
         seen_domains: dict[str, int] = {}
-        primary_ranked = [candidate for candidate in ranked if not candidate.fallback]
-        fallback_ranked = [candidate for candidate in ranked if candidate.fallback]
-        selection_pool = primary_ranked or fallback_ranked
-        for candidate in selection_pool:
+        for candidate in ranked:
             if len(selected) >= self.max_items:
                 break
-            if candidate.fallback and len([item for item in selected if item.fallback]) >= self.fallback_items:
-                continue
             if self._is_duplicate(candidate.item, [item.item for item in selected]):
                 dropped_duplicates += 1
                 continue
@@ -183,20 +171,12 @@ class EvidenceConverter:
         for index, candidate in enumerate(selected, start=1):
             item = dict(candidate.item)
             item["evidence_id"] = f"E{index}"
-            item["conversion_score"] = candidate.conversion_score
-            item["conversion_features"] = {
-                "label_priority": candidate.label_priority,
-                "retrieval_score": round(candidate.retrieval_score, 6),
-                "span_score": round(candidate.span_score, 6),
-                "coverage_score": round(candidate.coverage_score, 6),
-                "fallback": candidate.fallback,
-            }
             evidence_items.append(item)
 
         self.last_diagnostics = EvidenceConversionDiagnostics(
             candidate_count=len(candidates),
             selected_count=len(evidence_items),
-            fallback_used=any(candidate.fallback for candidate in selected),
+            fallback_used=False,
             dropped_duplicates=dropped_duplicates,
         )
         return evidence_items
@@ -205,63 +185,53 @@ class EvidenceConverter:
         self,
         document: dict[str, Any],
         *,
-        question_terms: set[str],
+        contract: EvidenceSelectionContract,
         round_index: int,
         query: str,
+        order: int,
     ) -> _CandidateEvidence | None:
         text = normalize_text(document.get("text", ""))
         if not text:
             return None
-        if document.get("valid_for_evidence") is False:
-            return None
-        support_level = normalize_text(document.get("support_level", "bridge"))
-        if support_level == "unsupported":
-            return None
-
-        matched_terms = [
-            normalize_text(str(term or ""))
-            for term in (
-                document.get("answer_spans")
-                or document.get("bridge_spans")
-                or document.get("useful_spans")
-                or document.get("useful_tokens")
-                or []
-            )
+        direct_contracts = [
+            dict(item)
+            for item in list(document.get("direct_contracts") or [])
+            if isinstance(item, dict)
+            and normalize_text(str(item.get("answer_span") or ""))
+            and normalize_text(str(item.get("answer_span") or "")).casefold()
+            in text.casefold()
         ]
+        if not direct_contracts:
+            return None
         matched_terms = [
-            term
-            for term in matched_terms
-            if self._is_informative_term(term)
+            normalize_text(str(item.get("answer_span") or ""))
+            for item in direct_contracts
         ]
-        utility_context = normalize_text(document.get("utility_context", ""))
-        if support_level in {"direct", "direct_strong", "direct_weak"} and utility_context:
-            evidence_text = utility_context
-            matched_spans = document.get("matched_spans") or []
-        else:
-            evidence_text, matched_spans = self.span_builder.build_context(
-                text,
-                matched_terms,
-                fallback_chars=self.max_chars,
+        matched_terms = [term for term in matched_terms if term]
+        built_context, matched_spans = self.span_builder.build_context(
+            text,
+            matched_terms,
+            fallback_chars=self.max_chars,
+        )
+        contract_context = " ".join(
+            dict.fromkeys(
+                normalize_text(str(item.get("context") or ""))
+                for item in direct_contracts
+                if normalize_text(str(item.get("context") or ""))
             )
-        evidence_text = self._truncate(evidence_text or text, self.max_chars)
+        )
+        evidence_text = self._truncate(
+            contract_context or built_context,
+            self.max_chars,
+        )
         if not evidence_text:
             return None
 
         sequence_tag = normalize_text(document.get("sequence_tag", ""))
-        has_strong_terms = any(self._is_strong_term(term) for term in matched_terms)
-        label_priority = self._label_priority(
-            sequence_tag,
-            bool(matched_terms),
-            support_level=support_level,
-            has_strong_terms=has_strong_terms,
-        )
-        fallback = label_priority <= 0
-        if fallback and not self._is_reasonable_fallback(document, evidence_text):
-            return None
+        compatible_spans = list(matched_terms)
+        bucket = self.BUCKET_ANSWER_COMPATIBLE
 
         retrieval_score = self._safe_float(document.get("retrieval_score"))
-        span_score = self._span_score(matched_terms, matched_spans)
-        coverage_score = self._coverage_score(evidence_text, question_terms)
         source_id = normalize_text(document.get("document_id", ""))
         title = normalize_text(document.get("title", ""))
         url = normalize_text(document.get("url", ""))
@@ -277,110 +247,33 @@ class EvidenceConverter:
             "retrieval_score": retrieval_score,
             "sequence_tag": sequence_tag,
             "label": normalize_text(document.get("label", "")),
-            "support_level": support_level,
-            "support_strength": normalize_text(document.get("support_strength", "")),
-            "normalized_constraints": [
-                normalize_text(str(item or ""))
-                for item in (document.get("normalized_constraints") or [])
-                if normalize_text(str(item or ""))
-            ],
-            "answer_spans": [
-                normalize_text(str(span or ""))
-                for span in (document.get("answer_spans") or [])
-                if normalize_text(str(span or ""))
-            ],
-            "bridge_spans": [
-                normalize_text(str(span or ""))
-                for span in (document.get("bridge_spans") or [])
-                if normalize_text(str(span or ""))
-            ],
-            "utility_reasons": [
-                normalize_text(str(reason or ""))
-                for reason in (document.get("utility_reasons") or [])
-                if normalize_text(str(reason or ""))
-            ],
-            "span_recovery_used": bool(document.get("span_recovery_used", False)),
+            "useful_spans": matched_terms[:16],
+            "answer_support_spans": [
+                normalize_text(str(item.get("answer_span") or ""))
+                for item in direct_contracts
+            ][:16],
+            "bridge_spans": [],
+            "direct_contracts": direct_contracts[:16],
+            "span_roles": list(document.get("span_roles") or [])[:24],
+            "support_level": normalize_text(document.get("support_level", "")),
+            "answer_requirement": contract.answer_requirement,
+            "answer_target": contract.answer_target,
+            "must_include": list(contract.must_include),
+            "compatible_spans": compatible_spans[:8],
+            "compatibility_results": [],
+            "evidence_bucket": bucket,
+            "valid_for_next_hop": False,
             "round_index": round_index,
             "retrieval_query": query,
-            "selection_reason": self._selection_reason(
-                sequence_tag=sequence_tag,
-                matched_terms=matched_terms,
-                support_level=support_level,
-                utility_reasons=document.get("utility_reasons") or [],
-                span_recovery_used=bool(document.get("span_recovery_used", False)),
-                fallback=fallback,
-            ),
+            "selection_reason": "direct_evidence_contract",
         }
         return _CandidateEvidence(
             item=item,
-            label_priority=label_priority,
-            retrieval_score=retrieval_score,
-            span_score=span_score,
-            coverage_score=coverage_score,
+            bucket=bucket,
+            bucket_priority=self.BUCKET_PRIORITY.get(bucket, 99),
+            order=order,
             diversity_key=self._domain(url),
-            fallback=fallback,
         )
-
-    def _label_priority(
-        self,
-        sequence_tag: str,
-        has_terms: bool,
-        *,
-        support_level: str = "",
-        has_strong_terms: bool = False,
-    ) -> float:
-        if support_level in {"direct", "direct_strong"}:
-            return 3.5 if has_terms else 3.0
-        if support_level == "direct_weak":
-            return 3.15 if has_terms else 2.75
-        if support_level == "bridge" and has_terms:
-            return 2.4
-        if sequence_tag == "<FINISH>":
-            return 3.0 if has_terms else 2.2
-        if sequence_tag == "<CONTINUE>":
-            return 2.6 if has_terms else 0.0
-        if sequence_tag == "<TERMINATE>":
-            return 2.2 if has_strong_terms else 0.0
-        return 0.0
-
-    def _selection_reason(
-        self,
-        *,
-        sequence_tag: str,
-        matched_terms: list[str],
-        support_level: str,
-        utility_reasons: list[Any],
-        span_recovery_used: bool,
-        fallback: bool,
-    ) -> str:
-        if fallback:
-            return "fallback_retrieval_order"
-        if support_level in {"direct", "direct_strong"}:
-            return "direct_answer_span"
-        if support_level == "direct_weak":
-            return "weak_direct_answer_span"
-        if support_level == "bridge":
-            if span_recovery_used:
-                return "bridge_recovered_span"
-            if any("terminal_label_demoted" in str(reason) for reason in utility_reasons):
-                return "bridge_demoted_terminal_span"
-            return "bridge_labeler_span"
-        if sequence_tag == "<FINISH>":
-            return "primary_labeler_sequence"
-        if sequence_tag == "<CONTINUE>":
-            return "primary_labeler_sequence"
-        if sequence_tag == "<TERMINATE>":
-            return "secondary_terminate_with_terms"
-        if matched_terms:
-            return "useful_span_context"
-        return "retrieval_context"
-
-    def _span_score(self, matched_terms: list[str], matched_spans: list[Any]) -> float:
-        if not matched_terms:
-            return 0.0
-        strong_terms = sum(1 for term in matched_terms if self._is_strong_term(term))
-        span_count = len(matched_spans)
-        return min(1.0, 0.2 + 0.18 * strong_terms + 0.12 * span_count)
 
     def _span_dicts(self, matched_spans: list[Any]) -> list[dict[str, Any]]:
         result: list[dict[str, Any]] = []
@@ -393,14 +286,6 @@ class EvidenceConverter:
             except TypeError:
                 continue
         return result
-
-    def _coverage_score(self, evidence_text: str, question_terms: set[str]) -> float:
-        if not question_terms:
-            return 0.0
-        evidence_terms = self._important_terms(evidence_text)
-        if not evidence_terms:
-            return 0.0
-        return min(1.0, len(question_terms & evidence_terms) / max(1, len(question_terms)))
 
     def _important_terms(self, text: Any) -> set[str]:
         normalized = normalize_text(text).casefold()
@@ -421,20 +306,6 @@ class EvidenceConverter:
         if len(cleaned) < 4 and not any(char.isdigit() for char in cleaned):
             return False
         return True
-
-    def _is_strong_term(self, term: str) -> bool:
-        cleaned = normalize_text(term).casefold()
-        if any(character.isdigit() for character in cleaned):
-            return True
-        words = [word for word in self._WORD_RE.findall(cleaned) if self._is_informative_term(word)]
-        if len(words) >= 2:
-            return True
-        return len(cleaned) >= 8
-
-    def _is_reasonable_fallback(self, document: dict[str, Any], evidence_text: str) -> bool:
-        if len(evidence_text) < 20:
-            return False
-        return self._safe_float(document.get("retrieval_score")) > 0
 
     def _is_duplicate(
         self,

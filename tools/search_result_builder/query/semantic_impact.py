@@ -252,6 +252,51 @@ class SemanticImpactScorer:
             for embedding in embeddings[1:]
         ]
 
+    def score_span_impact(self, question: str, *, start: int, end: int) -> float:
+        """
+        計算移除指定 span 後，原始問題語意表示的變化量。
+
+        Args:
+            - question: 原始問題文字。
+            - start: span 在原始問題中的起始字元位置。
+            - end: span 在原始問題中的結束字元位置。
+
+        Returns:
+            - float: 1 - cosine similarity 的 span-level semantic impact。
+        """
+        scores = self.score_span_impacts(question, [(start, end)])
+        return scores[0] if scores else 0.0
+
+    def score_span_impacts(self, question: str, spans: list[tuple[int, int]]) -> list[float]:
+        """
+        批次計算多個 span 對原始問題語意表示的影響。
+
+        Args:
+            - question: 原始問題文字。
+            - spans: 多組字元位置區間。
+
+        Returns:
+            - list[float]: 每個 span 的 semantic impact。
+        """
+        if not spans:
+            return []
+        text = normalize_text(question)
+        if not text:
+            return [0.0 for _ in spans]
+        self._load_hf_model()
+        baseline_embedding = self._embed_texts([text])[0]
+        perturbed_embeddings = self._embed_texts(
+            [
+                self._delete_span(text, max(0, int(start)), min(len(text), int(end)))
+                for start, end in spans
+            ]
+        )
+        scores: list[float] = []
+        for embedding in perturbed_embeddings:
+            similarity = float((baseline_embedding * embedding).sum().detach().cpu().item())
+            scores.append(round(max(0.0, 1.0 - similarity), 6))
+        return scores
+
     def _load_hf_model(self) -> None:
         if self.tokenizer is not None and self.model is not None:
             return

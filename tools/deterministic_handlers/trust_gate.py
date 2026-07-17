@@ -81,11 +81,14 @@ class HandlerTrustGate:
         handler_plan = handler_plan or {}
         planned_name = str(handler_plan.get("handler_name") or "").strip()
         required_handler_role = str(handler_plan.get("required_handler_role") or "").strip()
+        plan_status = str(handler_plan.get("status") or "").strip()
         reasons: list[str] = []
         warnings: list[str] = []
 
         if planned_name and planned_name != result.handler_name:
             reasons.append("planned_handler_mismatch")
+        if plan_status and plan_status != "ready":
+            reasons.append("handler_plan_not_ready")
         if result.status == "missing_handler":
             reasons.append("missing_handler")
         if result.status in {"missing_inputs", "no_match"} or result.missing_inputs:
@@ -111,6 +114,21 @@ class HandlerTrustGate:
             reasons.append("missing_supporting_inputs")
 
         structured = result.structured_result if isinstance(result.structured_result, dict) else {}
+        planned_provenance = handler_plan.get("input_provenance")
+        if isinstance(planned_provenance, dict) and planned_provenance:
+            source = str(planned_provenance.get("source") or "").strip()
+            parse_status = str(planned_provenance.get("parse_status") or "").strip()
+            result_provenance = structured.get("input_provenance")
+            if source not in {
+                "attachment_reader",
+                "provided_attachment_context",
+                "specialized_attachment_input",
+            }:
+                reasons.append("invalid_attachment_provenance")
+            if parse_status not in {"success", "partial"}:
+                reasons.append("attachment_parse_not_ready")
+            if not isinstance(result_provenance, dict) or not result_provenance:
+                reasons.append("missing_result_provenance")
         handler_role = str(structured.get("handler_role") or "").strip()
         if required_handler_role and handler_role and handler_role != required_handler_role:
             reasons.append("handler_role_mismatch")
@@ -158,6 +176,16 @@ class HandlerTrustGate:
     def _status_from_reasons(self, reasons: list[str]) -> str:
         if "planned_handler_mismatch" in reasons:
             return "handler_mismatch"
+        if any(
+            reason in reasons
+            for reason in {
+                "handler_plan_not_ready",
+                "invalid_attachment_provenance",
+                "attachment_parse_not_ready",
+                "missing_result_provenance",
+            }
+        ):
+            return "input_provenance_failed"
         if "handler_role_mismatch" in reasons or "answer_role_binding_failed" in reasons:
             return "handler_role_mismatch"
         if "missing_handler" in reasons:

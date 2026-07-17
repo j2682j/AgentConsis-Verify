@@ -308,6 +308,17 @@ class ToolPlannerTests(unittest.TestCase):
                     status="ok",
                     answer="42",
                     evidence_text="Deterministic handler evidence:\nAnswer: 42",
+                    structured_result={
+                        "handler_role": "simple_math",
+                        "output_contract": {
+                            "schema_version": "deterministic-handler-v1",
+                            "required_outputs": ["answer"],
+                        },
+                    },
+                    input_summary={"question": "Compute 40 + 2."},
+                    output_type="final_answer",
+                    semantic_role="simple_math_answer",
+                    supporting_inputs=["question"],
                 )
 
         runner = EvidenceRunner(

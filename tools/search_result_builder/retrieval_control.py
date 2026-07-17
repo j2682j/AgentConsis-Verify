@@ -6,26 +6,41 @@ import re
 import shutil
 from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable, Iterable
 
 from utils.network_utils import normalize_text
 
 from .config import EvidenceItem, SearchSourceCandidate
-from .corpus import DocumentChunker, WebCorpusBuilder
+from .corpus import DocumentChunker, TaskCorpusSession, WebCorpusBuilder
 from .embeddings import Embedder
-from .evidence import EvidenceUtilityGate
+from .evidence import (
+    ANSWER_SUPPORT,
+    BRIDGE,
+    CandidateSpan,
+    CandidateSpanGrounder,
+    CandidateSpanQualityGate,
+    EvidenceUtilityGate,
+    EvidenceRoleContractBuilder,
+    RoleAwareSpanFinalizer,
+    SpanRoleClassifier,
+)
 from .next_hop_query.coverage_assessor import CoverageAssessor
 from .next_hop_query.evidence_sufficiency_gate import EvidenceSufficiencyGate
 from .next_hop_query.intent_state_tracker import SearchIntentStateTracker
 from .next_hop_query.next_hop_evidence_selector import NextHopEvidenceSelector
 from .next_hop_query.next_hop_query_composer import NextHopQueryComposer
+from .next_hop_query.relation_evidence_binder import RelationEvidenceBinder
+from .next_hop_query.relation_goal_resolver import RelationGoalResolver
 from .next_hop_query.query_guard import NextHopQueryGuard
 from .next_hop_query.rag_filter import EfficientRAGFilterAdapter, RAGFilterResult
 from .passage_retriever import Retriever
-from .query import QueryGenerator, SearchIntentPlan
+from .passage_candidate_selector import PassageCandidateSelector
+from .query import QueryGenerator, SearchIntentPlan, SearchQueryRequest
+from .source_acquisition import SourceAcquisitionRouter, SourceAcquisitionTrace
 from .source_analyze.rag_labeler import (
     CONTINUE_TAG,
     EfficientRAGLabelerAdapter,
+    FINISH_TAG,
     RAGLabelResult,
 )
 from .source_analyze.label_contract import LabelContractValidator
@@ -61,25 +76,36 @@ class RetrievedDocumentTrace:
     text: str
     url: str
     retrieval_score: float
+    selection_score: float = 0.0
+    selection_sources: list[str] = field(default_factory=list)
+    expanded_from: str = ""
+    record_type: str = "passage"
+    record_id: str = ""
+    record_fields: dict[str, Any] = field(default_factory=dict)
+    content_scope: str = "passage"
+    content_complete: bool = False
+    content_truncated: bool = False
+    original_content_chars: int = 0
     label: str = ""
     sequence_tag: str = ""
     useful_tokens: list[str] = field(default_factory=list)
+    useful_spans: list[str] = field(default_factory=list)
+    raw_labeler_spans: list[str] = field(default_factory=list)
+    grounded_labeler_spans: list[str] = field(default_factory=list)
+    classified_spans: list[str] = field(default_factory=list)
+    answer_support_spans: list[str] = field(default_factory=list)
+    bridge_spans: list[str] = field(default_factory=list)
+    span_roles: list[dict[str, str]] = field(default_factory=list)
+    support_level: str = ""
+    valid_for_next_hop: bool = False
+    valid_for_evidence: bool = False
+    direct_contracts: list[dict[str, Any]] = field(default_factory=list)
+    bridge_contracts: list[dict[str, Any]] = field(default_factory=list)
+    rejected_contracts: list[dict[str, Any]] = field(default_factory=list)
     continue_probability: float = 0.0
     terminate_probability: float = 0.0
     label_status: str = ""
-    valid_for_next_hop: bool = False
-    valid_for_evidence: bool = False
-    useful_spans: list[str] = field(default_factory=list)
     invalid_reasons: list[str] = field(default_factory=list)
-    support_level: str = ""
-    support_strength: str = ""
-    normalized_constraints: list[str] = field(default_factory=list)
-    answer_spans: list[str] = field(default_factory=list)
-    bridge_spans: list[str] = field(default_factory=list)
-    utility_context: str = ""
-    utility_reasons: list[str] = field(default_factory=list)
-    span_recovery_used: bool = False
-    can_support_sufficient: bool = False
     labeler_diagnostics: dict[str, object] = field(default_factory=dict)
     duplicate: bool = False
     duplicate_reason: str = ""
@@ -105,9 +131,11 @@ class RetrievalRoundTrace:
 
     round_index: int
     query: str
+    branch_queries: list[str] = field(default_factory=list)
     documents: list[RetrievedDocumentTrace] = field(default_factory=list)
     useful_tokens: list[str] = field(default_factory=list)
     next_query: str = ""
+    next_queries: list[str] = field(default_factory=list)
     coverage: dict[str, object] = field(default_factory=dict)
     filter_metadata: dict[str, object] = field(default_factory=dict)
     stop_reason: str = ""
@@ -136,6 +164,7 @@ class IterativeRetrievalResult:
     stop_reason: str
     searched_queries: list[str]
     unique_document_count: int
+    relation_plan: dict[str, object] = field(default_factory=dict)
 
 
 @dataclass
@@ -159,6 +188,11 @@ class WebSearchTrace:
     result_count: int
     source_ids: list[str] = field(default_factory=list)
     notices: list[str] = field(default_factory=list)
+    requested_source_kind: str = "web"
+    requested_access_mode: str = "search"
+    source_hint: str = ""
+    actual_acquirer: str = ""
+    fallback_used: bool = False
 
 
 @dataclass
@@ -218,14 +252,25 @@ class IterativeRetrievalControl:
         next_hop_evidence_selector: NextHopEvidenceSelector | None = None,
         coverage_assessor: CoverageAssessor | None = None,
         sufficiency_gate: EvidenceSufficiencyGate | None = None,
-        evidence_utility_gate: EvidenceUtilityGate | None = None,
+        evidence_utility_gate: Any | None = None,
+        evidence_contract_builder: EvidenceRoleContractBuilder | None = None,
+        span_grounder: CandidateSpanGrounder | None = None,
+        span_quality_gate: CandidateSpanQualityGate | None = None,
+        span_finalizer: RoleAwareSpanFinalizer | None = None,
+        span_role_classifier: SpanRoleClassifier | None = None,
         labeler_input_builder: LabelerInputBuilder | None = None,
         intent_state_tracker: SearchIntentStateTracker | None = None,
         query_guard: NextHopQueryGuard | None = None,
         max_iter: int = 4,
-        top_k: int = 10,
+        top_k: int = 16,
+        candidate_pool_size: int = 30,
+        passage_selector: PassageCandidateSelector | None = None,
         min_retrieval_score: float = 0.75,
         relative_score_margin: float = 0.08,
+        relation_binder: RelationEvidenceBinder | None = None,
+        relation_resolver: RelationGoalResolver | None = None,
+        external_source_loader: Callable[[list[SearchQueryRequest]], int] | None = None,
+        max_relation_branches: int = 2,
     ) -> None:
         self.retriever = retriever
         self.labeler = labeler or EfficientRAGLabelerAdapter()
@@ -238,16 +283,31 @@ class IterativeRetrievalControl:
         self.coverage_assessor = coverage_assessor or CoverageAssessor()
         self.sufficiency_gate = sufficiency_gate or EvidenceSufficiencyGate()
         self.evidence_utility_gate = evidence_utility_gate or EvidenceUtilityGate()
+        self.evidence_contract_builder = (
+            evidence_contract_builder or EvidenceRoleContractBuilder()
+        )
+        self.span_grounder = span_grounder or CandidateSpanGrounder()
+        self.span_quality_gate = span_quality_gate or CandidateSpanQualityGate()
+        self.span_finalizer = span_finalizer or RoleAwareSpanFinalizer()
+        self.span_role_classifier = span_role_classifier or SpanRoleClassifier()
         self.labeler_input_builder = labeler_input_builder or LabelerInputBuilder()
         self.intent_state_tracker = intent_state_tracker or SearchIntentStateTracker()
         self.query_guard = query_guard or NextHopQueryGuard()
+        self.passage_selector = passage_selector or PassageCandidateSelector()
         self.max_iter = max(1, max_iter)
         self.top_k = max(1, top_k)
+        self.candidate_pool_size = max(self.top_k, candidate_pool_size)
         self.min_retrieval_score = max(0.0, min(1.0, min_retrieval_score))
         self.relative_score_margin = max(
             0.0,
             min(1.0, relative_score_margin),
         )
+        self.relation_resolver = relation_resolver or RelationGoalResolver()
+        self.relation_binder = relation_binder or RelationEvidenceBinder(
+            resolver=self.relation_resolver
+        )
+        self.external_source_loader = external_source_loader
+        self.max_relation_branches = max(1, max_relation_branches)
 
     def run(
         self,
@@ -276,8 +336,12 @@ class IterativeRetrievalControl:
             )
 
         current_query = initial_query
+        current_queries = [initial_query]
         use_intent_state = intent_plan is not None
         current_intent_plan = intent_plan
+        current_relation_plan = (
+            intent_plan.relation_plan if intent_plan is not None else None
+        )
         rounds: list[RetrievalRoundTrace] = []
         searched_queries: list[str] = []
         seen_query_keys: set[str] = set()
@@ -287,20 +351,34 @@ class IterativeRetrievalControl:
         stop_reason = "max_iter_reached"
 
         for round_index in range(1, self.max_iter + 1):
-            query_key = self._query_key(current_query)
-            if not query_key:
+            active_queries: list[str] = []
+            active_query_keys: list[str] = []
+            for candidate_query in current_queries:
+                candidate = normalize_text(candidate_query)
+                key = self._query_key(candidate)
+                if not key or key in seen_query_keys:
+                    continue
+                active_queries.append(candidate)
+                active_query_keys.append(key)
+            if not active_queries:
+                query_key = self._query_key(current_query)
+                stop_reason = "duplicate_query" if query_key else "empty_query"
+                break
+            current_query = active_queries[0]
+            if not current_query:
                 stop_reason = "empty_query"
                 break
-            if query_key in seen_query_keys:
-                stop_reason = "duplicate_query"
-                break
 
-            seen_query_keys.add(query_key)
-            searched_queries.append(current_query)
-            retrieved = self._search_with_scores(current_query)
+            seen_query_keys.update(active_query_keys)
+            searched_queries.extend(active_queries)
+            retrieved = self._search_with_scores_many(
+                active_queries,
+                original_question=initial_query,
+            )
             round_trace = RetrievalRoundTrace(
                 round_index=round_index,
                 query=current_query,
+                branch_queries=list(active_queries),
             )
 
             label_documents: list[dict[str, Any]] = []
@@ -364,6 +442,112 @@ class IterativeRetrievalControl:
                     intent_plan=current_intent_plan,
                 )
 
+            self._apply_span_role_classification(
+                round_trace=round_trace,
+                question=initial_query,
+                intent_plan=current_intent_plan,
+            )
+
+            relation_requires_more = bool(
+                current_relation_plan is not None
+                and current_relation_plan.is_multihop
+                and not current_relation_plan.complete
+            )
+            if relation_requires_more and current_relation_plan is not None:
+                relation_documents = [
+                    document
+                    for document in round_trace.documents
+                    if not document.duplicate
+                ]
+                direct_contracts = [
+                    contract
+                    for document in relation_documents
+                    for contract in document.direct_contracts
+                ]
+                direct_resolution = self.relation_resolver.resolve_direct(
+                    current_relation_plan,
+                    direct_contracts,
+                )
+                if direct_resolution.resolved_goal_ids:
+                    current_relation_plan = direct_resolution.plan
+                    if current_intent_plan is not None:
+                        current_intent_plan = current_intent_plan.replace(
+                            relation_plan=current_relation_plan
+                        )
+                    round_trace.filter_metadata = {
+                        **round_trace.filter_metadata,
+                        "direct_evidence_resolution": {
+                            "resolved_goal_ids": direct_resolution.resolved_goal_ids,
+                            "contract_count": len(direct_contracts),
+                            "plan": current_relation_plan.to_dict(),
+                        },
+                    }
+                    round_trace.stop_reason = "direct_evidence_resolved"
+                    rounds.append(round_trace)
+                    stop_reason = round_trace.stop_reason
+                    break
+                binding = self.relation_binder.bind(
+                    plan=current_relation_plan,
+                    documents=relation_documents,
+                )
+                resolution = self.relation_resolver.resolve(
+                    current_relation_plan,
+                    binding.evidence,
+                )
+                current_relation_plan = resolution.plan
+                if current_intent_plan is not None:
+                    current_intent_plan = current_intent_plan.replace(
+                        relation_plan=current_relation_plan
+                    )
+                round_trace.filter_metadata = {
+                    **round_trace.filter_metadata,
+                    "relation_binding": {
+                        "evidence": [item.to_dict() for item in binding.evidence],
+                        "rejected": list(binding.rejected),
+                        "resolved_goal_ids": list(resolution.resolved_goal_ids),
+                        "activated_goal_id": resolution.activated_goal_id,
+                        "plan": current_relation_plan.to_dict(),
+                    },
+                }
+                if current_relation_plan.complete:
+                    round_trace.stop_reason = "relation_goals_resolved"
+                    rounds.append(round_trace)
+                    stop_reason = round_trace.stop_reason
+                    break
+                if resolution.activated_goal_id and round_index < self.max_iter:
+                    relation_requests = self.next_hop_composer.build_relation_requests(
+                        relation_plan=current_relation_plan,
+                        constraints=(
+                            list(current_intent_plan.must_include or [])
+                            if current_intent_plan is not None
+                            else []
+                        ),
+                        max_requests=self.max_relation_branches,
+                    )
+                    requests = [item.request for item in relation_requests]
+                    next_queries = [request.query for request in requests]
+                    round_trace.next_queries = list(next_queries)
+                    round_trace.next_query = next_queries[0] if next_queries else ""
+                    round_trace.filter_metadata["relation_next_hop"] = {
+                        "branches": [item.to_dict() for item in relation_requests],
+                    }
+                    added_count = self._load_external_sources(requests)
+                    round_trace.filter_metadata["relation_next_hop"][
+                        "added_record_count"
+                    ] = added_count
+                    if next_queries and added_count > 0:
+                        round_trace.stop_reason = "relation_next_hop"
+                        rounds.append(round_trace)
+                        current_queries = next_queries
+                        current_query = next_queries[0]
+                        continue
+                    round_trace.stop_reason = (
+                        "relation_source_empty" if next_queries else "empty_relation_query"
+                    )
+                    rounds.append(round_trace)
+                    stop_reason = round_trace.stop_reason
+                    break
+
             non_duplicate_documents = [
                 document
                 for document in round_trace.documents
@@ -416,7 +600,11 @@ class IterativeRetrievalControl:
                     "sufficient": current_intent_plan.state == "sufficient"
                     and gate_result.sufficient,
                 }
-                if intent_state_sufficient and gate_result.sufficient:
+                if (
+                    intent_state_sufficient
+                    and gate_result.sufficient
+                    and not relation_requires_more
+                ):
                     round_trace.stop_reason = "intent_state_sufficient"
                     rounds.append(round_trace)
                     stop_reason = round_trace.stop_reason
@@ -433,7 +621,11 @@ class IterativeRetrievalControl:
                     "sufficiency_gate": gate_result.to_dict(),
                     "sufficient": coverage.sufficient and gate_result.sufficient,
                 }
-                if coverage.sufficient and gate_result.sufficient:
+                if (
+                    coverage.sufficient
+                    and gate_result.sufficient
+                    and not relation_requires_more
+                ):
                     round_trace.stop_reason = "coverage_sufficient"
                     rounds.append(round_trace)
                     stop_reason = round_trace.stop_reason
@@ -450,7 +642,7 @@ class IterativeRetrievalControl:
                 if (
                     not trace.duplicate
                     and trace.valid_for_next_hop
-                    and trace.support_level == "bridge"
+                    and trace.bridge_spans
                 )
             ]
             if not continue_documents:
@@ -461,7 +653,7 @@ class IterativeRetrievalControl:
                         for document in round_trace.documents
                         if (
                             not document.duplicate
-                            and document.support_level != "unsupported"
+                            and document.bridge_spans
                         )
                     ],
                     reason="no_continue_chunks",
@@ -487,7 +679,9 @@ class IterativeRetrievalControl:
                     if next_query and not self._is_duplicate_query(next_query, seen_query_keys):
                         round_trace.stop_reason = "fallback_next_query"
                         rounds.append(round_trace)
+                        self._load_external_sources([SearchQueryRequest.fallback(next_query)])
                         current_query = next_query
+                        current_queries = [next_query]
                         continue
                 round_trace.stop_reason = "no_continue_chunks"
                 rounds.append(round_trace)
@@ -511,6 +705,7 @@ class IterativeRetrievalControl:
                 )
             ]
             round_trace.filter_metadata = {
+                **round_trace.filter_metadata,
                 "continue_document_count": len(continue_documents),
                 "qualified_document_count": len(qualified_documents),
                 "min_retrieval_score": self.min_retrieval_score,
@@ -548,7 +743,9 @@ class IterativeRetrievalControl:
                     if next_query and not self._is_duplicate_query(next_query, seen_query_keys):
                         round_trace.stop_reason = "fallback_next_query"
                         rounds.append(round_trace)
+                        self._load_external_sources([SearchQueryRequest.fallback(next_query)])
                         current_query = next_query
+                        current_queries = [next_query]
                         continue
                 round_trace.stop_reason = "no_qualified_continue_chunks"
                 rounds.append(round_trace)
@@ -588,7 +785,9 @@ class IterativeRetrievalControl:
                     if next_query and not self._is_duplicate_query(next_query, seen_query_keys):
                         round_trace.stop_reason = "coverage_next_query"
                         rounds.append(round_trace)
+                        self._load_external_sources([SearchQueryRequest.fallback(next_query)])
                         current_query = next_query
+                        current_queries = [next_query]
                         continue
                 round_trace.stop_reason = "no_useful_tokens"
                 rounds.append(round_trace)
@@ -629,7 +828,9 @@ class IterativeRetrievalControl:
                 break
 
             rounds.append(round_trace)
+            self._load_external_sources([SearchQueryRequest.fallback(next_query)])
             current_query = next_query
+            current_queries = [next_query]
         else:
             stop_reason = "max_iter_reached"
 
@@ -645,24 +846,80 @@ class IterativeRetrievalControl:
             stop_reason=stop_reason,
             searched_queries=searched_queries,
             unique_document_count=unique_document_count,
+            relation_plan=(
+                current_relation_plan.to_dict()
+                if current_relation_plan is not None
+                else {}
+            ),
         )
+
+    def _load_external_sources(self, requests: list[SearchQueryRequest]) -> int:
+        if self.external_source_loader is None or not requests:
+            return 0
+        try:
+            return max(0, int(self.external_source_loader(requests)))
+        except Exception:
+            return 0
+
+    def _search_with_scores_many(
+        self,
+        queries: list[str],
+        *,
+        original_question: str = "",
+    ) -> list[tuple[dict[str, Any], float]]:
+        ranked_dense_lists: dict[str, list[tuple[str, float]]] = {}
+        for index, query in enumerate(queries, start=1):
+            ranked_dense_lists[f"dense_branch_{index}"] = self._dense_rank(
+                query,
+                self.candidate_pool_size,
+            )
+        if all(
+            normalize_text(original_question).casefold()
+            != normalize_text(query).casefold()
+            for query in queries
+        ):
+            ranked_dense_lists["dense_original"] = self._dense_rank(
+                original_question,
+                min(20, self.candidate_pool_size),
+            )
+        selections = self.passage_selector.select(
+            passage_map=self.retriever.passage_map,
+            ranked_dense_lists=ranked_dense_lists,
+            lexical_query=" ".join([*queries, original_question]),
+            max_items=self.top_k,
+        )
+        results: list[tuple[dict[str, Any], float]] = []
+        for selection in selections:
+            document = dict(selection.document)
+            document["_selection_score"] = selection.fusion_score
+            document["_selection_sources"] = list(selection.selection_sources)
+            document["_expanded_from"] = selection.expanded_from
+            results.append((document, selection.retrieval_score))
+        return results
 
     def _search_with_scores(
         self,
         query: str,
+        *,
+        original_question: str = "",
     ) -> list[tuple[dict[str, Any], float]]:
+        return self._search_with_scores_many(
+            [query],
+            original_question=original_question,
+        )
+
+    def _dense_rank(self, query: str, top_k: int) -> list[tuple[str, float]]:
         prepared_query = query
         if self.retriever.model_type == "multilingual-e5-base":
             prepared_query = self.retriever.embedder.prepare_query_text(query)
         query_vector = self.retriever.embedder.embed([prepared_query])
-        search_results = self.retriever.index.search(query_vector, self.top_k)
+        search_results = self.retriever.index.search(query_vector, top_k)
         if not search_results:
             return []
-
         document_ids, scores = search_results[0]
         return [
-            (self.retriever.passage_map[document_id], float(score))
-            for document_id, score in zip(document_ids, scores)
+            (document_id, float(score))
+            for document_id, score in zip(document_ids, scores, strict=False)
             if document_id in self.retriever.passage_map
         ]
 
@@ -673,21 +930,22 @@ class IterativeRetrievalControl:
         documents: list[RetrievedDocumentTrace],
         intent_plan: SearchIntentPlan | None = None,
     ) -> RAGFilterResult:
-        selection = self.next_hop_evidence_selector.select(
-            documents=documents,
-            question=query,
-            intent_plan=intent_plan,
-        )
-        if not selection.bridge_spans:
+        selected_spans = self._dedupe_tokens(
+            span
+            for document in documents
+            if document.valid_for_next_hop
+            for span in document.bridge_spans
+        )[:3]
+        if not selected_spans:
             return RAGFilterResult(
                 query="",
                 kept_question_tokens=[],
                 kept_evidence_tokens=[],
                 fallback_used=False,
                 metadata={
-                    "method": "external_semantic_role_next_hop",
+                    "method": "bridge_spans_next_hop",
                     "filter_model_used": False,
-                    "evidence_selector": selection.to_dict(),
+                    "selected_bridge_spans": [],
                     "empty_reason": "no_selected_bridge_spans",
                 },
             )
@@ -697,9 +955,9 @@ class IterativeRetrievalControl:
                 source_id=f"next-hop-selection-{index}",
                 query_id="iterative_retrieval",
                 title="",
-                text=" ".join(selection.bridge_spans),
+                text=" ".join(selected_spans),
                 url="",
-                matched_terms=selection.bridge_spans,
+                matched_terms=selected_spans,
                 evidence_quality=0.0,
                 cleaning_reasons=["efficientrag_labeler:valid_continue"],
             )
@@ -712,7 +970,8 @@ class IterativeRetrievalControl:
         )
         result.metadata = {
             **result.metadata,
-            "evidence_selector": selection.to_dict(),
+            "method": "bridge_spans_next_hop",
+            "selected_bridge_spans": selected_spans,
         }
         return result
 
@@ -774,7 +1033,6 @@ class IterativeRetrievalControl:
                 document.bridge_spans
                 and document.retrieval_score > 0
                 and document.valid_for_next_hop
-                and document.support_level == "bridge"
             )
         ]
         if not candidates:
@@ -819,7 +1077,40 @@ class IterativeRetrievalControl:
             text=normalize_text(document.get("text", "")),
             url=normalize_text(document.get("url", "")),
             retrieval_score=round(float(score), 6),
+            selection_score=round(
+                float(document.get("_selection_score", 0.0) or 0.0),
+                8,
+            ),
+            selection_sources=list(document.get("_selection_sources") or []),
+            expanded_from=normalize_text(document.get("_expanded_from", "")),
+            record_type=normalize_text(document.get("record_type", "")) or "passage",
+            record_id=normalize_text(document.get("record_id", "")),
+            record_fields=self._record_fields(document),
+            content_scope=(
+                normalize_text(document.get("content_scope", "")) or "passage"
+            ),
+            content_complete=bool(document.get("content_complete", False)),
+            content_truncated=bool(document.get("content_truncated", False)),
+            original_content_chars=int(
+                document.get("original_content_chars", 0) or 0
+            ),
         )
+
+    def _record_fields(self, document: dict[str, Any]) -> dict[str, Any]:
+        record_type = normalize_text(document.get("record_type", ""))
+        if record_type in {"", "passage"}:
+            return {}
+        return {
+            "title": normalize_text(document.get("title", "")),
+            "authors": list(document.get("authors") or []),
+            "date": normalize_text(document.get("date", "")),
+            "source": normalize_text(document.get("source", "")),
+            "content_url": normalize_text(document.get("content_url", "")),
+            "language": normalize_text(document.get("language", "")),
+            "country": normalize_text(document.get("country", "")),
+            "parent_url": normalize_text(document.get("parent_url", "")),
+            "extra_fields": dict(document.get("extra_fields") or {}),
+        }
 
     def _apply_label(
         self,
@@ -831,13 +1122,19 @@ class IterativeRetrievalControl:
     ) -> None:
         contract = self.label_contract_validator.validate(result)
         metadata = dict(result.metadata)
-        trace.label = "useful" if contract.valid_for_evidence else "useless"
         trace.sequence_tag = str(metadata.get("sequence_tag", ""))
+        trace.label = normalize_text(result.label)
         trace.useful_tokens = list(result.kept_tokens)
         trace.useful_spans = list(contract.useful_spans)
+        trace.raw_labeler_spans = self._dedupe_tokens(
+            list(contract.useful_spans) + list(result.kept_tokens)
+        )
+        trace.valid_for_next_hop = bool(contract.valid_for_next_hop)
+        trace.valid_for_evidence = False
+        trace.direct_contracts = []
+        trace.bridge_contracts = []
+        trace.rejected_contracts = []
         trace.label_status = contract.label_status
-        trace.valid_for_next_hop = contract.valid_for_next_hop
-        trace.valid_for_evidence = contract.valid_for_evidence
         trace.invalid_reasons = list(contract.invalid_reasons)
         self._apply_restricted_span_recovery(
             trace=trace,
@@ -850,21 +1147,31 @@ class IterativeRetrievalControl:
             document=trace,
             intent_plan=intent_plan,
         )
-        trace.support_level = utility.support_level
-        trace.support_strength = utility.support_strength
-        trace.normalized_constraints = list(utility.normalized_constraints)
-        trace.answer_spans = list(utility.answer_spans)
-        trace.bridge_spans = list(utility.bridge_spans)
-        trace.utility_context = utility.supporting_context
-        trace.utility_reasons = list(utility.reasons)
-        trace.span_recovery_used = utility.span_recovery_used
-        trace.can_support_sufficient = utility.can_support_sufficient
-        trace.valid_for_evidence = utility.valid_for_evidence
-        trace.valid_for_next_hop = utility.valid_for_next_hop
-        trace.label = "useful" if utility.valid_for_evidence else "useless"
+        utility_spans = self._dedupe_tokens(
+            list(utility.answer_spans) + list(utility.bridge_spans)
+        )
+        trace.answer_support_spans = self._dedupe_tokens(utility.answer_spans)
+        trace.bridge_spans = self._dedupe_tokens(utility.bridge_spans)
+        trace.support_level = normalize_text(utility.support_level)
+        if utility_spans:
+            trace.useful_spans = utility_spans
+            trace.useful_tokens = list(utility_spans)
+        trace.grounded_labeler_spans = self._ground_spans(
+            text=trace.text,
+            spans=list(trace.useful_spans) + list(trace.raw_labeler_spans),
+        )
+        if trace.grounded_labeler_spans:
+            trace.useful_spans = list(trace.grounded_labeler_spans)
+            trace.useful_tokens = list(trace.grounded_labeler_spans)
+        trace.valid_for_next_hop = self._can_sequence_tag_hop(trace.sequence_tag) and bool(
+            utility.valid_for_next_hop
+        )
+        trace.label = "useful" if trace.useful_spans else "useless"
         trace.invalid_reasons = self._dedupe_tokens(
             list(trace.invalid_reasons) + list(utility.reasons)
         )
+        if not trace.useful_spans:
+            trace.valid_for_next_hop = False
         trace.continue_probability = float(
             metadata.get("continue_probability", 0.0) or 0.0
         )
@@ -874,6 +1181,453 @@ class IterativeRetrievalControl:
         trace.labeler_diagnostics = self._labeler_diagnostics(
             metadata=metadata,
             trace=trace,
+        )
+
+    def _apply_span_role_classification(
+        self,
+        *,
+        round_trace: RetrievalRoundTrace,
+        question: str,
+        intent_plan: SearchIntentPlan | None,
+    ) -> None:
+        candidates, candidate_map = self._span_role_candidates(round_trace)
+        for trace in round_trace.documents:
+            trace.answer_support_spans = []
+            trace.bridge_spans = []
+            trace.valid_for_next_hop = False
+            trace.valid_for_evidence = False
+            trace.direct_contracts = []
+            trace.bridge_contracts = []
+            trace.rejected_contracts = []
+        if not candidates:
+            round_trace.filter_metadata = {
+                **round_trace.filter_metadata,
+                "span_role_classifier": {
+                    "success": True,
+                    "candidate_count": 0,
+                    "empty_reason": "no_useful_spans",
+                },
+            }
+            return
+
+        grounding_result = self.span_grounder.expand_candidates(candidates)
+        grounding_diagnostics = {
+            **grounding_result.diagnostics,
+            "grounded_spans": [
+                item.to_dict()
+                for item in grounding_result.grounded_spans[:50]
+            ],
+        }
+        round_trace.filter_metadata = {
+            **round_trace.filter_metadata,
+            "candidate_span_grounder": grounding_diagnostics,
+        }
+        candidates = list(grounding_result.candidates)
+
+        quality_result = self.span_quality_gate.filter_candidates(candidates)
+        quality_diagnostics = {
+            **quality_result.diagnostics,
+            "dropped": list(quality_result.dropped),
+        }
+        round_trace.filter_metadata = {
+            **round_trace.filter_metadata,
+            "candidate_span_quality_gate": quality_diagnostics,
+        }
+        candidates = list(quality_result.candidates)
+        reindexed_candidates: list[CandidateSpan] = []
+        reindexed_map: dict[str, tuple[int, str]] = {}
+        for index, candidate in enumerate(candidates, start=1):
+            mapped = candidate_map.get(candidate.id)
+            if mapped is None:
+                continue
+            span_id = str(index)
+            reindexed_candidates.append(
+                CandidateSpan(
+                    id=span_id,
+                    text=candidate.text,
+                    local_context=candidate.local_context,
+                    source_title=candidate.source_title,
+                )
+            )
+            reindexed_map[span_id] = (mapped[0], candidate.text)
+        candidates = reindexed_candidates
+        candidate_map = reindexed_map
+        if not candidates:
+            self._mark_span_quality_rejected(
+                round_trace,
+                reason="no_quality_candidate_spans",
+                diagnostics=quality_diagnostics,
+            )
+            round_trace.filter_metadata = {
+                **round_trace.filter_metadata,
+                "span_role_classifier": {
+                    "success": True,
+                    "candidate_count": 0,
+                    "empty_reason": "no_quality_candidate_spans",
+                },
+            }
+            return
+
+        result = self.span_role_classifier.classify_batch(
+            question=question,
+            answer_requirement=self._answer_requirement(intent_plan),
+            answer_target=self._answer_target(intent_plan),
+            active_goal=self._relation_goal_text(intent_plan, active=True),
+            next_goal=self._relation_goal_text(intent_plan, active=False),
+            spans=candidates,
+        )
+        diagnostics = dict(result.diagnostics)
+        round_trace.filter_metadata = {
+            **round_trace.filter_metadata,
+            "span_role_classifier": diagnostics,
+        }
+        if not diagnostics.get("success"):
+            for trace in round_trace.documents:
+                self._retain_grounded_spans(
+                    trace,
+                    reason="span_role_classifier_failed",
+                )
+                trace.labeler_diagnostics = {
+                    **trace.labeler_diagnostics,
+                    "span_role_classifier": {
+                        "success": False,
+                        "error": diagnostics.get("error", ""),
+                    },
+                }
+            return
+
+        by_trace_index: dict[int, list[dict[str, str]]] = {}
+        for role_result in result.results:
+            mapped = candidate_map.get(role_result.id)
+            if mapped is None:
+                continue
+            trace_index, span_text = mapped
+            by_trace_index.setdefault(trace_index, []).append(
+                {
+                    "text": span_text,
+                    "role": role_result.role,
+                }
+            )
+
+        for trace_index, trace in enumerate(round_trace.documents):
+            if trace.duplicate or trace_index in by_trace_index:
+                continue
+            if not trace.useful_spans and not trace.useful_tokens:
+                continue
+            self._retain_grounded_spans(
+                trace,
+                reason="no_classified_span_for_document",
+            )
+            trace.labeler_diagnostics = {
+                **trace.labeler_diagnostics,
+                "candidate_span_quality_gate": {
+                    "success": True,
+                    "kept_for_document": 0,
+                },
+            }
+
+        for trace_index, role_items in by_trace_index.items():
+            trace = round_trace.documents[trace_index]
+            finalization = self.span_finalizer.finalize_batch(
+                items=role_items,
+                context=trace.text,
+                source_title=trace.title,
+            )
+            finalized_items = [item.to_dict() for item in finalization.finalized]
+            answer_support = self._dedupe_tokens(
+                item.finalized_text
+                for item in finalization.finalized
+                if item.accepted and item.role == ANSWER_SUPPORT
+            )
+            bridge = self._dedupe_tokens(
+                item.finalized_text
+                for item in finalization.finalized
+                if item.accepted and item.role == BRIDGE
+            )
+            trace.span_roles = [
+                {
+                    **item,
+                    "finalized_text": finalized_items[index].get("finalized_text", ""),
+                    "accepted": finalized_items[index].get("accepted", False),
+                    "finalize_reason": finalized_items[index].get("reason", ""),
+                }
+                for index, item in enumerate(role_items)
+            ]
+            contracts = self.evidence_contract_builder.build(
+                question=question,
+                answer_requirement=self._answer_requirement(intent_plan),
+                answer_target=self._answer_target(intent_plan),
+                relation_plan=(
+                    intent_plan.relation_plan if intent_plan is not None else None
+                ),
+                document_id=trace.document_id,
+                source_title=trace.title,
+                url=trace.url,
+                text=trace.text,
+                direct_spans=answer_support,
+                bridge_spans=bridge,
+            )
+            trace.direct_contracts = [item.to_dict() for item in contracts.direct]
+            trace.bridge_contracts = [item.to_dict() for item in contracts.bridge]
+            trace.rejected_contracts = [
+                item.to_dict() for item in contracts.unsupported
+            ]
+            trace.answer_support_spans = [
+                item.answer_span for item in contracts.direct
+            ]
+            trace.bridge_spans = [item.bridge_span for item in contracts.bridge]
+            answer_support = list(trace.answer_support_spans)
+            bridge = list(trace.bridge_spans)
+            trace.classified_spans = self._dedupe_tokens([*answer_support, *bridge])
+            trace.useful_spans = list(trace.classified_spans)
+            trace.useful_tokens = list(trace.classified_spans)
+            if answer_support:
+                trace.support_level = "direct"
+            elif bridge:
+                trace.support_level = "bridge"
+            else:
+                trace.support_level = "unsupported"
+            trace.valid_for_next_hop = self._can_sequence_tag_hop(trace.sequence_tag) and bool(bridge)
+            trace.valid_for_evidence = bool(answer_support)
+            if trace.useful_spans:
+                trace.label = "useful"
+                trace.label_status = "span_role_classified"
+            else:
+                self._retain_grounded_spans(
+                    trace,
+                    reason="classified_spans_not_accepted",
+                )
+            trace.labeler_diagnostics = {
+                **trace.labeler_diagnostics,
+                "span_role_classifier": {
+                    "success": True,
+                    "span_roles": list(role_items),
+                    "finalized_spans": finalized_items,
+                    "finalization": finalization.diagnostics,
+                    "answer_support_count": len(answer_support),
+                    "bridge_count": len(bridge),
+                    "noise_count": sum(
+                        1 for item in role_items if item.get("role") == "NOISE"
+                    ),
+                    "contracts": contracts.to_dict(),
+                },
+            }
+
+        round_trace.filter_metadata = {
+            **round_trace.filter_metadata,
+            "evidence_contracts": {
+                "direct_count": sum(
+                    len(trace.direct_contracts) for trace in round_trace.documents
+                ),
+                "bridge_count": sum(
+                    len(trace.bridge_contracts) for trace in round_trace.documents
+                ),
+                "rejected_count": sum(
+                    len(trace.rejected_contracts) for trace in round_trace.documents
+                ),
+                "direct_document_ids": [
+                    trace.document_id
+                    for trace in round_trace.documents
+                    if trace.direct_contracts
+                ],
+                "bridge_document_ids": [
+                    trace.document_id
+                    for trace in round_trace.documents
+                    if trace.bridge_contracts
+                ],
+            },
+        }
+
+    def _mark_span_quality_rejected(
+        self,
+        round_trace: RetrievalRoundTrace,
+        *,
+        reason: str,
+        diagnostics: dict[str, Any],
+    ) -> None:
+        for trace in round_trace.documents:
+            if trace.duplicate:
+                continue
+            if not trace.useful_spans and not trace.useful_tokens:
+                continue
+            self._retain_grounded_spans(trace, reason=reason)
+            trace.labeler_diagnostics = {
+                **trace.labeler_diagnostics,
+                "candidate_span_quality_gate": {
+                    "success": True,
+                    "reason": reason,
+                    "kept_count": diagnostics.get("kept_count", 0),
+                    "dropped_count": diagnostics.get("dropped_count", 0),
+                },
+            }
+
+    def _retain_grounded_spans(
+        self,
+        trace: RetrievedDocumentTrace,
+        *,
+        reason: str,
+    ) -> None:
+        """Keep source-grounded Labeler output without granting next-hop authority."""
+
+        grounded = self._ground_spans(
+            text=trace.text,
+            spans=list(trace.grounded_labeler_spans)
+            + list(trace.useful_spans)
+            + list(trace.raw_labeler_spans),
+        )
+        trace.answer_support_spans = []
+        trace.bridge_spans = []
+        trace.direct_contracts = []
+        trace.bridge_contracts = []
+        trace.rejected_contracts = []
+        trace.classified_spans = []
+        trace.span_roles = []
+        trace.grounded_labeler_spans = list(grounded)
+        trace.useful_spans = list(grounded)
+        trace.useful_tokens = list(grounded)
+        trace.support_level = "unclassified" if grounded else "unsupported"
+        trace.valid_for_next_hop = False
+        trace.valid_for_evidence = False
+        trace.label = "useful" if grounded else "useless"
+        trace.label_status = "grounded_unclassified" if grounded else "span_quality_rejected"
+        trace.labeler_diagnostics = {
+            **trace.labeler_diagnostics,
+            "grounded_span_fallback": {
+                "reason": reason,
+                "kept_count": len(grounded),
+                "next_hop_allowed": False,
+            },
+        }
+
+    def _ground_spans(self, *, text: str, spans: Iterable[str]) -> list[str]:
+        """Return normalized spans that can be located in the source passage."""
+
+        source = normalize_text(text)
+        source_folded = source.casefold()
+        return self._dedupe_tokens(
+            cleaned
+            for span in spans
+            if (cleaned := normalize_text(span))
+            and cleaned.casefold() in source_folded
+        )
+
+    def _span_role_candidates(
+        self,
+        round_trace: RetrievalRoundTrace,
+        *,
+        max_total: int = 15,
+        max_per_document: int = 3,
+    ) -> tuple[list[CandidateSpan], dict[str, tuple[int, str]]]:
+        candidates: list[CandidateSpan] = []
+        candidate_map: dict[str, tuple[int, str]] = {}
+        seen: set[str] = set()
+        ordered_indexes = sorted(
+            range(len(round_trace.documents)),
+            key=lambda index: round_trace.documents[index].retrieval_score,
+            reverse=True,
+        )
+        for trace_index in ordered_indexes:
+            trace = round_trace.documents[trace_index]
+            if trace.duplicate:
+                continue
+            per_document = 0
+            for span in list(trace.useful_spans or []):
+                cleaned = normalize_text(span)
+                key = cleaned.casefold()
+                if not cleaned or key in seen:
+                    continue
+                span_id = str(len(candidates) + 1)
+                candidates.append(
+                    CandidateSpan(
+                        id=span_id,
+                        text=cleaned,
+                        source_title=trace.title,
+                        local_context=self._span_local_context(cleaned, trace.text),
+                    )
+                )
+                candidate_map[span_id] = (trace_index, cleaned)
+                seen.add(key)
+                per_document += 1
+                if len(candidates) >= max_total or per_document >= max_per_document:
+                    break
+            if len(candidates) >= max_total:
+                break
+        return candidates, candidate_map
+
+    def _span_local_context(self, span: str, text: str, *, max_chars: int = 260) -> str:
+        cleaned_text = normalize_text(text)
+        cleaned_span = normalize_text(span)
+        if not cleaned_text:
+            return ""
+        index = cleaned_text.casefold().find(cleaned_span.casefold())
+        if index < 0:
+            return cleaned_text[:max_chars]
+        start = max(0, index - max_chars // 2)
+        end = min(len(cleaned_text), index + len(cleaned_span) + max_chars // 2)
+        left_boundary = max(cleaned_text.rfind(".", 0, start), cleaned_text.rfind("?", 0, start), cleaned_text.rfind("!", 0, start))
+        if left_boundary >= 0 and index - left_boundary < max_chars:
+            start = left_boundary + 1
+        right_boundaries = [
+            position
+            for position in (
+                cleaned_text.find(".", end),
+                cleaned_text.find("?", end),
+                cleaned_text.find("!", end),
+            )
+            if position >= 0
+        ]
+        if right_boundaries:
+            right_boundary = min(right_boundaries)
+            if right_boundary - index < max_chars:
+                end = right_boundary + 1
+        return normalize_text(cleaned_text[start:end])[:max_chars]
+
+    def _answer_requirement(self, intent_plan: SearchIntentPlan | None) -> str:
+        role = normalize_text(
+            str(getattr(intent_plan, "answer_role", "") if intent_plan else "")
+        )
+        return "" if role.casefold() in {"unknown", "none", "null", "n/a"} else role
+
+    def _answer_target(self, intent_plan: SearchIntentPlan | None) -> str:
+        return normalize_text(
+            str(getattr(intent_plan, "target", "") if intent_plan else "")
+        )
+
+    def _relation_goal_text(
+        self,
+        intent_plan: SearchIntentPlan | None,
+        *,
+        active: bool,
+    ) -> str:
+        if intent_plan is None:
+            return ""
+        plan = intent_plan.relation_plan
+        goal = plan.active_goal
+        if not active and goal is not None:
+            active_index = next(
+                (
+                    index
+                    for index, item in enumerate(plan.goals)
+                    if item.goal_id == goal.goal_id
+                ),
+                -1,
+            )
+            goal = next(
+                (
+                    item
+                    for item in plan.goals[active_index + 1 :]
+                    if item.state == "pending"
+                ),
+                None,
+            )
+        if goal is None:
+            return ""
+        return normalize_text(
+            " -> ".join(
+                part
+                for part in [goal.subject, goal.relation, goal.target]
+                if normalize_text(part)
+            )
         )
 
     def _apply_restricted_span_recovery(
@@ -903,33 +1657,26 @@ class IterativeRetrievalControl:
             if sequence_tag == "<CONTINUE>"
             else list(recovery.answer_spans)
         )
-        if not recovered_spans:
-            metadata["span_recovery_triggered"] = True
-            metadata["span_recovery_mode"] = "restricted"
-            metadata["recovered_span_count"] = 0
-            metadata["recovered_spans"] = []
-            trace.invalid_reasons = self._dedupe_tokens(
-                list(trace.invalid_reasons) + list(recovery.reasons)
-            )
-            return
-
-        trace.useful_spans = self._dedupe_tokens(recovered_spans)
-        trace.useful_tokens = list(trace.useful_spans)
-        if sequence_tag == "<CONTINUE>":
-            trace.label_status = "continue_with_recovered_span"
-            trace.valid_for_next_hop = True
-            trace.valid_for_evidence = True
-        else:
-            trace.label_status = "terminate_with_recovered_span"
-            trace.valid_for_next_hop = False
-            trace.valid_for_evidence = True
+        metadata["span_recovery_triggered"] = True
+        metadata["span_recovery_mode"] = "restricted"
+        metadata["recovered_span_count"] = len(recovered_spans)
+        metadata["recovered_spans"] = list(recovered_spans)
         trace.invalid_reasons = self._dedupe_tokens(
             list(trace.invalid_reasons) + list(recovery.reasons)
         )
-        metadata["span_recovery_triggered"] = True
-        metadata["span_recovery_mode"] = "restricted"
-        metadata["recovered_span_count"] = len(trace.useful_spans)
-        metadata["recovered_spans"] = list(trace.useful_spans)
+        if not recovered_spans:
+            return
+        trace.useful_spans = self._dedupe_tokens(recovered_spans)
+        trace.useful_tokens = list(trace.useful_spans)
+        trace.label_status = (
+            "continue_with_recovered_span"
+            if sequence_tag == "<CONTINUE>"
+            else "terminal_with_recovered_span"
+        )
+        trace.valid_for_next_hop = self._can_sequence_tag_hop(sequence_tag)
+
+    def _can_sequence_tag_hop(self, sequence_tag: str) -> bool:
+        return normalize_text(sequence_tag) in {CONTINUE_TAG, FINISH_TAG}
 
     def _labeler_diagnostics(
         self,
@@ -940,13 +1687,18 @@ class IterativeRetrievalControl:
         return {
             "input_mode": metadata.get("input_mode", ""),
             "source_title": metadata.get("source_title", ""),
+            "record_type": metadata.get("record_type", trace.record_type),
+            "record_id": metadata.get("record_id", trace.record_id),
+            "record_fields": metadata.get("record_fields", trace.record_fields),
             "labeler_input_text": metadata.get("labeler_input_text", ""),
             "labeler_input_char_count": metadata.get("labeler_input_char_count", 0),
             "sequence_tag": trace.sequence_tag,
             "continue_probability": round(trace.continue_probability, 6),
             "terminate_probability": round(trace.terminate_probability, 6),
             "finish_probability": metadata.get("finish_probability", 0.0),
-            "token_span_count": len(trace.useful_spans),
+            "useful_token_count": len(trace.useful_tokens),
+            "useful_span_count": len(trace.useful_spans),
+            "valid_for_next_hop": trace.valid_for_next_hop,
             "selected_passage": metadata.get("selected_passage", ""),
             "selected_sentence_count": metadata.get("selected_sentence_count", 0),
             "original_char_count": metadata.get("original_char_count", 0),
@@ -1098,6 +1850,7 @@ class WebRetrievalControl:
         *,
         query_generator: QueryGenerator | None = None,
         search_tool: Any | None = None,
+        source_acquisition_router: SourceAcquisitionRouter | None = None,
         corpus_builder: WebCorpusBuilder | None = None,
         source_filter: SourceFilter | None = None,
         page_content_fetcher: PageContentFetcher | None = None,
@@ -1109,15 +1862,17 @@ class WebRetrievalControl:
         max_queries: int = 3,
         max_results_per_query: int = 8,
         max_pages_to_fetch: int = 24,
-        max_chunks_per_url: int = 12,
+        max_chunks_per_url: int = 20,
         max_corpus_records: int = 300,
         max_urls_per_domain: int = 3,
         min_filtered_sources: int = 5,
         max_iter: int = 4,
-        top_k: int = 10,
+        top_k: int = 16,
         min_retrieval_score: float = 0.75,
         relative_score_margin: float = 0.08,
         embedding_batch_size: int = 8,
+        max_collection_links_to_fetch: int = 3,
+        collection_link_fetch_tokens: int = 5000,
     ) -> None:
         self.query_generator = query_generator or QueryGenerator()
         if search_tool is None:
@@ -1125,6 +1880,10 @@ class WebRetrievalControl:
 
             search_tool = SearchTool()
         self.search_tool = search_tool
+        self.source_acquisition_router = (
+            source_acquisition_router
+            or SourceAcquisitionRouter(search_tool=self.search_tool)
+        )
         self.corpus_builder = corpus_builder or WebCorpusBuilder(
             chunker=DocumentChunker(
                 max_chars=600,
@@ -1162,6 +1921,8 @@ class WebRetrievalControl:
             min(1.0, relative_score_margin),
         )
         self.embedding_batch_size = max(1, embedding_batch_size)
+        self.max_collection_links_to_fetch = max(0, max_collection_links_to_fetch)
+        self.collection_link_fetch_tokens = max(500, collection_link_fetch_tokens)
 
     def run(
         self,
@@ -1205,9 +1966,9 @@ class WebRetrievalControl:
         search_intent_plan = SearchIntentPlan.from_dict(
             plan.get("search_intent_plan") if isinstance(plan, dict) else None
         )
-        generated_queries = self._dedupe_queries(
-            list(plan.get("queries") or [])
-        )[: self.max_queries]
+        query_requests = self._query_requests_from_plan(plan, fallback_question=text)
+        query_requests = query_requests[: self.max_queries]
+        generated_queries = [request.query for request in query_requests]
         if not search_intent_plan.search_needed:
             return WebRetrievalResult(
                 question=text,
@@ -1226,8 +1987,12 @@ class WebRetrievalControl:
             )
         if not generated_queries:
             generated_queries = [text]
+            query_requests = [SearchQueryRequest.fallback(text)]
 
-        sources, web_searches = self._search_queries(generated_queries)
+        sources, web_searches = self._acquire_sources(
+            query_requests,
+            question=text,
+        )
         query_text_by_id = {
             f"Q{index}": query
             for index, query in enumerate(generated_queries, start=1)
@@ -1271,6 +2036,20 @@ class WebRetrievalControl:
 
         diagnostics: dict[str, object] = {
             "query_plan": plan,
+            "source_acquisition": [
+                {
+                    "query": trace.query,
+                    "requested_source_kind": trace.requested_source_kind,
+                    "requested_access_mode": trace.requested_access_mode,
+                    "source_hint": trace.source_hint,
+                    "actual_acquirer": trace.actual_acquirer,
+                    "fallback_used": trace.fallback_used,
+                    "result_count": trace.result_count,
+                    "source_ids": list(trace.source_ids),
+                    "notices": list(trace.notices),
+                }
+                for trace in web_searches
+            ],
             "source_count": len(sources),
             "filtered_source_count": len(filtered_sources),
             "blocked_source_count": len(blocked_sources),
@@ -1281,9 +2060,12 @@ class WebRetrievalControl:
             "min_filtered_sources": self.source_filter.min_sources,
             "max_chunks_per_url": self.max_chunks_per_url,
             "max_corpus_records": self.max_corpus_records,
+            "structured_record_count": sum(
+                1 for record in records if record.record_type != "passage"
+            ),
             "corpus_pipeline": (
                 "web_search->seer_source_filter->seer_full_page_fetch"
-                "->clean->chunk->content_hash_dedup->ngram_dedup"
+                "->collection_record_or_passage->e5->faiss"
             ),
             "embedding_model": self.model_type,
         }
@@ -1315,6 +2097,72 @@ class WebRetrievalControl:
             save_or_load_index=True,
             batch_size=self.embedding_batch_size,
         )
+        corpus_session = TaskCorpusSession(
+            corpus_path=corpus_path,
+            retriever=retriever,
+            exporter=self.corpus_builder.exporter,
+        )
+        linked_records = self._enrich_collection_links(
+            question=text,
+            retriever=retriever,
+            corpus_session=corpus_session,
+        )
+        diagnostics["collection_link_enrichment"] = {
+            "enabled": self.max_collection_links_to_fetch > 0,
+            "added_record_count": len(linked_records),
+            "record_ids": [record.id for record in linked_records],
+        }
+
+        def load_external_sources(requests: list[SearchQueryRequest]) -> int:
+            remaining = self.max_corpus_records - len(retriever.passage_map)
+            if remaining <= 0 or not requests:
+                return 0
+            acquired, traces = self._acquire_sources(requests, question=text)
+            source_offset = len(sources)
+            source_id_map: dict[str, str] = {}
+            for index, source in enumerate(acquired, start=1):
+                previous_id = source.source_id
+                source.source_id = f"H{source_offset + index}"
+                source_id_map[previous_id] = source.source_id
+            for trace in traces:
+                trace.source_ids = [
+                    source_id_map.get(source_id, source_id)
+                    for source_id in trace.source_ids
+                ]
+            web_searches.extend(traces)
+            sources.extend(acquired)
+            query_map = {
+                f"Q{index}": request.query
+                for index, request in enumerate(requests, start=1)
+            }
+            filtered = self.source_filter.filter_sources(
+                acquired,
+                question=text,
+                query_text_by_id=query_map,
+                fetch_limit=self.max_pages_to_fetch,
+            )
+            self.page_content_fetcher.fetch_sources(
+                filtered,
+                max_pages=self.max_pages_to_fetch,
+                max_tokens_per_source=5000,
+            )
+            filtered = self.source_filter.apply_post_fetch_safety(
+                filtered,
+                question=text,
+            )
+            blocked_sources.extend(
+                source
+                for source in acquired
+                if source.blocked and source not in blocked_sources
+            )
+            new_records = self.corpus_builder.build_records(
+                filtered,
+                fetch_missing=False,
+                max_chunks_per_url=self.max_chunks_per_url,
+                max_records=remaining,
+            )
+            return len(corpus_session.add_records(new_records))
+
         retrieval = IterativeRetrievalControl(
             retriever=retriever,
             labeler=self.labeler,
@@ -1322,15 +2170,34 @@ class WebRetrievalControl:
             next_hop_composer=self.next_hop_composer,
             next_hop_evidence_selector=self.next_hop_evidence_selector,
             max_iter=self.max_iter,
-            top_k=min(self.top_k, len(records)),
+            top_k=min(self.top_k, len(retriever.passage_map)),
             min_retrieval_score=self.min_retrieval_score,
             relative_score_margin=self.relative_score_margin,
+            external_source_loader=load_external_sources,
         ).run(text, intent_plan=search_intent_plan)
 
         diagnostics["initial_retrieval_query"] = text
         diagnostics["stop_reason"] = retrieval.stop_reason
         diagnostics["coverage_summary"] = self._coverage_summary(retrieval)
         diagnostics["search_intent_plan"] = search_intent_plan.to_dict()
+        diagnostics["relation_plan"] = retrieval.relation_plan
+        diagnostics["dynamic_corpus_record_count"] = len(retriever.passage_map)
+        diagnostics["source_count"] = len(sources)
+        diagnostics["blocked_source_count"] = len(blocked_sources)
+        diagnostics["source_acquisition"] = [
+            {
+                "query": trace.query,
+                "requested_source_kind": trace.requested_source_kind,
+                "requested_access_mode": trace.requested_access_mode,
+                "source_hint": trace.source_hint,
+                "actual_acquirer": trace.actual_acquirer,
+                "fallback_used": trace.fallback_used,
+                "result_count": trace.result_count,
+                "source_ids": list(trace.source_ids),
+                "notices": list(trace.notices),
+            }
+            for trace in web_searches
+        ]
         return WebRetrievalResult(
             question=text,
             generated_queries=generated_queries,
@@ -1338,11 +2205,70 @@ class WebRetrievalControl:
             web_searches=web_searches,
             corpus_path=str(corpus_path),
             embedding_path=str(embedding_path),
-            corpus_record_count=len(records),
+            corpus_record_count=len(retriever.passage_map),
             retrieval=retrieval,
             diagnostics=diagnostics,
             blocked_sources=blocked_sources,
         )
+
+    def _enrich_collection_links(
+        self,
+        *,
+        question: str,
+        retriever: Retriever,
+        corpus_session: TaskCorpusSession,
+    ) -> list[Any]:
+        """只抓取與問題最相關的結構化記錄詳細頁。"""
+        if self.max_collection_links_to_fetch <= 0:
+            return []
+        structured_count = sum(
+            1
+            for document in retriever.passage_map.values()
+            if normalize_text(document.get("record_type", "")) not in {"", "passage"}
+            and normalize_text(document.get("content_url", ""))
+        )
+        if structured_count <= 0:
+            return []
+        try:
+            ranked = retriever.search(
+                question,
+                top_k=min(
+                    len(retriever.passage_map),
+                    max(self.max_collection_links_to_fetch * 3, 6),
+                ),
+            )
+        except Exception:
+            return []
+        documents = ranked[0] if ranked else []
+        selected: list[dict[str, Any]] = []
+        seen_records: set[str] = set()
+        seen_urls: set[str] = set()
+        for document in documents:
+            record_type = normalize_text(document.get("record_type", ""))
+            record_id = normalize_text(document.get("record_id", ""))
+            content_url = normalize_text(document.get("content_url", ""))
+            parent_url = normalize_text(document.get("parent_url", ""))
+            if record_type in {"", "passage"} or not content_url:
+                continue
+            if content_url == parent_url:
+                continue
+            record_key = record_id or content_url.casefold()
+            url_key = content_url.casefold()
+            if record_key in seen_records or url_key in seen_urls:
+                continue
+            selected.append(document)
+            seen_records.add(record_key)
+            seen_urls.add(url_key)
+            if len(selected) >= self.max_collection_links_to_fetch:
+                break
+        added: list[Any] = []
+        for document in selected:
+            enriched = self.corpus_builder.build_enriched_records(
+                document,
+                max_tokens=self.collection_link_fetch_tokens,
+            )
+            added.extend(corpus_session.add_records(enriched))
+        return added
 
     def _coverage_summary(
         self,
@@ -1387,63 +2313,63 @@ class WebRetrievalControl:
         self,
         queries: list[str],
     ) -> tuple[list[SearchSourceCandidate], list[WebSearchTrace]]:
-        sources: list[SearchSourceCandidate] = []
-        traces: list[WebSearchTrace] = []
-        for query_index, query in enumerate(queries, start=1):
-            try:
-                payload = self.search_tool.run(
-                    {
-                        "input": query,
-                        "mode": "structured",
-                        "max_results": self.max_results_per_query,
-                    }
-                )
-            except Exception as exc:
-                traces.append(
-                    WebSearchTrace(
-                        query=query,
-                        backend="",
-                        result_count=0,
-                        notices=[f"{type(exc).__name__}: {exc}"],
-                    )
-                )
-                continue
+        requests = [SearchQueryRequest.fallback(query) for query in queries]
+        return self._acquire_sources(requests, question="")
 
-            raw_results = payload.get("results") or []
-            source_ids: list[str] = []
-            for rank, item in enumerate(raw_results, start=1):
-                if not isinstance(item, dict):
-                    continue
-                url = normalize_text(item.get("url", ""))
-                if not url:
-                    continue
-                source_id = f"S{len(sources) + 1}"
-                source_ids.append(source_id)
-                sources.append(
-                    SearchSourceCandidate(
-                        source_id=source_id,
-                        query_id=f"Q{query_index}",
-                        title=normalize_text(item.get("title", "")) or url,
-                        url=url,
-                        snippet=normalize_text(
-                            item.get("content", item.get("snippet", ""))
-                        ),
-                        rank=rank,
-                    )
-                )
-            traces.append(
-                WebSearchTrace(
-                    query=query,
-                    backend=str(payload.get("backend", "")),
-                    result_count=len(source_ids),
-                    source_ids=source_ids,
-                    notices=[
-                        str(notice)
-                        for notice in list(payload.get("notices") or [])
-                    ],
-                )
-            )
+    def _acquire_sources(
+        self,
+        requests: list[SearchQueryRequest],
+        *,
+        question: str,
+    ) -> tuple[list[SearchSourceCandidate], list[WebSearchTrace]]:
+        sources, acquisition_traces = self.source_acquisition_router.acquire_many(
+            requests,
+            question=question,
+            max_results=self.max_results_per_query,
+        )
+        traces = [self._web_search_trace(item) for item in acquisition_traces]
         return sources, traces
+
+    def _web_search_trace(self, trace: SourceAcquisitionTrace) -> WebSearchTrace:
+        return WebSearchTrace(
+            query=trace.query,
+            backend=trace.actual_acquirer,
+            result_count=trace.result_count,
+            source_ids=list(trace.source_ids),
+            notices=list(trace.notices),
+            requested_source_kind=trace.requested_source_kind,
+            requested_access_mode=trace.requested_access_mode,
+            source_hint=trace.source_hint,
+            actual_acquirer=trace.actual_acquirer,
+            fallback_used=trace.fallback_used,
+        )
+
+    def _query_requests_from_plan(
+        self,
+        plan: dict[str, Any] | Any,
+        *,
+        fallback_question: str,
+    ) -> list[SearchQueryRequest]:
+        if not isinstance(plan, dict):
+            return [SearchQueryRequest.fallback(fallback_question)]
+        requests: list[SearchQueryRequest] = []
+        seen: set[str] = set()
+        for item in list(plan.get("query_requests") or []):
+            if not isinstance(item, dict):
+                continue
+            request = SearchQueryRequest.from_dict(item)
+            if request is None:
+                continue
+            key = normalize_text(request.query).lower()
+            if not key or key in seen:
+                continue
+            requests.append(request)
+            seen.add(key)
+        if requests:
+            return requests
+        for query in self._dedupe_queries(list(plan.get("queries") or [])):
+            requests.append(SearchQueryRequest.fallback(query))
+        return requests or [SearchQueryRequest.fallback(fallback_question)]
 
     def _source_diagnostics(
         self,

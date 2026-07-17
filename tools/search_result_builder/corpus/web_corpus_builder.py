@@ -11,10 +11,18 @@ from utils.network_utils import normalize_text
 
 from ..config import SearchSourceCandidate
 from ..source_analyze.seer.ngram_deduplicate import NgramDeduplicator
-from ..source_analyze.seer.page_content_fetcher import fetch_page_content
+from ..source_analyze.seer.page_content_fetcher import (
+    PageFetchResult,
+    fetch_page_content_result,
+)
+from .collection_record import CollectionRecord
+from .collection_record_extractor import CollectionRecordExtractor
 from .chunker import DocumentChunker
 from .document_cleaner import DocumentCleaner
 from .jsonl_exporter import JSONLExporter
+from .record_assembler import RecordAssembler
+from .record_text_serializer import RecordTextSerializer
+from .structured_document_extractor import StructuredDocumentExtractor
 
 
 @dataclass(frozen=True)
@@ -38,14 +46,46 @@ class CorpusRecord:
     text: str
     url: str
     retrieved_at: str
+    record_type: str = "passage"
+    record_id: str = ""
+    authors: tuple[str, ...] = ()
+    date: str = ""
+    source: str = ""
+    content_url: str = ""
+    language: str = ""
+    country: str = ""
+    content: str = ""
+    parent_url: str = ""
+    extra_fields: tuple[tuple[str, str], ...] = ()
+    extraction_method: str = ""
+    content_scope: str = "passage"
+    content_complete: bool = False
+    content_truncated: bool = False
+    original_content_chars: int = 0
 
-    def to_dict(self) -> dict[str, str]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "id": self.id,
             "title": self.title,
             "text": self.text,
             "url": self.url,
             "retrieved_at": self.retrieved_at,
+            "record_type": self.record_type,
+            "record_id": self.record_id,
+            "authors": list(self.authors),
+            "date": self.date,
+            "source": self.source,
+            "content_url": self.content_url,
+            "language": self.language,
+            "country": self.country,
+            "content": self.content,
+            "parent_url": self.parent_url,
+            "extra_fields": dict(self.extra_fields),
+            "extraction_method": self.extraction_method,
+            "content_scope": self.content_scope,
+            "content_complete": self.content_complete,
+            "content_truncated": self.content_truncated,
+            "original_content_chars": self.original_content_chars,
         }
 
 
@@ -74,13 +114,23 @@ class WebCorpusBuilder:
         deduplicator: NgramDeduplicator | None = None,
         duplicate_threshold: float = 0.9,
         page_fetcher: Callable[..., str | None] | None = None,
+        structured_extractor: StructuredDocumentExtractor | None = None,
+        collection_extractor: CollectionRecordExtractor | None = None,
+        record_assembler: RecordAssembler | None = None,
+        record_serializer: RecordTextSerializer | None = None,
     ) -> None:
         self.cleaner = cleaner or DocumentCleaner()
         self.chunker = chunker or DocumentChunker()
         self.exporter = exporter or JSONLExporter()
         self.deduplicator = deduplicator or NgramDeduplicator(n=3)
         self.duplicate_threshold = max(0.0, min(duplicate_threshold, 1.0))
-        self.page_fetcher = page_fetcher or fetch_page_content
+        self.page_fetcher = page_fetcher or fetch_page_content_result
+        self.structured_extractor = structured_extractor or StructuredDocumentExtractor()
+        self.record_assembler = record_assembler or RecordAssembler()
+        self.collection_extractor = collection_extractor or CollectionRecordExtractor(
+            assembler=self.record_assembler,
+        )
+        self.record_serializer = record_serializer or RecordTextSerializer()
 
     def build_records(
         self,
@@ -90,7 +140,7 @@ class WebCorpusBuilder:
         fetch_missing: bool = True,
         max_pages_to_fetch: int | None = None,
         max_fetch_tokens: int = 8000,
-        max_chunks_per_url: int = 12,
+        max_chunks_per_url: int = 20,
         max_records: int | None = 300,
     ) -> list[CorpusRecord]:
         """
@@ -110,6 +160,7 @@ class WebCorpusBuilder:
         records: list[CorpusRecord] = []
         accepted_texts: list[str] = []
         accepted_hashes: set[str] = set()
+        accepted_record_keys: set[str] = set()
         fetched_pages = 0
         page_index = 0
         per_url_limit = max(1, max_chunks_per_url)
@@ -122,6 +173,7 @@ class WebCorpusBuilder:
             if source_data["blocked"]:
                 continue
             content = source_data["raw_content"]
+            raw_html = source_data["raw_html"]
             can_fetch = (
                 fetch_missing
                 and not content
@@ -132,19 +184,54 @@ class WebCorpusBuilder:
                 )
             )
             if can_fetch:
-                content = (
-                    self.page_fetcher(
-                        source_data["url"],
-                        max_tokens=max_fetch_tokens,
-                    )
-                    or ""
+                fetch_result = self._fetch_payload(
+                    source_data["url"],
+                    max_tokens=max_fetch_tokens,
                 )
+                content = fetch_result.content
+                raw_html = fetch_result.raw_html
+                source_data["content_complete"] = fetch_result.is_complete
+                source_data["content_truncated"] = fetch_result.truncated
+                source_data["original_content_chars"] = (
+                    fetch_result.original_char_count
+                )
+                source_data["final_url"] = fetch_result.final_url
                 fetched_pages += 1
             if not content:
                 content = source_data["snippet"]
 
-            cleaned = self.cleaner.clean(content)
-            chunks = self.chunker.chunk(cleaned)
+            collection_result = self.collection_extractor.extract(
+                raw_html,
+                parent_url=source_data["url"],
+                source_title=source_data["title"],
+                source_kind=source_data["source_kind"],
+            )
+            if collection_result.records:
+                page_index += 1
+                page_records = self._collection_records(
+                    collection_result.records,
+                    page_index=page_index,
+                    retrieved_at=retrieved_date,
+                    max_records=per_url_limit,
+                    accepted_record_keys=accepted_record_keys,
+                    record_limit=(
+                        None
+                        if record_limit is None
+                        else max(0, record_limit - len(records))
+                    ),
+                )
+                records.extend(page_records)
+                continue
+
+            chunks: list[str] = []
+            for unit in self.structured_extractor.extract(content):
+                cleaned = self.cleaner.clean(unit.text)
+                if not cleaned:
+                    continue
+                if unit.unit_type == "table_row":
+                    chunks.append(cleaned)
+                else:
+                    chunks.extend(self.chunker.chunk(cleaned))
             unique_chunks: list[str] = []
             for chunk in chunks:
                 if len(unique_chunks) >= per_url_limit:
@@ -174,9 +261,65 @@ class WebCorpusBuilder:
                         text=chunk,
                         url=source_data["url"],
                         retrieved_at=retrieved_date,
+                        parent_url=source_data["url"],
+                        content_scope=(
+                            "full_document"
+                            if source_data["content_complete"]
+                            else "passage"
+                        ),
+                        content_complete=source_data["content_complete"],
+                        content_truncated=source_data["content_truncated"],
+                        original_content_chars=source_data["original_content_chars"],
                     )
                 )
         return records
+
+    def build_enriched_records(
+        self,
+        record: CorpusRecord | dict[str, Any],
+        *,
+        max_tokens: int = 5000,
+        max_chunks: int = 6,
+    ) -> list[CorpusRecord]:
+        """選擇性抓取結構化記錄的內容連結並建立關聯 passage。"""
+        data = record.to_dict() if isinstance(record, CorpusRecord) else dict(record)
+        content_url = str(data.get("content_url") or "")
+        if not content_url:
+            return []
+        fetch_result = self._fetch_payload(content_url, max_tokens=max_tokens)
+        cleaned = self.cleaner.clean(fetch_result.content)
+        if not cleaned:
+            return []
+        chunks = self.chunker.chunk(cleaned)[: max(1, max_chunks)]
+        if not chunks:
+            chunks = [cleaned]
+        collection_record = self._collection_from_mapping(data)
+        record_id = str(data.get("record_id") or data.get("id") or "record")
+        retrieved_at = str(data.get("retrieved_at") or self._retrieved_date(None))
+        results: list[CorpusRecord] = []
+        for index, chunk in enumerate(chunks, start=1):
+            text = self.record_serializer.serialize(
+                collection_record,
+                content_override=chunk,
+            )
+            results.append(
+                self._to_corpus_record(
+                    collection_record,
+                    record_id=record_id,
+                    passage_id=f"{record_id}-content-{index:03d}",
+                    text=text,
+                    content=chunk,
+                    retrieved_at=retrieved_at,
+                    extraction_method=(
+                        f"{collection_record.extraction_method}+linked_content"
+                    ).strip("+"),
+                    content_scope="full_document",
+                    content_complete=fetch_result.is_complete,
+                    content_truncated=fetch_result.truncated,
+                    original_content_chars=fetch_result.original_char_count,
+                )
+            )
+        return results
 
     def build_jsonl(
         self,
@@ -187,7 +330,7 @@ class WebCorpusBuilder:
         fetch_missing: bool = True,
         max_pages_to_fetch: int | None = None,
         max_fetch_tokens: int = 8000,
-        max_chunks_per_url: int = 12,
+        max_chunks_per_url: int = 20,
         max_records: int | None = 300,
         append: bool = False,
     ) -> int:
@@ -264,8 +407,149 @@ class WebCorpusBuilder:
             "url": str(getter("url", "") or ""),
             "snippet": str(getter("snippet", getter("content", "")) or ""),
             "raw_content": str(getter("raw_content", "") or ""),
+            "raw_html": str(getter("raw_html", "") or ""),
             "blocked": bool(getter("blocked", False)),
+            "source_kind": str(getter("source_kind", "web") or "web"),
+            "content_complete": bool(getter("content_complete", False)),
+            "content_truncated": bool(getter("content_truncated", False)),
+            "original_content_chars": int(
+                getter("original_content_chars", 0) or 0
+            ),
+            "final_url": str(getter("final_url", "") or ""),
         }
+
+    def _fetch_payload(self, url: str, *, max_tokens: int) -> PageFetchResult:
+        result = self.page_fetcher(url, max_tokens=max_tokens)
+        if isinstance(result, PageFetchResult):
+            return result
+        if result is None:
+            return PageFetchResult(content="", method="none", final_url=url)
+        content = str(result)
+        return PageFetchResult(
+            content=content,
+            method="custom",
+            quality_status="ok" if content else "empty",
+            is_complete=bool(content),
+            original_char_count=len(content),
+            final_url=url,
+        )
+
+    def _collection_records(
+        self,
+        collection_records: list[CollectionRecord],
+        *,
+        page_index: int,
+        retrieved_at: str,
+        max_records: int,
+        accepted_record_keys: set[str],
+        record_limit: int | None,
+    ) -> list[CorpusRecord]:
+        results: list[CorpusRecord] = []
+        for item_index, record in enumerate(collection_records, start=1):
+            if len(results) >= max_records:
+                break
+            if record_limit is not None and len(results) >= record_limit:
+                break
+            key = self.record_assembler.identity_key(record)
+            if not key or key in accepted_record_keys:
+                continue
+            accepted_record_keys.add(key)
+            record_id = f"record-{page_index:03d}-{item_index:03d}"
+            texts = self._serialized_record_texts(record)
+            for chunk_index, (text, content) in enumerate(texts, start=1):
+                if len(results) >= max_records:
+                    break
+                if record_limit is not None and len(results) >= record_limit:
+                    break
+                results.append(
+                    self._to_corpus_record(
+                        record,
+                        record_id=record_id,
+                        passage_id=f"{record_id}-{chunk_index:03d}",
+                        text=text,
+                        content=content,
+                        retrieved_at=retrieved_at,
+                    )
+                )
+        return results
+
+    def _serialized_record_texts(
+        self,
+        record: CollectionRecord,
+    ) -> list[tuple[str, str]]:
+        full_text = self.record_serializer.serialize(record)
+        if not record.content or len(full_text) <= self.chunker.max_chars:
+            return [(full_text, record.content)]
+        chunks = self.chunker.chunk(record.content)
+        if not chunks:
+            return [(full_text, record.content)]
+        return [
+            (self.record_serializer.serialize(record, content_override=chunk), chunk)
+            for chunk in chunks
+        ]
+
+    def _to_corpus_record(
+        self,
+        record: CollectionRecord,
+        *,
+        record_id: str,
+        passage_id: str,
+        text: str,
+        content: str,
+        retrieved_at: str,
+        extraction_method: str | None = None,
+        content_scope: str = "collection_record",
+        content_complete: bool = False,
+        content_truncated: bool = False,
+        original_content_chars: int = 0,
+    ) -> CorpusRecord:
+        return CorpusRecord(
+            id=passage_id,
+            title=record.title,
+            text=text,
+            url=record.content_url or record.parent_url,
+            retrieved_at=retrieved_at,
+            record_type=record.record_type,
+            record_id=record_id,
+            authors=record.authors,
+            date=record.date,
+            source=record.source,
+            content_url=record.content_url,
+            language=record.language,
+            country=record.country,
+            content=content,
+            parent_url=record.parent_url,
+            extra_fields=record.extra_fields,
+            extraction_method=extraction_method or record.extraction_method,
+            content_scope=content_scope,
+            content_complete=content_complete,
+            content_truncated=content_truncated,
+            original_content_chars=original_content_chars,
+        )
+
+    def _collection_from_mapping(self, data: dict[str, Any]) -> CollectionRecord:
+        authors = data.get("authors") or []
+        if isinstance(authors, str):
+            authors = [authors]
+        extra_fields = data.get("extra_fields") or {}
+        if isinstance(extra_fields, dict):
+            extra_fields = list(extra_fields.items())
+        return CollectionRecord(
+            record_type=str(data.get("record_type") or "article"),
+            title=str(data.get("title") or ""),
+            authors=tuple(str(item) for item in authors),
+            date=str(data.get("date") or ""),
+            source=str(data.get("source") or ""),
+            content_url=str(data.get("content_url") or ""),
+            language=str(data.get("language") or ""),
+            country=str(data.get("country") or ""),
+            content=str(data.get("content") or ""),
+            parent_url=str(data.get("parent_url") or data.get("url") or ""),
+            extra_fields=tuple((str(key), str(value)) for key, value in extra_fields),
+            extraction_method=str(data.get("extraction_method") or ""),
+            record_id=str(data.get("record_id") or ""),
+            retrieved_at=str(data.get("retrieved_at") or ""),
+        )
 
     def _retrieved_date(self, value: str | date | None) -> str:
         if value is None:

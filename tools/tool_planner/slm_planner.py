@@ -108,7 +108,8 @@ class SLMToolPlanner:
                     "You are a tool planner. Select only from candidate_tools. "
                     "Return JSON only with requires_tools, tool_needs, tool_sequence, handler_plans, and stop_condition. "
                     "Use at most 3 steps. Prefer tool_needs as required capabilities. "
-                    "For deterministic_handler plans, include required_handler_role such as simple_math, numeric_arithmetic, unit_conversion, list_operation, table_reasoning, graph_search, coordinate_distance, date_time, string_transform, text_extraction, boggle_dfs, probability_simulation, logic_equivalence, chess_tactics, or unknown. "
+                    "For deterministic_handler plans, include required_handler_role such as simple_math, numeric_arithmetic, unit_conversion, list_operation, table_reasoning, binary_operation_reasoning, fraction_document_reasoning, graph_search, coordinate_distance, date_time, string_transform, text_extraction, boggle_dfs, probability_simulation, logic_equivalence, chess_tactics, multi_step_counting, or unknown. "
+                    "Output formatting such as comma-separated, alphabetical order, or no whitespace does not define the handler role. "
                     "Do not invent tool or handler names."
                 ),
             },

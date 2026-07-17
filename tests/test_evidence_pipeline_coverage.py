@@ -105,7 +105,7 @@ class FixedFilter:
 
 
 class IterativeRetrievalCoverageTests(unittest.TestCase):
-    def test_no_continue_chunks_can_fallback_to_next_hop_query(self):
+    def test_no_bridge_span_stops_without_fallback_next_hop_query(self):
         controller = IterativeRetrievalControl(
             retriever=FakeRetriever(),
             labeler=NoContinueLabeler(),
@@ -119,11 +119,11 @@ class IterativeRetrievalCoverageTests(unittest.TestCase):
         result = controller.run("Who led Example Org in Taiwan in 2024?")
 
         self.assertEqual(result.searched_queries[0], "Who led Example Org in Taiwan in 2024?")
-        self.assertGreaterEqual(len(result.searched_queries), 2)
-        self.assertEqual(result.rounds[0].stop_reason, "fallback_next_query")
-        self.assertTrue(result.rounds[0].filter_metadata["fallback_used"])
-        self.assertEqual(result.rounds[0].filter_metadata["method"], "coverage_based_next_query")
-        self.assertIn("answer_type_not_covered", result.rounds[0].coverage["trigger_reason"])
+        self.assertEqual(len(result.searched_queries), 1)
+        self.assertEqual(result.rounds[0].stop_reason, "no_continue_chunks")
+        self.assertFalse(
+            any(document.valid_for_next_hop for document in result.rounds[0].documents)
+        )
 
 
 if __name__ == "__main__":

@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Any
 from utils.network_utils import normalize_text
 
 if TYPE_CHECKING:
-    from .search_intent_planner import SearchIntentPlan
+    from .search_intent_plan import SearchIntentPlan
 
 
 _SPACY_MODEL = None

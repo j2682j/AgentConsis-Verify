@@ -7,9 +7,11 @@ from context.stage1_final_answer_repair_context import Stage1FinalAnswerRepairCo
 from context.stage1_tool_context import Stage1ToolContextBuilder
 from core.config import AgentConfig, EachAgentReply
 from core.slm_agent import SLM_Agent
+from core.stage1_search_gate import Stage1SearchAccessState
 from core.tool_turn_policy import AdaptiveToolTurnPolicy
 from parsers.tool_request_parser import ToolRequestParser
 from tools.tool_cache import ToolCache
+from tools.attachment_workspace import AttachmentWorkspace
 
 
 class Stage1ToolUseRunner:
@@ -66,6 +68,8 @@ class Stage1ToolUseRunner:
         run_index: int,
         attachment: dict[str, Any] | None = None,
         unload_after_run: bool = False,
+        search_access_state: Stage1SearchAccessState | None = None,
+        attachment_workspace: AttachmentWorkspace | None = None,
     ) -> tuple[EachAgentReply, int, int]:
         """
         執行單一 Agent 的 tool-use reasoning 回合，直到產生 final answer 或達到工具上限。
@@ -100,6 +104,10 @@ class Stage1ToolUseRunner:
         repair_attempted = False
         repair_reason = ""
         turn_index = 0
+        blocked_search_requests = 0
+        evidence_packets = list(evidence_packets)
+        if search_access_state is not None:
+            evidence_packets.extend(search_access_state.supplemental_packets())
 
         while turn_index < policy.hard_limit + 2:
             turn_index += 1
@@ -122,6 +130,14 @@ class Stage1ToolUseRunner:
                     available_tools=available_tools,
                     tool_gap=tool_gap,
                     tool_turn_policy=policy.format_prompt(),
+                    search_access=(
+                        search_access_state.format_prompt()
+                        if search_access_state is not None
+                        else "Mode: normal search access."
+                    ),
+                    attachment_access=(
+                        self._attachment_access_prompt(attachment_workspace)
+                    ),
                 )
             raw_reply, prompt_tokens, completion_tokens = agent.invoke_with_usage(messages)
             prompt_tokens_total += prompt_tokens
@@ -154,6 +170,9 @@ class Stage1ToolUseRunner:
                     question=question,
                     attachment=attachment,
                 )
+                missing_information = str(
+                    tool_args.pop("missing_information", "") or ""
+                ).strip()
                 reasoning_step = str(parsed.get("reasoning_step", "") or "").strip()
                 if reasoning_step:
                     reasoning_steps.append(reasoning_step)
@@ -163,7 +182,48 @@ class Stage1ToolUseRunner:
                     "tool_args": tool_args,
                     "reasoning_step": reasoning_step,
                 }
+                if missing_information:
+                    tool_call["missing_information"] = missing_information
                 tool_calls.append(tool_call)
+
+                if (
+                    tool_name == "search"
+                    and search_access_state is not None
+                    and policy.can_execute()
+                ):
+                    search_query = str(
+                        tool_args.get("input") or tool_args.get("query") or ""
+                    ).strip()
+                    gate_decision = search_access_state.authorize(
+                        query=search_query,
+                        missing_information=missing_information,
+                    )
+                    tool_call["search_gate"] = {
+                        "allowed": gate_decision.allowed,
+                        "reason": gate_decision.reason,
+                        "use_existing_evidence": gate_decision.use_existing_evidence,
+                    }
+                    if not gate_decision.allowed:
+                        blocked_search_requests += 1
+                        tool_result = search_access_state.blocked_result(gate_decision)
+                        tool_result["stage1_search_gate"] = search_access_state.snapshot()
+                        tool_results.append(tool_result)
+                        if blocked_search_requests >= 2:
+                            policy.request_final_answer("repeated_search_request_blocked")
+                            finalization_prompt_sent = True
+                            repair_attempted = True
+                            repair_reason = "repeated_search_request_blocked"
+                        trajectory.append(
+                            {
+                                "turn": turn_index,
+                                "type": "tool_result",
+                                "tool_call": tool_call,
+                                "tool_result": tool_result,
+                                "tool_turn_policy": policy.snapshot(),
+                                "stage1_search_gate": search_access_state.snapshot(),
+                            }
+                        )
+                        continue
 
                 if not policy.can_execute():
                     tool_result = policy.block_result(tool_name)
@@ -181,7 +241,29 @@ class Stage1ToolUseRunner:
                         tool_args=tool_args,
                         agent_id=config.agent_id,
                         stage=f"stage1_tool_turn_{policy.turns_used + 1}",
+                        runtime_context=(
+                            {
+                                "attachment_workspace": attachment_workspace,
+                                "question": question,
+                                "search_context": self._search_context(evidence_packets),
+                            }
+                            if tool_name == "attachment_reader"
+                            and attachment_workspace is not None
+                            else None
+                        ),
                     )
+                    if (
+                        tool_name == "attachment_reader"
+                        and attachment_workspace is not None
+                        and tool_result.get("cache_hit")
+                    ):
+                        attachment_workspace.record_tool_cache_hit()
+                    if tool_name == "search" and search_access_state is not None:
+                        search_access_state.complete(
+                            query=str(tool_args.get("input") or tool_args.get("query") or ""),
+                            result=tool_result,
+                        )
+                        tool_result["stage1_search_gate"] = search_access_state.snapshot()
                     progress = policy.observe(tool_result)
                     tool_result["adaptive_progress"] = progress
                     tool_result["tool_turn_policy"] = policy.snapshot()
@@ -497,7 +579,35 @@ class Stage1ToolUseRunner:
                     args["file_path"] = file_path
             if "attachment" not in args and isinstance(attachment, dict) and attachment:
                 args["attachment"] = attachment
+            args.setdefault(
+                "information_need",
+                args.get("input") or args.get("query") or args.get("question") or question,
+            )
         return args
+
+    def _attachment_access_prompt(
+        self,
+        workspace: AttachmentWorkspace | None,
+    ) -> str:
+        if workspace is None:
+            return "Prepared attachment: unavailable."
+        state = workspace.snapshot()
+        return (
+            f"Prepared attachment: {state.get('prepared_available', False)}\n"
+            f"Parse status: {state.get('parse_status', 'not_prepared')}\n"
+            f"Available data: {state.get('available_inputs', []) or ['none']}\n"
+            f"Eligible handlers: {state.get('eligible_handlers', []) or ['none']}\n"
+            "Instruction: request attachment_reader only for one specific missing fact."
+        )
+
+    @staticmethod
+    def _search_context(evidence_packets: list[Any]) -> str:
+        return "\n\n".join(
+            str(getattr(packet, "content", "") or "").strip()
+            for packet in evidence_packets
+            if getattr(packet, "packet_type", "") == "search_result"
+            and str(getattr(packet, "content", "") or "").strip()
+        )
 
     _LOCAL_MEDIA_EXTENSIONS = {
         ".mp3",

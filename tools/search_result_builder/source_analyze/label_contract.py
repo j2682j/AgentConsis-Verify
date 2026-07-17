@@ -80,7 +80,7 @@ class LabelContractValidator:
                     useful_spans=useful_spans,
                     label_status="valid_continue",
                     valid_for_next_hop=True,
-                    valid_for_evidence=True,
+                    valid_for_evidence=False,
                 )
             invalid_reasons.append("continue_without_useful_span")
             return LabelContractResult(
@@ -103,7 +103,7 @@ class LabelContractValidator:
                     useful_spans=useful_spans,
                     label_status="valid_terminate",
                     valid_for_next_hop=False,
-                    valid_for_evidence=True,
+                    valid_for_evidence=False,
                 )
             invalid_reasons.append("terminal_without_answer_span")
             return LabelContractResult(

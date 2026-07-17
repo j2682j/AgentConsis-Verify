@@ -27,6 +27,7 @@ from core.network import Network
 from score.versa_prm_scorer import (
     DEFAULT_VERSA_PRM_BASE_MODEL_ID,
     DEFAULT_VERSA_PRM_MODEL_ID,
+    ensure_versa_prm_model_cache,
 )
 from tools.tool_manager import ToolManager
 
@@ -36,6 +37,13 @@ DEFAULT_AGENT_SPECS = [
     ("qwen", "qwen3:4b"),
     ("gemma", "gemma3:4b"),
 ]
+
+
+def env_bool(name: str, default: bool = False) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return str(value).strip().lower() in {"1", "true", "yes", "y", "on"}
 
 
 def build_agents(model_specs: str | None = None, *, temperature: float = 0.5) -> list[AgentConfig]:
@@ -191,6 +199,7 @@ def run_sample(
     enable_tool_planner: bool,
     max_parallel_next_hop_queries: int,
     max_stage1_tool_turns: int,
+    stage1_prepared_search_budget: int,
     previous_best_agent_id: str | None,
     stage1_early_stop_max_retries: int,
     stage2_verifier: str,
@@ -219,6 +228,7 @@ def run_sample(
         enable_tool_planner=enable_tool_planner,
         max_parallel_next_hop_queries=max_parallel_next_hop_queries,
         max_stage1_tool_turns=max_stage1_tool_turns,
+        stage1_prepared_search_budget=stage1_prepared_search_budget,
         previous_best_agent_id=previous_best_agent_id,
         stage1_early_stop_max_retries=stage1_early_stop_max_retries,
         reference_answer=str(sample.get("final_answer", "") or ""),
@@ -366,8 +376,24 @@ def format_step_scores(step_scores: Any) -> str:
         else:
             step = index
             score = item
-        parts.append(f"step {step}: {score}")
+        support = ""
+        if isinstance(item, dict):
+            support_status = str(item.get("support_status") or "").strip()
+            if support_status:
+                support = f", support={support_status}"
+        parts.append(f"step {step}: {score}{support}")
     return ", ".join(parts)
+
+
+def format_evidence_support(item: dict[str, Any]) -> str:
+    metadata = item.get("metadata") if isinstance(item.get("metadata"), dict) else {}
+    support = metadata.get("evidence_support")
+    if not isinstance(support, dict):
+        return "-"
+    status = str(support.get("status") or "no_support")
+    priority = support.get("priority", 0)
+    supported_steps = (support.get("metadata") or {}).get("supported_step_count", 0)
+    return f"{status} (priority={priority}, supported_steps={supported_steps})"
 
 
 def format_verifier_score(item: dict[str, Any]) -> str:
@@ -381,8 +407,11 @@ def format_verifier_score(item: dict[str, Any]) -> str:
 def format_verifier_pairs(network_summary: dict[str, Any]) -> str:
     pairs = []
     for item in network_summary.get("verifier_results", network_summary.get("judge_results", [])) or []:
+        metadata = item.get("metadata") if isinstance(item.get("metadata"), dict) else {}
+        run_index = metadata.get("target_run_index", 0)
+        run_suffix = f"/run-{run_index}" if run_index else ""
         pairs.append(
-            f"{item.get('verifier_id', item.get('judge_agent_id', ''))}->{item.get('target_agent_id', '')}: "
+            f"{item.get('verifier_id', item.get('judge_agent_id', ''))}->{item.get('target_agent_id', '')}{run_suffix}: "
             f"{format_verifier_score(item)}"
         )
     return "; ".join(pairs) if pairs else "No Stage2 verifier scores"
@@ -495,6 +524,8 @@ def write_markdown_report(results: dict[str, Any], output_path: str | Path) -> P
             network_metadata
         ).get("token_usage", {}) or {}
         search_summary = result.get("search_summary", {}) or {}
+        winner_selection = network_metadata.get("winner_selection", {}) or {}
+        winner_trace = winner_selection.get("selection_trace", {}) or {}
 
         lines.extend(
             [
@@ -510,6 +541,7 @@ def write_markdown_report(results: dict[str, Any], output_path: str | Path) -> P
                 f"- Max Stage1 workers: {network_metadata.get('max_stage1_workers', 0)}",
                 f"- Max parallel next-hop queries: {network_metadata.get('max_parallel_next_hop_queries', 0)}",
                 f"- Max Stage1 tool turns: {network_metadata.get('max_stage1_tool_turns', 0)}",
+                f"- Stage1 prepared-search budget: {network_metadata.get('stage1_prepared_search_budget', 1)}",
                 f"- Stage1 early stop used: {network_metadata.get('stage1_early_stop', False)}",
                 f"- Stage1 attempts: {network_metadata.get('stage1_attempts', 0)}",
                 f"- Stage1 early stop max retries: {network_metadata.get('stage1_early_stop_max_retries', 0)}",
@@ -538,6 +570,33 @@ def write_markdown_report(results: dict[str, Any], output_path: str | Path) -> P
                 )
             lines.append("")
 
+        if winner_trace:
+            lines.extend(
+                [
+                    "**Candidate-Centric Winner Selection**",
+                    "",
+                    f"- Status: {winner_trace.get('status', '')}",
+                    f"- Reason: {winner_trace.get('selection_reason', '')}",
+                    f"- Selected answer: {winner_trace.get('selected_answer', '') or '-'}",
+                    f"- Selected path: {winner_trace.get('selected_agent_id', '') or '-'} / run {winner_trace.get('selected_run_index', 0) or '-'}",
+                    "",
+                    "| Candidate | Evidence Tier | Direct Support | Agents | Runs | Critical Floor | Critical Geomean | Eligible |",
+                    "|---|---:|---|---:|---:|---:|---:|---|",
+                ]
+            )
+            for candidate in winner_trace.get("candidates", []) or []:
+                lines.append(
+                    f"| {short_cell(candidate.get('answer', ''), 100)} | "
+                    f"{candidate.get('support_tier', 0)} | "
+                    f"{candidate.get('direct_support', False)} | "
+                    f"{len(candidate.get('supporting_agent_ids', []) or [])} | "
+                    f"{candidate.get('supporting_run_count', 0)} | "
+                    f"{candidate.get('critical_step_floor', 0)} | "
+                    f"{candidate.get('critical_step_geometric_mean', 0)} | "
+                    f"{candidate.get('eligible', False)} |"
+                )
+            lines.append("")
+
         context_budget = network_metadata.get("stage1_context_budget", {}) or {}
         if context_budget:
             lines.extend(
@@ -551,6 +610,44 @@ def write_markdown_report(results: dict[str, Any], output_path: str | Path) -> P
                     f"- Truncation applied count: {context_budget.get('truncation_applied_count', 0)}",
                     f"- Dropped evidence count: {context_budget.get('dropped_evidence_count', 0)}",
                     f"- Truncated sections: {context_budget.get('truncated_sections', []) or '-'}",
+                    "",
+                ]
+            )
+
+        search_gate = network_metadata.get("stage1_search_gate", {}) or {}
+        if search_gate:
+            lines.extend(
+                [
+                    "**Stage1 Search Gate**",
+                    "",
+                    f"- Prepared status: {search_gate.get('prepared_status', '-')}",
+                    f"- Prepared evidence available: {search_gate.get('prepared_evidence_available', False)}",
+                    f"- Search requests: {search_gate.get('request_count', 0)}",
+                    f"- Physical search executions: {search_gate.get('physical_execution_count', 0)}",
+                    f"- Shared cache hits: {search_gate.get('cache_hit_count', 0)}",
+                    f"- Blocked requests: {search_gate.get('blocked_count', 0)}",
+                    f"- Blocked reasons: {search_gate.get('blocked_reasons', {}) or '-'}",
+                    f"- Refinement used/budget: {search_gate.get('refinement_used', 0)}/{search_gate.get('refinement_budget', 0)}",
+                    f"- Supplemental evidence count: {search_gate.get('supplemental_evidence_count', 0)}",
+                    "",
+                ]
+            )
+
+        attachment_reuse = network_metadata.get("stage1_attachment_reuse", {}) or {}
+        if attachment_reuse:
+            lines.extend(
+                [
+                    "**Stage1 Attachment Reuse**",
+                    "",
+                    f"- Prepared attachment available: {attachment_reuse.get('prepared_available', False)}",
+                    f"- Reader executions: {attachment_reuse.get('reader_execution_count', 0)}",
+                    f"- Vision/audio executions: {attachment_reuse.get('vision_execution_count', 0)}",
+                    f"- Stage1 attachment requests: {attachment_reuse.get('stage1_request_count', 0)}",
+                    f"- Typed payload reuse count: {attachment_reuse.get('payload_reuse_count', 0)}",
+                    f"- Result cache hits: {attachment_reuse.get('result_cache_hit_count', 0)}",
+                    f"- Handler executions: {attachment_reuse.get('handler_execution_count', 0)}",
+                    f"- Blocked duplicate requests: {attachment_reuse.get('blocked_duplicate_count', 0)}",
+                    f"- Selected handlers: {attachment_reuse.get('selected_handlers', []) or '-'}",
                     "",
                 ]
             )
@@ -717,20 +814,27 @@ def write_markdown_report(results: dict[str, Any], output_path: str | Path) -> P
                 "",
                 "**Stage2 Verifier Scores**",
                 "",
-                "| Verifier | Target Reason Agent | Verifier Score | Step Scores |",
-                "|---|---|---:|---|",
+                "| Verifier | Target Agent | Run | Candidate | Avg Score | Critical Floor | Critical Geomean | Evidence Support | Step Scores |",
+                "|---|---|---:|---|---:|---:|---:|---|---|",
             ]
         )
         if verifier_results:
             for item in verifier_results:
+                verifier_metadata = item.get("metadata") if isinstance(item.get("metadata"), dict) else {}
+                process = verifier_metadata.get("process_verification") if isinstance(verifier_metadata.get("process_verification"), dict) else {}
                 lines.append(
                     f"| {item.get('verifier_id', item.get('judge_agent_id', ''))} | "
                     f"{item.get('target_agent_id', '')} | "
+                    f"{verifier_metadata.get('target_run_index', 0) or '-'} | "
+                    f"{short_cell(verifier_metadata.get('target_answer', ''), 80)} | "
                     f"{item.get('verifier_score', item.get('judge_score', 0))} | "
+                    f"{process.get('critical_step_floor', 0)} | "
+                    f"{process.get('critical_step_geometric_mean', 0)} | "
+                    f"{short_cell(format_evidence_support(item), 160)} | "
                     f"{short_cell(format_step_scores(item.get('step_scores')), 240)} |"
                 )
         else:
-            lines.append("| - | - | 0 | - |")
+            lines.append("| - | - | - | - | 0 | 0 | 0 | - | - |")
 
         if stage1_results:
             lines.extend(["", "**Stage1 Tool Summary**", ""])
@@ -759,6 +863,7 @@ def write_markdown_report(results: dict[str, Any], output_path: str | Path) -> P
                 score_text = (
                     ", ".join(
                         f"{score.get('verifier_id', score.get('judge_agent_id', ''))}: "
+                        f"run {(score.get('metadata') or {}).get('target_run_index', '-')}: "
                         f"{format_verifier_score(score)}"
                         for score in received_scores
                     )
@@ -807,30 +912,45 @@ def run_gaia_evaluation(args: argparse.Namespace) -> dict[str, Any]:
 
     print(f"[INFO] GAIA data_dir={data_dir}")
     print(f"[INFO] split={args.split} level={args.level or 'all'} samples={len(items)}")
-    print(f"[INFO] stage1_runs_per_agent={args.stage1_runs_per_agent}")
-    print(f"[INFO] max_stage1_workers={args.max_stage1_workers or 'auto'}")
-    print(f"[INFO] stage2_max_tokens={args.stage2_max_tokens}")
-    print(f"[INFO] enable_stage2_score={not args.without_stage2_score}")
-    print(f"[INFO] stage2_verifier={args.stage2_verifier}")
-    print(f"[INFO] versa_prm_model={args.versa_prm_model}")
-    print(f"[INFO] versa_prm_base_model={args.versa_prm_base_model}")
-    print(f"[INFO] versa_prm_device={args.versa_prm_device}")
-    print(f"[INFO] versa_prm_dtype={args.versa_prm_dtype}")
-    print(f"[INFO] versa_prm_local_files_only={args.versa_prm_local_files_only}")
-    print(f"[INFO] enable_stage1_tool_use={args.enable_stage1_tool_use}")
-    print(f"[INFO] evidence_prepare={args.evidence_prepare}")
-    print(f"[INFO] compact_search_evidence={args.compact_search_evidence}")
-    print("[INFO] query_planner=signal")
-    print(f"[INFO] enable_evidence_driven_search={args.enable_evidence_driven_search}")
-    print(f"[INFO] enable_deterministic_handler_router={args.enable_deterministic_handler_router}")
-    print(f"[INFO] enable_tool_planner={args.enable_tool_planner}")
-    print(f"[INFO] max_parallel_next_hop_queries={args.max_parallel_next_hop_queries}")
-    print(f"[INFO] max_stage1_tool_turns={args.max_stage1_tool_turns}")
-    print(f"[INFO] enable_stage1_early_stop={args.enable_stage1_early_stop}")
-    print(f"[INFO] stage1_early_stop_max_retries={args.stage1_early_stop_max_retries}")
+    # print(f"[INFO] stage1_runs_per_agent={args.stage1_runs_per_agent}")
+    # print(f"[INFO] max_stage1_workers={args.max_stage1_workers or 'auto'}")
+    # print(f"[INFO] stage2_max_tokens={args.stage2_max_tokens}")
+    # print(f"[INFO] enable_stage2_score={not args.without_stage2_score}")
+    # print(f"[INFO] stage2_verifier={args.stage2_verifier}")
+    # print(f"[INFO] versa_prm_model={args.versa_prm_model}")
+    # print(f"[INFO] versa_prm_base_model={args.versa_prm_base_model}")
+    # print(f"[INFO] versa_prm_device={args.versa_prm_device}")
+    # print(f"[INFO] versa_prm_dtype={args.versa_prm_dtype}")
+    # print(f"[INFO] versa_prm_local_files_only={args.versa_prm_local_files_only}")
+    # print(f"[INFO] enable_stage1_tool_use={args.enable_stage1_tool_use}")
+    # print(f"[INFO] evidence_prepare={args.evidence_prepare}")
+    # print(f"[INFO] compact_search_evidence={args.compact_search_evidence}")
+    # print("[INFO] query_planner=signal")
+    # print(f"[INFO] enable_evidence_driven_search={args.enable_evidence_driven_search}")
+    # print(f"[INFO] enable_deterministic_handler_router={args.enable_deterministic_handler_router}")
+    # print(f"[INFO] enable_tool_planner={args.enable_tool_planner}")
+    # print(f"[INFO] max_parallel_next_hop_queries={args.max_parallel_next_hop_queries}")
+    # print(f"[INFO] max_stage1_tool_turns={args.max_stage1_tool_turns}")
+    # print(f"[INFO] enable_stage1_early_stop={args.enable_stage1_early_stop}")
+    # print(f"[INFO] stage1_early_stop_max_retries={args.stage1_early_stop_max_retries}")
     print(f"[INFO] log_name={safe_filename(args.log_name, 'gaia_run')}")
     print(f"[INFO] task_json_dir={output_dir.resolve()}")
     print(f"[INFO] report_md={report_md.resolve()}")
+
+    versa_cache_warmup: dict[str, Any] = {}
+    if not args.without_stage2_score and not args.skip_versa_prm_cache_warmup:
+        print("[INFO] warming VersaPRM HuggingFace cache")
+        versa_cache_warmup = ensure_versa_prm_model_cache(
+            model_id=args.versa_prm_model,
+            base_model_id=args.versa_prm_base_model,
+            allow_download=not args.versa_prm_cache_warmup_local_only,
+        )
+        model_ok = bool((versa_cache_warmup.get("model") or {}).get("ok"))
+        base_ok = bool((versa_cache_warmup.get("base_model") or {}).get("ok"))
+        print(f"[INFO] versa_prm_cache_warmup model_ok={model_ok} base_model_ok={base_ok}")
+        if not model_ok or not base_ok:
+            raise RuntimeError(f"VersaPRM cache warm-up failed: {versa_cache_warmup}")
+        args.versa_prm_local_files_only = True
 
     previous_best_agent_id: str | None = None
     agent_exact_counts: dict[str, int] = {}
@@ -855,6 +975,7 @@ def run_gaia_evaluation(args: argparse.Namespace) -> dict[str, Any]:
             enable_tool_planner=args.enable_tool_planner,
             max_parallel_next_hop_queries=args.max_parallel_next_hop_queries,
             max_stage1_tool_turns=args.max_stage1_tool_turns,
+            stage1_prepared_search_budget=args.stage1_prepared_search_budget,
             previous_best_agent_id=previous_best_agent_id,
             stage1_early_stop_max_retries=args.stage1_early_stop_max_retries,
             stage2_verifier=args.stage2_verifier,
@@ -889,6 +1010,7 @@ def run_gaia_evaluation(args: argparse.Namespace) -> dict[str, Any]:
         level=args.level,
         stage1_runs_per_agent=args.stage1_runs_per_agent,
     )
+    results["versa_prm_cache_warmup"] = versa_cache_warmup
 
     report_path = write_markdown_report(results, report_md)
     print(f"[OK] GAIA Markdown report exported: {report_path}")
@@ -944,8 +1066,25 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--versa-prm-local-files-only",
+        default=env_bool("VERSA_PRM_LOCAL_FILES_ONLY", True),
         action="store_true",
         help="Only use local Hugging Face cache for VersaPRM.",
+    )
+    parser.add_argument(
+        "--versa-prm-allow-download",
+        dest="versa_prm_local_files_only",
+        action="store_false",
+        help="Allow Hugging Face network downloads for VersaPRM.",
+    )
+    parser.add_argument(
+        "--skip-versa-prm-cache-warmup",
+        action="store_true",
+        help="Skip startup Hugging Face cache warm-up for VersaPRM.",
+    )
+    parser.add_argument(
+        "--versa-prm-cache-warmup-local-only",
+        action="store_true",
+        help="Check VersaPRM cache at startup without downloading missing files.",
     )
     parser.add_argument(
         "--without--stage2--score",
@@ -967,6 +1106,15 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Maximum number of EfficientRAG filter queries searched in parallel.",
     )
     parser.add_argument("--max-stage1-tool-turns", type=int, default=2)
+    parser.add_argument(
+        "--stage1-prepared-search-budget",
+        type=int,
+        default=1,
+        help=(
+            "Task-level supplemental Stage1 search budget when Evidence Prepare already "
+            "has usable search evidence. Use -1 to disable the gate."
+        ),
+    )
     parser.add_argument("--enable-stage1-early-stop", action="store_true")
     parser.add_argument("--stage1-early-stop-max-retries", type=int, default=1)
     parser.add_argument("--temperature", type=float, default=0.5)

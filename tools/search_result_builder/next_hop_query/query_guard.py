@@ -6,7 +6,7 @@ from typing import Iterable
 
 from utils.network_utils import normalize_text
 
-from ..query.search_intent_planner import SearchIntentPlan
+from ..query.search_intent_plan import SearchIntentPlan
 
 
 @dataclass(frozen=True)
@@ -132,7 +132,7 @@ class NextHopQueryGuard:
          - original_question: 原始任務問題。
          - current_query: 目前這一輪 retrieval 使用的 query。
          - proposed_next_query: Filter 或 fallback 產生的下一跳 query。
-         - intent_plan: SearchIntentPlanner 產生並由 state tracker 更新的 plan。
+         - intent_plan: query state 產生並由 state tracker 更新的 plan。
          - useful_spans: Labeler 或 evidence 中抽出的有用片段。
          - seen_query_keys: 已搜尋 query 的正規化 key。
 

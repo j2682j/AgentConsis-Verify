@@ -20,6 +20,9 @@ Return JSON only."""
 STAGE1_TOOL_USER_PROMPT = """Question:
 {question}
 
+Answer_Requirement:
+{answer_requirement}
+
 Solver_Result:
 {solver_result}
 
@@ -44,13 +47,26 @@ Capability_Gap:
 Tool_Turn_Policy:
 {tool_turn_policy}
 
+Search_Access:
+{search_access}
+
+Attachment_Access:
+{attachment_access}
+
 Instructions:
 - If you need one tool, return exactly this JSON shape:
-{{"type": "tool_request", "reasoning_step": "step N. why this tool is needed", "tool_name": "search", "tool_args": {{"input": "query", "mode": "text"}}}}
+{{"type": "tool_request", "reasoning_step": "step N. why this tool is needed", "tool_name": "search", "tool_args": {{"input": "query", "mode": "text", "missing_information": "one specific missing fact"}}}}
 - Replace tool_name and tool_args with the correct available tool when needed.
+- For attachment_reader, use: {{"type": "tool_request", "reasoning_step": "step N. identify the missing attachment fact", "tool_name": "attachment_reader", "tool_args": {{"information_need": "one specific fact or operation"}}}}
 - Do not invent a tool name that is not listed in Available_Tools.
 - If Capability_Gap lists a missing capability, do not repeat an unsupported request.
 - Follow Tool_Turn_Policy. When it requests final_answer, do not request another tool.
+- Use Search_Result before requesting search.
+- When search is refinement-only, include one specific missing_information inside tool_args.
+- Do not repeat a query already covered by prepared evidence or Tool_Trace.
+- Use Attachment_Result before requesting attachment_reader.
+- For attachment_reader, provide one specific information_need; file metadata is added by the system.
+- Do not request the same attachment operation twice.
 - If you can answer, return exactly this JSON shape:
 {{"type": "final_answer", "reasoning_steps": ["step 1. Identify the required value from evidence.", "step 2. Convert units or normalize values if needed.", "step 3. Perform one calculation or comparison.", "step 4. Apply rounding if required.", "step 5. Format the computed value according to the question."], "final_answer": "short final answer only", "confidence": 0.0, "used_evidence_ids": ["E1"], "answer_type": "number | date | person | organization | location | title | list | short_text | boolean | unknown", "tool_request": null}}
 - Return JSON only.
@@ -77,6 +93,14 @@ class Stage1ToolContextBuilder(Stage1ContextBuilder):
         structured["tool_turn_policy"] = kwargs.get(
             "tool_turn_policy",
             self.config.none_text,
+        )
+        structured["search_access"] = kwargs.get(
+            "search_access",
+            "Mode: normal search access.",
+        )
+        structured["attachment_access"] = kwargs.get(
+            "attachment_access",
+            "Prepared attachment: unavailable.",
         )
         structured["attachment_metadata"] = self._format_attachment_metadata(
             kwargs.get("attachment")
@@ -125,11 +149,28 @@ class Stage1ToolContextBuilder(Stage1ContextBuilder):
             )
             or self.config.none_text
         )
+        compressed["search_access"] = (
+            self._compress_multiline_text(
+                str(structured.get("search_access", "")),
+                max_lines=10,
+                max_chars=1200,
+            )
+            or self.config.none_text
+        )
+        compressed["attachment_access"] = (
+            self._compress_multiline_text(
+                str(structured.get("attachment_access", "")),
+                max_lines=10,
+                max_chars=1600,
+            )
+            or self.config.none_text
+        )
         return self._apply_context_budget(compressed)
 
     def render(self, compressed: dict[str, Any], **_: Any) -> list[dict[str, str]]:
         user_content = STAGE1_TOOL_USER_PROMPT.format(
             question=compressed["question"],
+            answer_requirement=compressed["answer_requirement"],
             solver_result=compressed["solver_result"],
             attachment_result=compressed["attachment_result"],
             search_result=compressed["search_result"],
@@ -138,6 +179,8 @@ class Stage1ToolContextBuilder(Stage1ContextBuilder):
             available_tools=compressed["available_tools"],
             tool_gap=compressed["tool_gap"],
             tool_turn_policy=compressed["tool_turn_policy"],
+            search_access=compressed["search_access"],
+            attachment_access=compressed["attachment_access"],
         )
         return [
             {"role": "system", "content": str(compressed["system"])},

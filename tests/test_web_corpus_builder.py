@@ -119,9 +119,12 @@ class WebCorpusBuilderTests(unittest.TestCase):
         self.assertEqual(len(lines), 1)
         payload = json.loads(lines[0])
         self.assertEqual(
-            list(payload),
+            list(payload)[:5],
             ["id", "title", "text", "url", "retrieved_at"],
         )
+        self.assertEqual(payload["record_type"], "passage")
+        self.assertIn("record_id", payload)
+        self.assertIn("content_url", payload)
         self.assertEqual(payload["id"], "page-001-000")
         self.assertEqual(payload["title"], "臺北市人口")
         self.assertEqual(payload["url"], "https://example.com/taipei")

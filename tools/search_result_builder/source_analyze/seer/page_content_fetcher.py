@@ -71,10 +71,15 @@ class PageFetchResult:
 
     content: str
     method: str
+    raw_html: str = ""
     content_type: str = ""
     status_code: int = 0
     quality_status: str = "unknown"
     trace: tuple[str, ...] = ()
+    is_complete: bool = False
+    truncated: bool = False
+    original_char_count: int = 0
+    final_url: str = ""
 
 
 @dataclass(frozen=True)
@@ -89,6 +94,44 @@ def _limit_text(text: str, token_limit: int) -> str:
     if len(text) <= char_limit:
         return text
     return text[:char_limit].rstrip() + "... [truncated]"
+
+
+def _content_scope(text: str, token_limit: int, quality_status: str) -> dict[str, object]:
+    original_char_count = len(str(text or ""))
+    truncated = original_char_count > token_limit * CHARS_PER_TOKEN
+    return {
+        "is_complete": quality_status == "ok" and not truncated,
+        "truncated": truncated,
+        "original_char_count": original_char_count,
+    }
+
+
+def _page_fetch_result(
+    *,
+    text: str,
+    method: str,
+    max_tokens: int,
+    quality_status: str,
+    raw_html: str = "",
+    content_type: str = "",
+    status_code: int = 0,
+    trace: tuple[str, ...] = (),
+    final_url: str = "",
+) -> PageFetchResult:
+    scope = _content_scope(text, max_tokens, quality_status)
+    return PageFetchResult(
+        content=_limit_text(text, max_tokens),
+        method=method,
+        raw_html=raw_html[:2_000_000],
+        content_type=content_type,
+        status_code=status_code,
+        quality_status=quality_status,
+        trace=trace,
+        is_complete=bool(scope["is_complete"]),
+        truncated=bool(scope["truncated"]),
+        original_char_count=int(scope["original_char_count"]),
+        final_url=str(final_url or "").strip(),
+    )
 
 
 def _normalize_extracted_text(text: str) -> str:
@@ -193,7 +236,7 @@ def _extract_headings(soup) -> list[str]:
     return lines[:20]
 
 
-def _extract_tables(soup, *, max_tables: int = 5, max_rows: int = 12, max_cols: int = 8) -> list[str]:
+def _extract_tables(soup, *, max_tables: int = 8, max_rows: int = 40, max_cols: int = 12) -> list[str]:
     if soup is None:
         return []
     tables: list[str] = []
@@ -463,7 +506,7 @@ def _should_try_playwright(
     return False
 
 
-def _fetch_with_playwright(url: str) -> tuple[str, str] | None:
+def _fetch_with_playwright(url: str) -> tuple[str, str, str] | None:
     try:
         from playwright.sync_api import sync_playwright  # type: ignore
     except Exception:
@@ -483,6 +526,7 @@ def _fetch_with_playwright(url: str) -> tuple[str, str] | None:
             page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
             page.wait_for_timeout(500)
             text = page.locator("body").inner_text(timeout=5000)
+            html = page.content()
             browser.close()
     except Exception as exc:
         logger.debug("Playwright fetch failed for %s: %s", url, exc)
@@ -490,8 +534,18 @@ def _fetch_with_playwright(url: str) -> tuple[str, str] | None:
 
     text = _normalize_extracted_text(text)
     if text:
-        return text, "playwright_body_text"
+        return text, "playwright_body_text", html
     return None
+
+
+def _browser_result_parts(value: object) -> tuple[str, str, str]:
+    """接受測試替身的二元素結果與正式瀏覽器的三元素結果。"""
+    if not isinstance(value, tuple) or len(value) < 2:
+        return "", "", ""
+    text = str(value[0] or "")
+    method = str(value[1] or "")
+    html = str(value[2] or "") if len(value) >= 3 else ""
+    return text, method, html
 
 
 def _extract_html_text(html: str, url: str) -> _ExtractionResult | None:
@@ -533,7 +587,7 @@ def _extract_html_text(html: str, url: str) -> _ExtractionResult | None:
         trace.append(f"main:{main_method}:{len(main_text)}")
 
     tables = _extract_tables(soup)
-    section = _section("Tables", tables, max_chars=5000)
+    section = _section("Tables", tables, max_chars=12000)
     if section:
         sections.append(section)
         trace.append(f"tables:{len(tables)}")
@@ -560,7 +614,29 @@ def _extract_html_text(html: str, url: str) -> _ExtractionResult | None:
     return _ExtractionResult(text=text, method=method, trace=tuple(trace))
 
 
-def _fetch_raw_content(url: str, *, max_tokens: int) -> PageFetchResult | None:
+def _fetch_raw_content(
+    url: str,
+    *,
+    max_tokens: int,
+    force_browser: bool = False,
+) -> PageFetchResult | None:
+    if force_browser:
+        browser_extracted = _fetch_with_playwright(url)
+        text, method, browser_html = _browser_result_parts(browser_extracted)
+        if text:
+            quality_status = _content_quality_status(text, min_chars=160)
+            return _page_fetch_result(
+                text=text,
+                method=method,
+                raw_html=browser_html[:2_000_000],
+                max_tokens=max_tokens,
+                content_type="text/html",
+                status_code=200,
+                quality_status=quality_status,
+                trace=("playwright_forced", f"quality:{quality_status}"),
+                final_url=url,
+            )
+
     response = None
     try:
         response = requests.get(
@@ -582,20 +658,19 @@ def _fetch_raw_content(url: str, *, max_tokens: int) -> PageFetchResult | None:
         trace.append(f"http_error:{status_code}")
         if _should_try_playwright(status_code=status_code):
             browser_extracted = _fetch_with_playwright(url)
-            if (
-                isinstance(browser_extracted, tuple)
-                and len(browser_extracted) == 2
-                and browser_extracted[0]
-            ):
-                text, method = browser_extracted
+            text, method, browser_html = _browser_result_parts(browser_extracted)
+            if text:
                 quality_status = _content_quality_status(text)
-                return PageFetchResult(
-                    content=_limit_text(text, max_tokens),
+                return _page_fetch_result(
+                    text=text,
                     method=method,
+                    raw_html=browser_html[:2_000_000],
+                    max_tokens=max_tokens,
                     content_type=content_type,
                     status_code=status_code,
                     quality_status=quality_status,
                     trace=tuple(trace + ["playwright_fallback:http_error", f"quality:{quality_status}"]),
+                    final_url=url,
                 )
         return None
 
@@ -604,26 +679,30 @@ def _fetch_raw_content(url: str, *, max_tokens: int) -> PageFetchResult | None:
         if extracted is not None:
             text, method = extracted
             quality_status = _content_quality_status(text, min_chars=160)
-            return PageFetchResult(
-                content=_limit_text(text, max_tokens),
+            return _page_fetch_result(
+                text=text,
                 method=method,
+                max_tokens=max_tokens,
                 content_type=content_type,
                 status_code=status_code,
                 quality_status=quality_status,
                 trace=tuple(trace + [f"pdf:{method}", f"quality:{quality_status}"]),
+                final_url=str(getattr(response, "url", "") or url),
             )
         return None
 
     if "text/plain" in content_type.lower():
         text = _normalize_extracted_text(response.text)
         quality_status = _content_quality_status(text, min_chars=160)
-        return PageFetchResult(
-            content=_limit_text(text, max_tokens),
+        return _page_fetch_result(
+            text=text,
             method="text_plain",
+            max_tokens=max_tokens,
             content_type=content_type,
             status_code=status_code,
             quality_status=quality_status,
             trace=tuple(trace + ["text_plain", f"quality:{quality_status}"]),
+            final_url=str(getattr(response, "url", "") or url),
         )
 
     html = response.text
@@ -647,12 +726,8 @@ def _fetch_raw_content(url: str, *, max_tokens: int) -> PageFetchResult | None:
         status_code=status_code,
     ):
         browser_extracted = _fetch_with_playwright(url)
-        if (
-            isinstance(browser_extracted, tuple)
-            and len(browser_extracted) == 2
-            and browser_extracted[0]
-        ):
-            browser_text, browser_method = browser_extracted
+        browser_text, browser_method, browser_html = _browser_result_parts(browser_extracted)
+        if browser_text:
             browser_quality = _content_quality_status(browser_text, min_chars=160)
             if (
                 quality_status != "ok"
@@ -661,6 +736,7 @@ def _fetch_raw_content(url: str, *, max_tokens: int) -> PageFetchResult | None:
             ):
                 text, method = browser_text, browser_method
                 quality_status = browser_quality
+                html = browser_html or html
                 trace.append("playwright_fallback:used")
                 trace.append(f"quality:{quality_status}")
             else:
@@ -669,13 +745,16 @@ def _fetch_raw_content(url: str, *, max_tokens: int) -> PageFetchResult | None:
     if not text:
         return None
 
-    return PageFetchResult(
-        content=_limit_text(text, max_tokens),
+    return _page_fetch_result(
+        text=text,
         method=method,
+        raw_html=html[:2_000_000],
+        max_tokens=max_tokens,
         content_type=content_type,
         status_code=status_code,
         quality_status=quality_status,
         trace=tuple(trace),
+        final_url=str(getattr(response, "url", "") or url),
     )
 
 
@@ -683,8 +762,13 @@ def fetch_page_content_result(
     url: str,
     *,
     max_tokens: int = 2000,
+    force_browser: bool = False,
 ) -> PageFetchResult | None:
-    return _fetch_raw_content(url, max_tokens=max_tokens)
+    return _fetch_raw_content(
+        url,
+        max_tokens=max_tokens,
+        force_browser=force_browser,
+    )
 
 
 def fetch_page_content(url: str, *, max_tokens: int = 2000) -> str | None:
@@ -740,6 +824,7 @@ class PageContentFetcher:
                     fetch_page_content_result,
                     source.url,
                     max_tokens=max_tokens_per_source,
+                    force_browser=source.access_mode == "browser",
                 ): source
                 for source in candidates
             }
@@ -769,10 +854,21 @@ class PageContentFetcher:
                     continue
 
                 source.raw_content = str(content).strip()
+                source.raw_html = str(result.raw_html or "").strip()
+                source.content_complete = bool(result.is_complete)
+                source.content_truncated = bool(result.truncated)
+                source.original_content_chars = int(result.original_char_count)
+                source.final_url = str(result.final_url or source.url)
                 source.fetched = True
                 source.should_fetch_full_page = False
                 source.filter_reasons.append("full_page_fetched")
                 source.filter_reasons.append(f"fetch_method:{result.method}")
+                source.filter_reasons.append(
+                    f"fetch_complete:{str(result.is_complete).lower()}"
+                )
+                source.filter_reasons.append(
+                    f"fetch_truncated:{str(result.truncated).lower()}"
+                )
                 fetched_count += 1
 
         return fetched_count

@@ -12,7 +12,7 @@ class BoggleDFSRouterHandler(SolverBackedRouterHandler):
         "Solve Boggle, word search, or letter-grid tasks by checking whether candidate "
         "words can be formed through adjacent grid cells."
     )
-    supported_attachment_types: set[str] = {".txt", ".json"}
+    supported_attachment_types: set[str] = {".txt", ".json", ".png", ".jpg", ".jpeg", ".webp"}
     routing_terms = {"boggle", "grid", "letter", "word", "search", "formed"}
     missing_inputs = ["grid", "candidate_words"]
     input_schema = io_contract(

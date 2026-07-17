@@ -40,6 +40,7 @@ class ToolCache:
         tool_args: dict[str, Any],
         agent_id: str,
         stage: str,
+        runtime_context: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """
         依工具名稱與參數查詢快取，未命中時透過 ToolManager 執行工具。
@@ -83,12 +84,17 @@ class ToolCache:
                     error_message="tool_manager with execute_tool is not available",
                 )
             else:
+                execute_kwargs = {
+                    "agent_id": agent_id,
+                    "stage": stage,
+                }
+                if runtime_context is not None:
+                    execute_kwargs["runtime_context"] = runtime_context
                 result = dict(
                     tool_manager.execute_tool(
                         tool_name,
                         tool_args,
-                        agent_id=agent_id,
-                        stage=stage,
+                        **execute_kwargs,
                     )
                 )
         except Exception as exc:

@@ -13,7 +13,10 @@ class TextExtractionRouterHandler:
         "Extract exact values from closed text, including quoted text, nth word, nth sentence, "
         "URLs, emails, IDs, capitalized names, and occurrence counts."
     )
-    supported_attachment_types: set[str] = {".txt", ".md", ".json", ".csv", ".tsv"}
+    supported_attachment_types: set[str] = {
+        ".txt", ".md", ".json", ".jsonld", ".csv", ".tsv", ".docx", ".pdf",
+        ".pdb", ".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif",
+    }
     routing_terms = {"extract", "find", "count", "occurrence", "word", "sentence", "url", "email", "quoted", "id"}
     input_schema = io_contract(
         name,
@@ -48,9 +51,10 @@ class TextExtractionRouterHandler:
         )
 
     def build_input(self, handler_input: HandlerInput) -> dict[str, Any]:
+        adapted = handler_input.adapted_inputs()
         return {
             "question": handler_input.question,
-            "source_text": self._source_text(handler_input),
+            "source_text": str(adapted.get("source_text") or self._source_text(handler_input)),
             "operation": self._operation(handler_input.question),
             "ordinal": self._ordinal(handler_input.question),
             "target": self._target(handler_input.question),

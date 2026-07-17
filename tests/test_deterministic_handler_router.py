@@ -177,7 +177,14 @@ class DeterministicHandlerRouterTests(unittest.TestCase):
                     status="ok",
                     answer="42",
                     evidence_text="Deterministic handler evidence:\nAnswer: 42",
-                    structured_result={"source": "fake"},
+                    structured_result={
+                        "source": "fake",
+                        "output_contract": {"required_outputs": ["answer"]},
+                    },
+                    input_summary={"expression": "40 + 2"},
+                    output_type="final_answer",
+                    semantic_role="arithmetic_result",
+                    supporting_inputs=["40 + 2"],
                 )
 
         runner = EvidenceRunner(

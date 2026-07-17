@@ -110,7 +110,8 @@ class FallbackToolPlanner:
                 "connected_path",
             }
         )
-        if "search" in candidate_names and (routing.get("use_search") or needs_search_for_gap):
+        search_allowed = routing.get("search_allowed") is not False
+        if "search" in candidate_names and ((routing.get("use_search") and search_allowed) or needs_search_for_gap):
             steps.append(
                 ToolPlanStep(
                     tool_name="search",

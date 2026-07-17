@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from typing import Any, Protocol
 
 from tools.deterministic_solver.schemas import DeterministicSolverResult
@@ -41,12 +42,19 @@ class SolverBackedRouterHandler:
         self.algorithm = algorithm
 
     def build_input(self, handler_input: HandlerInput) -> dict[str, Any]:
+        adapted = handler_input.adapted_inputs()
+        combined_text = handler_input.combined_text()
+        if adapted:
+            combined_text = "\n".join(
+                part for part in [combined_text, json.dumps(adapted, ensure_ascii=False)] if part
+            )
         return {
             "question": handler_input.question,
             "attachment_context": handler_input.attachment_result,
             "search_context": handler_input.search_result,
-            "combined_text": handler_input.combined_text(),
-            "metadata": dict(handler_input.metadata or {}),
+            "combined_text": combined_text,
+            "metadata": {**dict(handler_input.metadata or {}), **adapted},
+            **adapted,
         }
 
     def match_input(self, handler_input: HandlerInput) -> HandlerMatch:

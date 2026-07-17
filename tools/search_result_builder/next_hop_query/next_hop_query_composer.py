@@ -7,9 +7,12 @@ from typing import Any
 from utils.network_utils import normalize_text
 
 from ..config import EvidenceItem
-from ..query.search_intent_planner import SearchIntentPlan
+from ..query.relation_plan import RelationPlan
+from ..query.search_intent_plan import SearchIntentPlan
+from ..query.source_requirement import SearchQueryRequest, SourceRequirement
 from .query_token_selector import QueryTokenSelector
 from .rag_filter import RAGFilterResult
+from .relation_goal_resolver import RelationGoalResolver
 
 
 @dataclass(frozen=True)
@@ -31,6 +34,22 @@ class NextHopComposition:
     selected_query_tokens: list[str] = field(default_factory=list)
     selected_evidence_spans: list[str] = field(default_factory=list)
     metadata: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class RelationHopRequest:
+    """Store one relation branch and its source-aware search request."""
+
+    goal_id: str
+    binding_value: str
+    request: SearchQueryRequest
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "goal_id": self.goal_id,
+            "binding_value": self.binding_value,
+            "request": self.request.to_dict(),
+        }
 
 
 class NextHopQueryComposer:
@@ -70,10 +89,81 @@ class NextHopQueryComposer:
         query_token_selector: QueryTokenSelector | None = None,
         max_evidence_spans: int = 3,
         max_query_chars: int = 260,
+        relation_resolver: RelationGoalResolver | None = None,
     ) -> None:
         self.query_token_selector = query_token_selector or QueryTokenSelector()
         self.max_evidence_spans = max(1, max_evidence_spans)
         self.max_query_chars = max(80, max_query_chars)
+        self.relation_resolver = relation_resolver or RelationGoalResolver()
+
+    def build_relation_requests(
+        self,
+        *,
+        relation_plan: RelationPlan,
+        constraints: list[str] | None = None,
+        max_requests: int = 2,
+    ) -> list[RelationHopRequest]:
+        """Compose independent next-hop branches from the active relation goal."""
+        goal = relation_plan.active_goal
+        if goal is None:
+            return []
+        subjects = self.relation_resolver.effective_subjects(relation_plan)
+        if not subjects:
+            return []
+
+        resolved_context = [
+            value
+            for completed_goal in relation_plan.goals
+            for value in [completed_goal.subject, *completed_goal.resolved_values]
+            if normalize_text(value)
+        ]
+        retained_constraints = []
+        for value in list(constraints or []):
+            cleaned = normalize_text(value)
+            if not cleaned or self._is_internal_requirement(cleaned):
+                continue
+            key = self._match_key(cleaned)
+            if any(
+                key and key in self._match_key(context)
+                for context in resolved_context
+            ):
+                continue
+            retained_constraints.append(cleaned)
+        output: list[RelationHopRequest] = []
+        seen: set[str] = set()
+        for subject in subjects:
+            query = self._clean_query(
+                " ".join(
+                    self._dedupe(
+                        [
+                            subject,
+                            goal.relation,
+                            goal.target,
+                            *retained_constraints,
+                        ]
+                    )
+                )
+            )
+            key = query.casefold()
+            if not query or key in seen:
+                continue
+            seen.add(key)
+            output.append(
+                RelationHopRequest(
+                    goal_id=goal.goal_id,
+                    binding_value=subject,
+                    request=SearchQueryRequest(
+                        query=query,
+                        source_requirement=SourceRequirement(
+                            source_kind=goal.source_kind,
+                            access_mode="search",
+                        ),
+                    ),
+                )
+            )
+            if len(output) >= max(1, max_requests):
+                break
+        return output
 
     def build_query(
         self,
@@ -290,4 +380,4 @@ class NextHopQueryComposer:
         )
 
 
-__all__ = ["NextHopComposition", "NextHopQueryComposer"]
+__all__ = ["NextHopComposition", "NextHopQueryComposer", "RelationHopRequest"]

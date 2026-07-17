@@ -7,9 +7,11 @@ from context.context_builder import ContextPacket
 from context.stage1_context import Stage1ContextBuilder
 from core.config import AgentConfig, AgentReasoningSummary, EachAgentReply
 from core.slm_agent import SLM_Agent
+from core.stage1_search_gate import Stage1SearchAccessState
 from core.stage1_tool_use_runner import Stage1ToolUseRunner
 from parsers import SelfReviewParser, Stage1ReplyParser
 from score import AgentAnswerAggregator, Stage1Aggregator
+from tools.attachment_workspace import AttachmentWorkspace
 
 
 class Stage1Runner:
@@ -58,6 +60,9 @@ class Stage1Runner:
         self_review_parser: SelfReviewParser | None = None,
         trajectory_runner: Stage1ToolUseRunner | None = None,
         unload_previous_slm_on_switch: bool = True,
+        prepared_search_refinement_budget: int = 1,
+        supplemental_search_evidence_max_items: int = 3,
+        attachment_workspace: AttachmentWorkspace | None = None,
     ) -> None:
         self.question = question
         self.agents = agents
@@ -79,6 +84,13 @@ class Stage1Runner:
         )
         self.tool_manager = tool_manager
         self.unload_previous_slm_on_switch = bool(unload_previous_slm_on_switch)
+        self.prepared_search_refinement_budget = int(prepared_search_refinement_budget)
+        self.supplemental_search_evidence_max_items = max(
+            1,
+            int(supplemental_search_evidence_max_items),
+        )
+        self.search_access_state: Stage1SearchAccessState | None = None
+        self.attachment_workspace = attachment_workspace
         self.model_lifecycle_records: list[dict[str, Any]] = []
         self.model_switch_stop_records = self.model_lifecycle_records
 
@@ -98,6 +110,13 @@ class Stage1Runner:
         }
         if not self.agents or self.stage1_runs_per_agent <= 0:
             return []
+
+        if self.search_access_state is None:
+            self.search_access_state = Stage1SearchAccessState.from_evidence(
+                evidence,
+                refinement_budget=self.prepared_search_refinement_budget,
+                supplemental_evidence_max_items=self.supplemental_search_evidence_max_items,
+            )
 
         self.model_lifecycle_records = []
         self.model_switch_stop_records = self.model_lifecycle_records
@@ -447,6 +466,103 @@ class Stage1Runner:
         )
         return [{"role": "user", "content": content}]
 
+    def review_final_candidates(
+        self,
+        *,
+        candidate_answers: list[str],
+        evidence_context: str = "",
+        preferred_agent_id: str = "",
+    ) -> dict[str, Any]:
+        """
+        在分層 winner selection 完全平手時執行一次候選答案對比審查。
+
+        Args:
+         - candidate_answers: 僅包含平手候選的短答案清單。
+         - evidence_context: 經截短的必要 search、attachment 或 tool evidence。
+         - preferred_agent_id: 優先負責審查的 Agent ID。
+
+        Returns:
+         - dict[str, Any]: 審查答案、解析狀態、token usage 與錯誤資訊。
+        """
+        candidates = [
+            str(answer or "").strip()
+            for answer in candidate_answers
+            if str(answer or "").strip()
+        ]
+        metadata: dict[str, Any] = {
+            "applied": False,
+            "candidate_answers": candidates,
+            "review_agent_id": "",
+            "answer": "",
+            "raw_reply": "",
+            "parse_completed": False,
+            "error": "",
+        }
+        if len(candidates) < 2 or not self.agents:
+            metadata["error"] = "insufficient_review_candidates"
+            return metadata
+        config = next(
+            (
+                agent
+                for agent in self.agents
+                if agent.agent_id == preferred_agent_id
+            ),
+            self.agents[0],
+        )
+        metadata["review_agent_id"] = config.agent_id
+        candidate_lines = "\n".join(
+            f"- {answer}" for answer in candidates
+        )
+        content = (
+            "You are comparing tied final-answer candidates.\n\n"
+            f"Question:\n{self.question}\n\n"
+            f"Candidate Answers:\n{candidate_lines}\n\n"
+            f"Evidence:\n{str(evidence_context or '').strip() or 'None'}\n\n"
+            "Task:\n"
+            "Select the candidate that is directly supported by the evidence and satisfies the question.\n\n"
+            "Rules:\n"
+            "- Select only one answer from Candidate Answers.\n"
+            "- Do not create a new answer.\n"
+            "- If neither candidate is supported, return unresolved.\n"
+            "- Output JSON only.\n\n"
+            "Return one of:\n"
+            '{"type":"final_answer","answer":"..."}\n'
+            '{"type":"final_answer","answer":"unresolved"}\n'
+        )
+        try:
+            raw_reply, prompt_tokens, completion_tokens = self.get_agent(
+                config
+            ).invoke_with_usage([{"role": "user", "content": content}])
+            self.record_token_usage(
+                stage="stage1",
+                prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens,
+            )
+            metadata["raw_reply"] = raw_reply
+            parsed = self.self_review_parser.parse(raw_reply)
+            metadata["parse"] = parsed.to_dict()
+            if parsed.reply_type == "final_answer" and parsed.answer:
+                metadata.update(
+                    {
+                        "applied": True,
+                        "answer": str(parsed.answer).strip(),
+                        "parse_completed": bool(parsed.parse_completed),
+                        "error": parsed.error,
+                    }
+                )
+            else:
+                metadata["error"] = parsed.error or "contrastive_review_parse_failed"
+        except Exception as exc:
+            metadata["error"] = (
+                f"contrastive_review_call_failed:{type(exc).__name__}: {exc}"
+            )
+        finally:
+            self._unload_agent_model(
+                config=config,
+                phase="after_contrastive_winner_review",
+            )
+        return metadata
+
     def _normalize_review_tool_name(self, tool_name: str) -> str:
         name = str(tool_name or "").strip()
         if name in {"calculator", "python"}:
@@ -598,6 +714,15 @@ class Stage1Runner:
             - list[ContextPacket]: 依優先權標記的 evidence packets。
         """
         packets: list[ContextPacket] = []
+        if evidence.get("answer_requirement"):
+            packets.append(
+                ContextPacket(
+                    packet_type="answer_requirement",
+                    content=evidence["answer_requirement"],
+                    priority=95,
+                    metadata={"source": "attachment_strategy"},
+                )
+            )
         if evidence.get("solver_result"):
             packets.append(
                 ContextPacket(
@@ -674,6 +799,8 @@ class Stage1Runner:
                 run_index=run_index,
                 attachment=self.attachment,
                 unload_after_run=unload_after_call,
+                search_access_state=self.search_access_state,
+                attachment_workspace=self.attachment_workspace,
             )
             self.record_token_usage(
                 stage="stage1",
@@ -746,6 +873,13 @@ class Stage1Runner:
             validity_labels=validity_labels,
             context_budget=context_budget,
         )
+
+    def search_gate_metadata(self) -> dict[str, Any]:
+        """Return the task-scoped Stage1 search gate diagnostics."""
+
+        if self.search_access_state is None:
+            return {}
+        return self.search_access_state.snapshot()
 
 
 __all__ = ["Stage1Runner"]

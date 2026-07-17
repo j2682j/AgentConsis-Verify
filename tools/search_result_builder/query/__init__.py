@@ -8,8 +8,12 @@ from .query_coverage import (
     QueryCoverageResult,
 )
 from .query_generator import QueryGenerator
-from .search_intent_planner import SearchIntentPlan, SearchIntentPlanner
+from .question_role_extractor import QuestionRole, QuestionRoleCandidate, QuestionRoleExtractor
+from .relation_plan import RelationGoal, RelationPlan
+from .search_intent_plan import SearchIntentPlan
+from .source_requirement import SearchQueryRequest, SourceRequirement
 from .semantic_impact import TokenSalient
+from .span_classifier import ClassifiedSpan, SpanRoleClassifier
 from .span_repair import SalientSpan
 
 __all__ = [
@@ -18,9 +22,17 @@ __all__ = [
     "QueryConstraint",
     "QueryCoverageChecker",
     "QueryCoverageResult",
+    "QuestionRole",
+    "QuestionRoleCandidate",
+    "QuestionRoleExtractor",
+    "RelationGoal",
+    "RelationPlan",
     "SearchIntentPlan",
-    "SearchIntentPlanner",
+    "SearchQueryRequest",
+    "SourceRequirement",
     "SalienceQueryCandidate",
     "SalientSpan",
+    "ClassifiedSpan",
+    "SpanRoleClassifier",
     "TokenSalient",
 ]

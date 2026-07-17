@@ -6,7 +6,6 @@ from types import SimpleNamespace
 from tools.search_result_builder.query import (
     QueryCoverageChecker,
     SalienceQueryCandidate,
-    SearchIntentPlan,
 )
 
 
@@ -21,23 +20,6 @@ class FakeGenerator:
     def generate(self, question, *, num_candidates):
         del question, num_candidates
         return self.candidates
-
-
-class FakeIntentPlanner:
-    def __init__(self, plan=None):
-        self.plan_value = plan or SearchIntentPlan(
-            search_needed=True,
-            intent="fact",
-            target="Find the source.",
-            must_include=[],
-            avoid_terms=[],
-            preferred_domain="",
-        )
-
-    def plan(self, question):
-        del question
-        return self.plan_value
-
 
 class QueryCoverageTests(unittest.TestCase):
     def checker(self) -> QueryCoverageChecker:
@@ -99,7 +81,7 @@ class QueryCoverageTests(unittest.TestCase):
             "Nedoshivina 2010 Kuznetzov Vietnamese specimens deposited city",
         )
 
-    def test_query_generator_applies_coverage_checker(self):
+    def test_query_generator_keeps_model_order_and_records_coverage_diagnostics(self):
         from tools.search_result_builder.query.query_generator import QueryGenerator
 
         candidates = [
@@ -120,7 +102,6 @@ class QueryCoverageTests(unittest.TestCase):
         generator = QueryGenerator(
             generator=FakeGenerator(candidates),
             coverage_checker=checker,
-            intent_planner=FakeIntentPlanner(),
         )
 
         plan = generator.plan(
@@ -130,7 +111,11 @@ class QueryCoverageTests(unittest.TestCase):
 
         self.assertEqual(
             plan["queries"][0],
-            "Nedoshivina 2010 Kuznetzov Vietnamese specimens deposited city",
+            "Vietnamese specimens deposited",
+        )
+        self.assertEqual(
+            plan["query_requests"][0]["query"],
+            "Vietnamese specimens deposited",
         )
         self.assertEqual(
             plan["query_coverage"]["score_formula"],

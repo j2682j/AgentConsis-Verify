@@ -5,7 +5,9 @@ from pathlib import Path
 from typing import Any
 
 from .formatters import format_attachment_context, truncate_text
-from .models import AttachmentReadResult, AttachmentReaderConfig
+from .models import AttachmentReadResult, AttachmentReaderConfig, ParsedAttachmentPayload
+from .payload_builder import AttachmentPayloadBuilder
+from .profile_builder import AttachmentProfileBuilder
 from .readers.archive_reader import ArchiveAttachmentReader
 from .readers.code_reader import CodeAttachmentReader
 from .readers.excel_reader import ExcelAttachmentReader
@@ -37,6 +39,7 @@ class AttachmentEvidenceBuilder:
         max_zip_file_bytes: int = 8 * 1024 * 1024,
         max_zip_total_bytes: int = 40 * 1024 * 1024,
         max_zip_depth: int = 1,
+        profile_builder: AttachmentProfileBuilder | None = None,
     ) -> None:
         """初始化物件與必要狀態。"""
         self.config = AttachmentReaderConfig(
@@ -44,7 +47,7 @@ class AttachmentEvidenceBuilder:
             max_table_rows=max_table_rows,
             max_pdf_pages=max_pdf_pages,
             python_timeout=python_timeout,
-            vision_model=vision_model or os.getenv("OLLAMA_VISION_MODEL", "qwen3-vl:8b"),
+            vision_model=vision_model or os.getenv("OLLAMA_VISION_MODEL", "qwen3-vl:4b"),
             vision_timeout=vision_timeout
             or int(os.getenv("OLLAMA_VISION_TIMEOUT", os.getenv("OLLAMA_TIMEOUT", "180"))),
             audio_model_size=audio_model_size or os.getenv("FASTER_WHISPER_MODEL_SIZE", "base"),
@@ -62,13 +65,15 @@ class AttachmentEvidenceBuilder:
         self.code_reader = CodeAttachmentReader(self.config)
         self.media_reader = MediaAttachmentReader(self.config)
         self.archive_reader = ArchiveAttachmentReader(self.config, self)
+        self.profile_builder = profile_builder or AttachmentProfileBuilder()
+        self.payload_builder = AttachmentPayloadBuilder(max_table_rows=max_table_rows)
 
     def build(self, question: str, attachment: dict[str, Any] | None) -> dict[str, Any]:
         """build 的主要實作。"""
         if not attachment:
             return self._empty()
 
-        file_path = Path(str(attachment.get("file_path", "") or ""))
+        file_path = Path(str(attachment.get("file_path") or attachment.get("path") or ""))
         file_name = str(attachment.get("file_name", "") or file_path.name)
         extension = str(attachment.get("extension", "") or file_path.suffix).lower()
         warnings: list[str] = []
@@ -87,10 +92,24 @@ class AttachmentEvidenceBuilder:
                 file_path=file_path,
                 extension=extension,
                 warnings=warnings,
+                content="",
+                read_ok=False,
             )
 
         result = self.read_file(question=question, file_path=file_path, extension=extension)
         content = truncate_text(result.content, self.config.max_text_chars)
+        parsed_payload = result.parsed_payload or self.payload_builder.build(
+            file_path=file_path,
+            extension=extension,
+            content=content,
+            reader=result.reader,
+            reader_metadata=result.metadata,
+        )
+        structured_error = str(
+            parsed_payload.native_metadata.get("structured_parse_error") or ""
+        ).strip()
+        if structured_error:
+            result.warnings.append(f"structured payload unavailable: {structured_error}")
         context = format_attachment_context(
             file_name=file_name,
             file_path=file_path,
@@ -100,11 +119,15 @@ class AttachmentEvidenceBuilder:
         )
         return self._result(
             context=context,
-            used=True,
+            used=result.ok,
             file_path=file_path,
             extension=extension,
             warnings=result.warnings,
             reader=result.reader,
+            content=content,
+            read_ok=result.ok,
+            reader_metadata=result.metadata,
+            parsed_payload=parsed_payload,
         )
 
     def read_file(
@@ -189,7 +212,14 @@ class AttachmentEvidenceBuilder:
 
     def _empty(self) -> dict[str, Any]:
         """_empty 的內部輔助實作。"""
-        return {"context": "", "used": False, "tool_usage": [], "metadata": {}}
+        return {
+            "context": "",
+            "profile": {},
+            "parsed_payload": {},
+            "used": False,
+            "tool_usage": [],
+            "metadata": {},
+        }
 
     def _result(
         self,
@@ -200,12 +230,51 @@ class AttachmentEvidenceBuilder:
         extension: str,
         warnings: list[str],
         reader: str = "attachment_reader",
+        content: str = "",
+        read_ok: bool = False,
+        reader_metadata: dict[str, Any] | None = None,
+        parsed_payload: ParsedAttachmentPayload | None = None,
     ) -> dict[str, Any]:
         """_result 的內部輔助實作。"""
         failed = any("failed" in warning for warning in warnings)
         output_text = context if used else "\n".join(warnings)
+        payload = parsed_payload or ParsedAttachmentPayload(
+            provenance={
+                "source": "attachment_reader",
+                "file_path": str(file_path),
+                "file_type": extension,
+                "reader": reader,
+            }
+        )
+        profile = self.profile_builder.build(
+            file_path=file_path,
+            extension=extension,
+            read_ok=read_ok,
+            reader=reader,
+            content=content,
+            warnings=warnings,
+            reader_metadata=reader_metadata or {},
+            parsed_payload=payload,
+        )
+        payload.provenance.update(
+            {
+                "source": "attachment_reader",
+                "file_path": str(file_path),
+                "file_type": extension,
+                "reader": reader,
+                "parse_status": profile.parse_status,
+            }
+        )
+        parsed_payload_dict = {
+            **payload.to_dict(),
+            "content": content,
+            "reader": reader,
+            "reader_metadata": dict(reader_metadata or {}),
+        }
         return {
             "context": context if used else "",
+            "profile": profile.to_dict(),
+            "parsed_payload": parsed_payload_dict,
             "used": used,
             "tool_usage": [
                 {
@@ -217,6 +286,7 @@ class AttachmentEvidenceBuilder:
                         "file_type": extension,
                         "reader": reader,
                         "warnings": warnings,
+                        "profile": profile.to_dict(),
                     },
                     "error": "; ".join(warnings) if warnings and (failed or not used) else None,
                 }
@@ -226,6 +296,6 @@ class AttachmentEvidenceBuilder:
                 "file_type": extension,
                 "reader": reader,
                 "warnings": warnings,
+                "profile": profile.to_dict(),
             },
         }
-

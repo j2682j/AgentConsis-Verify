@@ -94,7 +94,19 @@ class ToolResultValidator:
             reasons.append("empty_output")
         if candidate_answer and self.answer_validator.is_tool_call_like(candidate_answer):
             reasons.append("candidate_is_tool_call")
-        if evidence_text and self.answer_validator.is_tool_call_like(evidence_text):
+        profile = payload.get("profile")
+        structured_attachment_text = (
+            tool_name == "attachment_reader"
+            and ok
+            and bool(evidence_text)
+            and isinstance(profile, dict)
+            and str(profile.get("parse_status") or "") in {"success", "partial"}
+        )
+        if (
+            evidence_text
+            and not structured_attachment_text
+            and self.answer_validator.is_tool_call_like(evidence_text)
+        ):
             reasons.append("evidence_is_tool_call")
 
         valid = ok and not error and not missing_inputs and bool(evidence_text or candidate_answer)

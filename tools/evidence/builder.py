@@ -7,7 +7,7 @@ import time
 from typing import Any
 
 from tools.attachment_reader import AttachmentEvidenceBuilder
-from tools.search_result_builder.evidence import EvidenceConverter
+from tools.search_result_builder.evidence import EvidenceConverter, EvidenceSelectionContract
 from tools.search_result_builder.retrieval_control import WebRetrievalControl
 from tools.system_routing_contract import SystemRoutingContract
 from utils.network_utils import normalize_text, should_use_calculator
@@ -406,14 +406,22 @@ class EvidenceBuilder:
             )
             output_dict = self._dataclass_to_dict(output)
             converter = EvidenceConverter()
+            contract = self._evidence_selection_contract(
+                question=question,
+                output_dict=output_dict,
+            )
             evidence_items = converter.convert_web_retrieval_output(
                 output_dict,
-                question=question,
+                contract=contract,
             )
-            context = self._render_evidence_items(evidence_items)
+            context = self._render_evidence_items(
+                evidence_items,
+                contract=contract,
+            )
             query_plan = {
                 **output_dict,
                 "evidence_items": evidence_items,
+                "evidence_selection_contract": contract.to_dict(),
                 "evidence_conversion": self._dataclass_to_dict(
                     converter.last_diagnostics,
                 ),
@@ -452,6 +460,78 @@ class EvidenceBuilder:
             "best_candidate": None,
         }
 
+    def _evidence_selection_contract(
+        self,
+        *,
+        question: str,
+        output_dict: dict[str, Any],
+    ) -> EvidenceSelectionContract:
+        diagnostics = output_dict.get("diagnostics") or {}
+        query_plan = diagnostics.get("query_plan") or {}
+        state = diagnostics.get("search_intent_plan") or {}
+        plan_sources = self._contract_plan_sources(diagnostics, query_plan, state)
+        answer_requirement = self._first_contract_text(
+            plan_sources,
+            "answer_requirement",
+            "answer_role",
+            "role_text",
+        )
+        answer_target = self._first_contract_text(
+            plan_sources,
+            "answer_target",
+            "target",
+        )
+        must_include: list[Any] = []
+        for source in self._contract_list_values(plan_sources, "must_include"):
+            if isinstance(source, list):
+                must_include.extend(source)
+        return EvidenceSelectionContract.from_parts(
+            question=question,
+            answer_requirement=answer_requirement,
+            answer_target=answer_target,
+            must_include=must_include,
+        )
+
+    def _contract_plan_sources(
+        self,
+        diagnostics: dict[str, Any],
+        query_plan: dict[str, Any],
+        state: dict[str, Any],
+    ) -> list[dict[str, Any]]:
+        sources: list[dict[str, Any]] = []
+        for source in (state, query_plan, diagnostics):
+            if isinstance(source, dict):
+                sources.append(source)
+                for key in ("query_state", "search_intent_plan", "answer_role"):
+                    nested = source.get(key)
+                    if isinstance(nested, dict):
+                        sources.append(nested)
+        return sources
+
+    def _first_contract_text(
+        self,
+        sources: list[dict[str, Any]],
+        *field_names: str,
+    ) -> str:
+        for source in sources:
+            for field_name in field_names:
+                text = normalize_text(str(source.get(field_name, "") or ""))
+                if text and text.casefold() not in {"unknown", "none", "null", "n/a"}:
+                    return text
+        return ""
+
+    def _contract_list_values(
+        self,
+        sources: list[dict[str, Any]],
+        field_name: str,
+    ) -> list[Any]:
+        values: list[Any] = []
+        for source in sources:
+            value = source.get(field_name)
+            if isinstance(value, list):
+                values.append(value)
+        return values
+
     def _ensure_web_retrieval_control(self) -> Any:
         """
         建立或重用 WebRetrievalControl。
@@ -489,8 +569,13 @@ class EvidenceBuilder:
             / f"{digest}_{timestamp}"
         )
 
-    def _render_evidence_items(self, evidence_items: list[dict[str, Any]]) -> str:
+    def _render_evidence_items(
+        self,
+        evidence_items: list[dict[str, Any]],
+        contract: EvidenceSelectionContract | None = None,
+    ) -> str:
         lines = ["Evidence:"]
+        lines.extend(self._render_answer_requirement_lines(contract))
         if not evidence_items:
             lines.append("None")
             return "\n".join(lines)
@@ -503,6 +588,21 @@ class EvidenceBuilder:
                 ]
             )
         return "\n".join(lines).strip()
+
+    def _render_answer_requirement_lines(
+        self,
+        contract: EvidenceSelectionContract | None,
+    ) -> list[str]:
+        if contract is None:
+            return []
+        lines: list[str] = []
+        if contract.answer_requirement:
+            lines.append(f"Answer Requirement: {contract.answer_requirement}")
+        if contract.answer_target:
+            lines.append(f"Answer Target: {contract.answer_target}")
+        if lines:
+            lines.append("")
+        return lines
 
     def _dataclass_to_dict(self, value: Any) -> Any:
         if is_dataclass(value):

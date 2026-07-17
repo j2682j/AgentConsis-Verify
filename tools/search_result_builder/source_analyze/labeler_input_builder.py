@@ -93,11 +93,12 @@ class LabelerInputBuilder:
     def _build_document(self, document: dict[str, Any]) -> LabelerPreparedInput:
         title = normalize_text(str(document.get("title", "") or ""))
         passage = normalize_text(str(document.get("text", "") or ""))
+        record_type = normalize_text(str(document.get("record_type", "") or ""))
         parts: list[str] = []
-        if title:
-            parts.append(f"Source title: {title}")
+        if title and record_type in {"", "passage"}:
+            parts.append(title)
         if passage:
-            parts.append(f"Passage: {passage}")
+            parts.append(passage)
         labeler_text = normalize_text("\n".join(parts)) or passage
         diagnostics = {
             "input_mode": "direct_corpus_passage",
@@ -105,6 +106,9 @@ class LabelerInputBuilder:
             "labeler_input_char_count": len(labeler_text),
             "selected_passage": passage,
             "source_title": title,
+            "record_type": record_type or "passage",
+            "record_id": normalize_text(str(document.get("record_id", "") or "")),
+            "record_fields": self._record_fields(document),
             "original_char_count": len(passage),
             "selected_char_count": len(passage),
             "selected_sentence_count": 0,
@@ -118,15 +122,24 @@ class LabelerInputBuilder:
             diagnostics=diagnostics,
         )
 
+    def _record_fields(self, document: dict[str, Any]) -> dict[str, Any]:
+        if normalize_text(str(document.get("record_type", "") or "")) in {"", "passage"}:
+            return {}
+        return {
+            "title": document.get("title", ""),
+            "authors": list(document.get("authors") or []),
+            "date": document.get("date", ""),
+            "source": document.get("source", ""),
+            "content_url": document.get("content_url", ""),
+            "language": document.get("language", ""),
+            "country": document.get("country", ""),
+            "parent_url": document.get("parent_url", ""),
+            "extra_fields": dict(document.get("extra_fields") or {}),
+        }
+
     def _question_context(self, *, question: str, current_query: str) -> str:
-        return normalize_text(
-            "\n".join(
-                [
-                    f"Question: {normalize_text(question)}",
-                    f"Search query: {normalize_text(current_query)}",
-                ]
-            )
-        )
+        current = normalize_text(current_query)
+        return current or normalize_text(question)
 
 
 __all__ = [

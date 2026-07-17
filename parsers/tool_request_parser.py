@@ -36,11 +36,20 @@ class ToolRequestParser:
         if isinstance(parsed, dict):
             reply_type = str(parsed.get("type", "")).strip().lower()
             if reply_type == "tool_request":
+                tool_args = (
+                    dict(parsed.get("tool_args"))
+                    if isinstance(parsed.get("tool_args"), dict)
+                    else {}
+                )
+                if parsed.get("missing_information") and "missing_information" not in tool_args:
+                    tool_args["missing_information"] = str(
+                        parsed.get("missing_information") or ""
+                    ).strip()
                 return {
                     "type": "tool_request",
                     "reasoning_step": str(parsed.get("reasoning_step", "") or "").strip(),
                     "tool_name": str(parsed.get("tool_name", "") or "").strip(),
-                    "tool_args": parsed.get("tool_args") if isinstance(parsed.get("tool_args"), dict) else {},
+                    "tool_args": tool_args,
                     "reasoning": "",
                     "final_answer": "",
                     "structured_output": {},

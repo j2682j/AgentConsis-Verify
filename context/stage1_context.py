@@ -19,6 +19,9 @@ Return JSON only. Do not include markdown or text outside JSON.
 STAGE1_USER_PROMPT = """Question:
 {question}
 
+Answer_Requirement:
+{answer_requirement}
+
 Solver_Result:
 {solver_result}
 
@@ -58,7 +61,12 @@ class Stage1ContextBuilder(ContextBuilder):
     """Build Stage1 agent chat messages from question and evidence packets."""
 
     REQUIRED_PACKET_TYPES = {"question", "system_instruction"}
-    EVIDENCE_PACKET_TYPES = {"search_result", "attachment_result", "solver_result"}
+    EVIDENCE_PACKET_TYPES = {
+        "answer_requirement",
+        "search_result",
+        "attachment_result",
+        "solver_result",
+    }
 
     def __init__(
         self,
@@ -111,11 +119,13 @@ class Stage1ContextBuilder(ContextBuilder):
         structured = {
             "system": STAGE1_SYSTEM_PROMPT,
             "question": "",
+            "answer_requirement": self.config.none_text,
             "search_result": self.config.none_text,
             "attachment_result": self.config.none_text,
             "solver_result": self.config.none_text,
         }
         buckets = {
+            "answer_requirement": [],
             "search_result": [],
             "attachment_result": [],
             "solver_result": [],
@@ -179,6 +189,7 @@ class Stage1ContextBuilder(ContextBuilder):
     def render(self, compressed: dict[str, Any], **_: Any) -> list[dict[str, str]]:
         user_content = STAGE1_USER_PROMPT.format(
             question=compressed["question"],
+            answer_requirement=compressed["answer_requirement"],
             solver_result=compressed["solver_result"],
             attachment_result=compressed["attachment_result"],
             search_result=compressed["search_result"],

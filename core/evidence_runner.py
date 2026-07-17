@@ -8,9 +8,12 @@ import time
 from typing import Any
 
 from tools.attachment_reader import AttachmentEvidenceBuilder
+from tools.attachment_strategy import AttachmentStrategyExecutor
+from tools.attachment_workspace import AttachmentWorkspace
 from tools.deterministic_handlers import DeterministicHandlerRouter, HandlerTrustGate
 from tools.search_result_builder.evidence import (
     EvidenceConverter,
+    EvidenceSelectionContract,
     SpanBuilder,
 )
 from tools.search_result_builder.retrieval_control import WebRetrievalControl
@@ -57,6 +60,7 @@ class EvidenceRunner:
         attachment_result: str = "",
         routing_contract: SystemRoutingContract | None = None,
         attachment_evidence_builder: AttachmentEvidenceBuilder | None = None,
+        attachment_strategy_executor: AttachmentStrategyExecutor | None = None,
         deterministic_solver: Any | None = None,
         deterministic_handler_router: DeterministicHandlerRouter | None = None,
         tool_planning_runner: ToolPlanningRunner | None = None,
@@ -69,12 +73,14 @@ class EvidenceRunner:
         enable_deterministic_handler_router: bool = False,
         enable_tool_planner: bool = False,
         max_parallel_next_hop_queries: int = 2,
+        attachment_workspace: AttachmentWorkspace | None = None,
     ) -> None:
         self.question = question
         self.attachment = attachment or {}
         self.tool_manager = tool_manager
         self.search_result = search_result
         self.attachment_result = attachment_result
+        self.attachment_workspace = attachment_workspace
         self.routing_contract = routing_contract or SystemRoutingContract()
         self.attachment_evidence_builder = attachment_evidence_builder or AttachmentEvidenceBuilder()
         self.deterministic_solver = deterministic_solver
@@ -84,6 +90,11 @@ class EvidenceRunner:
         )
         self.tool_result_validator = tool_result_validator or ToolResultValidator()
         self.handler_trust_gate = handler_trust_gate or HandlerTrustGate()
+        self.attachment_strategy_executor = attachment_strategy_executor or AttachmentStrategyExecutor(
+            attachment_builder=self.attachment_evidence_builder,
+            handler_router=self.deterministic_handler_router,
+            trust_gate=self.handler_trust_gate,
+        )
         self.tool_capability_registry = ToolCapabilityRegistry()
         self.video_evidence_tool = VideoEvidenceTool()
         self.video_transcript_tool = VideoTranscriptTool()
@@ -115,12 +126,70 @@ class EvidenceRunner:
 
         attachment_result = self._resolve_attachment_result()
         search_result = self.search_result.strip()
+        solver_result = ""
+        attachment_strategy_metadata: dict[str, Any] = {}
+        attachment_answer_requirement = ""
+        attachment_strategy_executed = False
+        if self._has_attachment_metadata():
+            attachment_strategy_executed = True
+            attachment_was_prepared = bool(attachment_result.strip())
+            strategy_result = self.attachment_strategy_executor.run(
+                question=self.question,
+                attachment=self.attachment,
+                existing_attachment_context=attachment_result,
+                search_context=search_result,
+            )
+            if self.attachment_workspace is not None:
+                self.attachment_workspace.seed_from_strategy_result(
+                    strategy_result,
+                    reader_executed=not attachment_was_prepared,
+                )
+            attachment_result, strategy_usage = self._validate_attachment_strategy_output(
+                strategy_result,
+                fallback_context=attachment_result,
+            )
+            solver_result = (
+                strategy_result.solver_context
+                if strategy_result.handler_status == "success"
+                else ""
+            )
+            tool_usage.extend(strategy_usage)
+            attachment_strategy_metadata = strategy_result.to_dict()
+            active_strategy = strategy_result.revised_strategy or strategy_result.strategy
+            attachment_answer_requirement = (
+                active_strategy.expected_answer
+                if strategy_result.strategy_status == "success"
+                else ""
+            )
+            routing["attachment_strategy_loop"] = {
+                "enabled": True,
+                "reader_status": strategy_result.reader_status,
+                "strategy_status": strategy_result.strategy_status,
+                "handler_status": strategy_result.handler_status,
+                "strategy": strategy_result.strategy.to_dict(),
+                "revised_strategy": (
+                    strategy_result.revised_strategy.to_dict()
+                    if strategy_result.revised_strategy
+                    else None
+                ),
+                "needs_search": bool(strategy_result.metadata.get("needs_search")),
+                "final_answer_candidate": strategy_result.final_answer_candidate,
+            }
+            if strategy_result.metadata.get("needs_search"):
+                routing["use_search"] = True
+                routing["search_allowed"] = True
         search_deferred = self._should_defer_search(
             primary_route=str(routing.get("primary_route", "")),
             routing=routing,
-            tool_usage=[],
+            tool_usage=tool_usage,
         )
-        search_skip_reason = "deferred_until_non_search_tools_complete" if search_deferred else ""
+        search_skip_reason = (
+            "blocked_by_metadata_first_route"
+            if search_deferred and routing.get("search_allowed") is False
+            else "deferred_until_non_search_tools_complete"
+            if search_deferred
+            else ""
+        )
 
         evidence_tasks = {}
         with ThreadPoolExecutor(max_workers=2) as executor:
@@ -151,8 +220,11 @@ class EvidenceRunner:
                     search_result = result_text
                 tool_usage.extend(result_usage)
 
-        solver_result = ""
-        if routing.get("use_deterministic_solver") or routing.get("use_python_solver"):
+        if (
+            not solver_result
+            and not attachment_strategy_executed
+            and (routing.get("use_deterministic_solver") or routing.get("use_python_solver"))
+        ):
             solver_result, solver_usage = self._build_deterministic_handler_evidence(
                 attachment_context=attachment_result,
                 search_context=search_result,
@@ -170,7 +242,11 @@ class EvidenceRunner:
                 if any(item.get("tool_name") == "search" for item in retry_usage):
                     search_result = self._last_output_for_tool(retry_usage, "search") or search_result
                 tool_usage.extend(retry_usage)
-        elif self.enable_deterministic_handler_router:
+        elif (
+            not solver_result
+            and not attachment_strategy_executed
+            and self.enable_deterministic_handler_router
+        ):
             handler_result, handler_usage = self._build_deterministic_handler_evidence(
                 attachment_context=attachment_result,
                 search_context=search_result,
@@ -196,6 +272,7 @@ class EvidenceRunner:
                 attachment_result=attachment_result,
                 solver_result=solver_result,
                 tool_usage=tool_usage,
+                routing=routing,
             ):
                 search_skip_reason = "non_search_direct_evidence_sufficient"
             elif self._deferred_search_is_required(
@@ -215,6 +292,7 @@ class EvidenceRunner:
             routing["deterministic_tool_gap"] = deterministic_gap
         routing["search_decision"] = self._search_decision_trace(
             primary_route=str(routing.get("primary_route", "")),
+            search_allowed=routing.get("search_allowed"),
             search_executed=bool(search_result.strip()),
             search_skipped=search_deferred and not search_result.strip(),
             skip_reason=search_skip_reason,
@@ -224,8 +302,13 @@ class EvidenceRunner:
             "search_result": search_result.strip(),
             "attachment_result": attachment_result.strip(),
             "solver_result": solver_result.strip(),
+            "answer_requirement": attachment_answer_requirement.strip(),
             "routing": routing,
             "tool_usage": tool_usage,
+            "attachment_profile": dict(
+                attachment_strategy_metadata.get("attachment_profile") or {}
+            ),
+            "attachment_strategy": attachment_strategy_metadata,
         }
 
     def _run_with_tool_plan(self, routing: dict[str, Any]) -> dict[str, Any]:
@@ -239,6 +322,60 @@ class EvidenceRunner:
         search_deferred = False
         search_skip_reason = ""
 
+        primary_route = str(routing.get("primary_route") or self._primary_route_from_routing(routing))
+        routing["primary_route"] = primary_route
+        executed: set[str] = set()
+        attachment_strategy_metadata: dict[str, Any] = {}
+        attachment_answer_requirement = ""
+        if self._has_attachment_metadata():
+            attachment_was_prepared = bool(attachment_result.strip())
+            strategy_result = self.attachment_strategy_executor.run(
+                question=self.question,
+                attachment=self.attachment,
+                existing_attachment_context=attachment_result,
+                search_context=search_result,
+            )
+            if self.attachment_workspace is not None:
+                self.attachment_workspace.seed_from_strategy_result(
+                    strategy_result,
+                    reader_executed=not attachment_was_prepared,
+                )
+            attachment_result, strategy_usage = self._validate_attachment_strategy_output(
+                strategy_result,
+                fallback_context=attachment_result,
+            )
+            solver_result = (
+                strategy_result.solver_context
+                if strategy_result.handler_status == "success"
+                else ""
+            )
+            tool_usage.extend(strategy_usage)
+            attachment_strategy_metadata = strategy_result.to_dict()
+            active_strategy = strategy_result.revised_strategy or strategy_result.strategy
+            attachment_answer_requirement = (
+                active_strategy.expected_answer
+                if strategy_result.strategy_status == "success"
+                else ""
+            )
+            routing["attachment_strategy_loop"] = {
+                "enabled": True,
+                "reader_status": strategy_result.reader_status,
+                "strategy_status": strategy_result.strategy_status,
+                "handler_status": strategy_result.handler_status,
+                "strategy": strategy_result.strategy.to_dict(),
+                "revised_strategy": (
+                    strategy_result.revised_strategy.to_dict()
+                    if strategy_result.revised_strategy
+                    else None
+                ),
+                "needs_search": bool(strategy_result.metadata.get("needs_search")),
+                "final_answer_candidate": strategy_result.final_answer_candidate,
+            }
+            if strategy_result.metadata.get("needs_search"):
+                routing["use_search"] = True
+                routing["search_allowed"] = True
+            executed.add("attachment_reader")
+            executed.add("deterministic_handler")
         plan_result = self.tool_planning_runner.plan(
             question=self.question,
             attachment=self.attachment,
@@ -254,10 +391,6 @@ class EvidenceRunner:
                 "error": None,
             }
         )
-
-        primary_route = str(routing.get("primary_route") or self._primary_route_from_routing(routing))
-        routing["primary_route"] = primary_route
-        executed: set[str] = set()
         ordered_steps = self._ordered_tool_plan_steps(plan.tool_sequence, primary_route=primary_route)
         for step in ordered_steps:
             tool_name = step.tool_name
@@ -296,7 +429,11 @@ class EvidenceRunner:
                     tool_usage=tool_usage,
                 ):
                     search_deferred = True
-                    search_skip_reason = "deferred_until_non_search_tools_complete"
+                    search_skip_reason = (
+                        "blocked_by_metadata_first_route"
+                        if routing.get("search_allowed") is False
+                        else "deferred_until_non_search_tools_complete"
+                    )
                     continue
                 result_text, result_usage = self._build_search_evidence()
                 search_result = result_text
@@ -338,6 +475,7 @@ class EvidenceRunner:
                 attachment_result=attachment_result,
                 solver_result=solver_result,
                 tool_usage=tool_usage,
+                routing=routing,
             ):
                 search_skip_reason = "non_search_direct_evidence_sufficient"
             elif self._deferred_search_is_required(
@@ -371,13 +509,16 @@ class EvidenceRunner:
             "search_result": search_result.strip(),
             "attachment_result": attachment_result.strip(),
             "solver_result": solver_result.strip(),
+            "answer_requirement": attachment_answer_requirement.strip(),
             "routing": {
                 **routing,
                 "tool_planner_enabled": True,
                 "tool_plan": plan.to_dict(),
+                "attachment_strategy_loop": routing.get("attachment_strategy_loop", {}),
                 "deterministic_tool_gap": deterministic_gap,
                 "search_decision": self._search_decision_trace(
                     primary_route=primary_route,
+                    search_allowed=routing.get("search_allowed"),
                     search_executed=search_executed,
                     search_skipped=search_deferred and not search_executed,
                     skip_reason=search_skip_reason,
@@ -385,9 +526,22 @@ class EvidenceRunner:
                 ),
             },
             "tool_usage": tool_usage,
+            "attachment_profile": dict(
+                attachment_strategy_metadata.get("attachment_profile") or {}
+            ),
+            "attachment_strategy": attachment_strategy_metadata,
         }
 
     def _primary_route_from_routing(self, routing: dict[str, Any]) -> str:
+        initial_route = str(routing.get("initial_route") or "").strip().lower()
+        if initial_route == "attachment_first":
+            return "attachment"
+        if initial_route == "deterministic_first":
+            return "deterministic"
+        if initial_route == "search_first":
+            return "factual_search"
+        if initial_route == "agent_direct":
+            return "unknown"
         task_type = str(routing.get("task_type") or "").strip().lower()
         if task_type in {"hybrid_search_and_solver"}:
             return "hybrid"
@@ -419,6 +573,8 @@ class EvidenceRunner:
         routing: dict[str, Any],
         tool_usage: list[dict[str, Any]],
     ) -> bool:
+        if routing.get("search_allowed") is False and not self._deterministic_gap_requires_search(tool_usage):
+            return True
         if primary_route in {"factual_search", "hybrid"}:
             return False
         if self._deterministic_gap_requires_search(tool_usage):
@@ -434,11 +590,17 @@ class EvidenceRunner:
         routing: dict[str, Any],
         tool_usage: list[dict[str, Any]],
     ) -> bool:
+        if self._attachment_strategy_needs_search(routing):
+            return routing.get("search_allowed") is not False
         if primary_route in {"factual_search", "hybrid"}:
-            return True
+            return routing.get("search_allowed") is not False
         if self._deterministic_gap_requires_search(tool_usage):
             return True
-        return bool(routing.get("use_search") and primary_route not in {"attachment", "deterministic", "media"})
+        return bool(
+            routing.get("use_search")
+            and routing.get("search_allowed") is not False
+            and primary_route not in {"attachment", "deterministic", "media"}
+        )
 
     def _non_search_tools_are_sufficient(
         self,
@@ -447,7 +609,10 @@ class EvidenceRunner:
         attachment_result: str,
         solver_result: str,
         tool_usage: list[dict[str, Any]],
+        routing: dict[str, Any] | None = None,
     ) -> bool:
+        if self._attachment_strategy_needs_search(routing or {}):
+            return False
         if self._has_trusted_deterministic_final(tool_usage) or solver_result.strip():
             return True
         if primary_route in {"attachment", "media"} and attachment_result.strip():
@@ -456,7 +621,7 @@ class EvidenceRunner:
 
     def _has_trusted_deterministic_final(self, tool_usage: list[dict[str, Any]]) -> bool:
         for item in reversed(tool_usage):
-            if item.get("tool_name") != "deterministic_handler_router":
+            if item.get("tool_name") not in {"deterministic_handler_router", "attachment_strategy_handler"}:
                 continue
             trust = item.get("handler_trust") if isinstance(item.get("handler_trust"), dict) else {}
             if (
@@ -467,6 +632,12 @@ class EvidenceRunner:
             ):
                 return True
         return False
+
+    def _attachment_strategy_needs_search(self, routing: dict[str, Any]) -> bool:
+        loop = routing.get("attachment_strategy_loop")
+        if not isinstance(loop, dict):
+            return False
+        return bool(loop.get("needs_search"))
 
     def _deterministic_gap_requires_search(self, tool_usage: list[dict[str, Any]]) -> bool:
         gap = self._deterministic_gap_from_usage(tool_usage)
@@ -479,6 +650,7 @@ class EvidenceRunner:
         self,
         *,
         primary_route: str,
+        search_allowed: Any,
         search_executed: bool,
         search_skipped: bool,
         skip_reason: str,
@@ -486,6 +658,7 @@ class EvidenceRunner:
     ) -> dict[str, Any]:
         return {
             "primary_route": primary_route,
+            "search_allowed": search_allowed,
             "search_executed": bool(search_executed),
             "search_skipped": bool(search_skipped),
             "skip_reason": skip_reason,
@@ -771,6 +944,7 @@ class EvidenceRunner:
         routing = decision.to_dict()
         if self.search_result:
             routing["use_search"] = False
+            routing["search_allowed"] = False
             routing["provided_search_result"] = True
         if self.attachment_result:
             routing["use_attachment"] = False
@@ -796,6 +970,23 @@ class EvidenceRunner:
         if "." in file_path:
             return file_path.rsplit(".", 1)[-1].lower()
         return None
+
+    def _has_attachment_metadata(self) -> bool:
+        """
+        判斷任務是否帶有附件 metadata。
+
+        Args:
+         - 無。
+
+        Returns:
+         - bool: 只要有附件路徑、名稱、類型或既有內容，即視為附件題。
+        """
+        if not self.attachment:
+            return False
+        for key in ("file_path", "path", "file_name", "extension", "context", "attachment_context"):
+            if str(self.attachment.get(key) or "").strip():
+                return True
+        return False
 
     def _resolve_attachment_result(self) -> str:
         """
@@ -955,10 +1146,10 @@ class EvidenceRunner:
                 max_queries=3,
                 max_results_per_query=5,
                 max_pages_to_fetch=6,
-                max_chunks_per_url=10,
+                max_chunks_per_url=20,
                 max_corpus_records=120,
                 max_iter=5 if self.enable_evidence_driven_search else 1,
-                top_k=10,
+                top_k=16,
                 min_retrieval_score=0.0,
                 relative_score_margin=1.0,
                 embedding_batch_size=8,
@@ -968,11 +1159,16 @@ class EvidenceRunner:
                 output_dir=self._web_retrieval_output_dir(),
             )
             output_dict = self._dataclass_to_dict(output)
-            evidence_items = self._web_retrieval_evidence_items(output_dict)
+            contract = self._evidence_selection_contract(output_dict)
+            evidence_items = self._web_retrieval_evidence_items(
+                output_dict,
+                contract=contract,
+            )
             answer_candidates: list[dict[str, Any]] = []
             summary = self._render_web_retrieval_evidence(
                 evidence_items,
                 answer_candidates=answer_candidates,
+                contract=contract,
             )
             result = {
                 "ok": bool(summary.strip()),
@@ -982,6 +1178,7 @@ class EvidenceRunner:
                     output_dict=output_dict,
                     evidence_items=evidence_items,
                     answer_candidates=answer_candidates,
+                    contract=contract,
                 ),
                 "error": None,
             }
@@ -1026,6 +1223,7 @@ class EvidenceRunner:
         *,
         max_items: int = 5,
         max_chars: int = 450,
+        contract: EvidenceSelectionContract | None = None,
     ) -> list[dict[str, Any]]:
         """
         從 WebRetrievalControl trace 選出可傳給 Stage1 Agent 的 evidence chunks。
@@ -1042,13 +1240,94 @@ class EvidenceRunner:
         self.evidence_converter.max_chars = max(120, max_chars)
         return self.evidence_converter.convert_web_retrieval_output(
             output_dict,
-            question=self.question,
+            contract=contract or self._evidence_selection_contract(output_dict),
         )
+
+    def _evidence_selection_contract(
+        self,
+        output_dict: dict[str, Any],
+    ) -> EvidenceSelectionContract:
+        """
+        從搜尋前處理結果建立 EvidenceConverter 使用的簡單 evidence contract。
+
+        Args:
+            - output_dict: WebRetrievalControl 的 JSON-safe trace。
+
+        Returns:
+            - EvidenceSelectionContract: 不暴露 SearchIntentPlan 細節的 evidence selection contract。
+
+        """
+        diagnostics = output_dict.get("diagnostics") or {}
+        query_plan = diagnostics.get("query_plan") or {}
+        state = diagnostics.get("search_intent_plan") or {}
+        plan_sources = self._contract_plan_sources(diagnostics, query_plan, state)
+        answer_requirement = self._first_contract_text(
+            plan_sources,
+            "answer_requirement",
+            "answer_role",
+            "role_text",
+        )
+        answer_target = self._first_contract_text(
+            plan_sources,
+            "answer_target",
+            "target",
+        )
+        must_include = []
+        for source in self._contract_list_values(plan_sources, "must_include"):
+            if isinstance(source, list):
+                must_include.extend(source)
+        return EvidenceSelectionContract.from_parts(
+            question=self.question,
+            answer_requirement=answer_requirement,
+            answer_target=answer_target,
+            must_include=must_include,
+        )
+
+    def _contract_plan_sources(
+        self,
+        diagnostics: dict[str, Any],
+        query_plan: dict[str, Any],
+        state: dict[str, Any],
+    ) -> list[dict[str, Any]]:
+        sources: list[dict[str, Any]] = []
+        for source in (state, query_plan, diagnostics):
+            if isinstance(source, dict):
+                sources.append(source)
+                for key in ("query_state", "search_intent_plan", "answer_role"):
+                    nested = source.get(key)
+                    if isinstance(nested, dict):
+                        sources.append(nested)
+        return sources
+
+    def _first_contract_text(
+        self,
+        sources: list[dict[str, Any]],
+        *field_names: str,
+    ) -> str:
+        for source in sources:
+            for field_name in field_names:
+                text = normalize_text(str(source.get(field_name, "") or ""))
+                if text and text.casefold() not in {"unknown", "none", "null", "n/a"}:
+                    return text
+        return ""
+
+    def _contract_list_values(
+        self,
+        sources: list[dict[str, Any]],
+        field_name: str,
+    ) -> list[Any]:
+        values: list[Any] = []
+        for source in sources:
+            value = source.get(field_name)
+            if isinstance(value, list):
+                values.append(value)
+        return values
 
     def _render_web_retrieval_evidence(
         self,
         evidence_items: list[dict[str, Any]],
         answer_candidates: list[dict[str, Any]] | None = None,
+        contract: EvidenceSelectionContract | None = None,
     ) -> str:
         """
         將 WebRetrievalControl evidence items 轉成 Stage1 prompt context。
@@ -1060,6 +1339,7 @@ class EvidenceRunner:
             - str: 只包含 source title 與 evidence 內容的 prompt 區塊。
         """
         lines = ["Evidence:"]
+        lines.extend(self._render_answer_requirement_lines(contract))
         if not evidence_items:
             lines.append("None")
             return "\n".join(lines)
@@ -1081,12 +1361,28 @@ class EvidenceRunner:
                     lines.append(f"{index}. {text}")
         return "\n".join(lines).strip()
 
+    def _render_answer_requirement_lines(
+        self,
+        contract: EvidenceSelectionContract | None,
+    ) -> list[str]:
+        if contract is None:
+            return []
+        lines: list[str] = []
+        if contract.answer_requirement:
+            lines.append(f"Answer Requirement: {contract.answer_requirement}")
+        if contract.answer_target:
+            lines.append(f"Answer Target: {contract.answer_target}")
+        if lines:
+            lines.append("")
+        return lines
+
     def _web_retrieval_raw_result(
         self,
         *,
         output_dict: dict[str, Any],
         evidence_items: list[dict[str, Any]],
         answer_candidates: list[dict[str, Any]] | None = None,
+        contract: EvidenceSelectionContract | None = None,
     ) -> dict[str, Any]:
         """
         建立 GAIA log 可讀且與舊 search summary 大致相容的 raw_result。
@@ -1193,6 +1489,9 @@ class EvidenceRunner:
             "evidence_conversion": self._dataclass_to_dict(
                 self.evidence_converter.last_diagnostics,
             ),
+            "evidence_selection_contract": (
+                contract.to_dict() if contract else {}
+            ),
             "evidence_driven_search": {
                 "enabled": self.enable_evidence_driven_search,
                 "triggered": len(searched_queries) > 1 or bool(next_queries),
@@ -1236,6 +1535,7 @@ class EvidenceRunner:
             "summary": self._render_web_retrieval_evidence(
                 evidence_items,
                 answer_candidates=answer_candidates,
+                contract=contract,
             ),
             "diagnostics": diagnostics,
             "blocked_sources": self._web_retrieval_blocked_sources(output_dict),
@@ -1333,6 +1633,35 @@ class EvidenceRunner:
         if len(cleaned) <= max_chars:
             return cleaned
         return cleaned[:max_chars].rstrip() + " ..."
+
+    def _validate_attachment_strategy_output(
+        self,
+        strategy_result: Any,
+        *,
+        fallback_context: str = "",
+    ) -> tuple[str, list[dict[str, Any]]]:
+        """驗證 Strategy Executor 內部的 attachment_reader 輸出並保留工具順序。"""
+        original_usage = list(getattr(strategy_result, "tool_usage", []) or [])
+        attachment_usage = [
+            item for item in original_usage if item.get("tool_name") == "attachment_reader"
+        ]
+        strategy_context = str(getattr(strategy_result, "attachment_context", "") or "")
+        if not attachment_usage:
+            return strategy_context.strip() or fallback_context.strip(), original_usage
+
+        validated_context, validated_attachment_usage = self._validate_tool_context(
+            "attachment_reader",
+            strategy_context,
+            attachment_usage,
+        )
+        validated_iter = iter(validated_attachment_usage)
+        merged_usage: list[dict[str, Any]] = []
+        for item in original_usage:
+            if item.get("tool_name") == "attachment_reader":
+                merged_usage.append(next(validated_iter))
+            else:
+                merged_usage.append(item)
+        return validated_context.strip() or fallback_context.strip(), merged_usage
 
     def _validate_tool_context(
         self,
@@ -1452,6 +1781,13 @@ class EvidenceRunner:
                 handler_plan=handler_plan or {},
             )
             context = trust.evidence_text if trust.trusted else ""
+            if (
+                result.ok
+                and result.output_type == "intermediate_value"
+                and result.semantic_role
+                and result.supporting_inputs
+            ):
+                context = result.evidence_text
             evidence_valid = bool(trust.trusted and result.output_type == "final_answer")
             next_action_hint = result.next_action_hint or (
                 "Recover missing deterministic inputs: " + ", ".join(result.missing_inputs)

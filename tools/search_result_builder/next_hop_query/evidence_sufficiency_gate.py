@@ -937,20 +937,16 @@ class EvidenceSufficiencyGate:
                 label = str(document.get("label", "") or "")
                 sequence_tag = str(document.get("sequence_tag", "") or "")
                 useful_tokens = tuple(
-                    str(token)
-                    for token in (
-                        document.get("answer_spans")
-                        or document.get("bridge_spans")
-                        or document.get("useful_spans")
-                        or document.get("useful_tokens", [])
-                        or []
-                    )
+                    normalize_text(str(item.get("answer_span") or ""))
+                    for item in list(document.get("direct_contracts") or [])
+                    if isinstance(item, dict)
+                    and normalize_text(str(item.get("answer_span") or ""))
                 )
                 label_status = str(document.get("label_status", "") or "")
-                valid_for_evidence = bool(document.get("valid_for_evidence", True))
+                valid_for_evidence = bool(document.get("valid_for_evidence", False))
                 support_level = str(document.get("support_level", "") or "")
                 can_support_sufficient = bool(
-                    document.get("can_support_sufficient", True)
+                    document.get("can_support_sufficient", valid_for_evidence)
                 )
             else:
                 title = str(getattr(document, "title", "") or "")
@@ -960,20 +956,16 @@ class EvidenceSufficiencyGate:
                 label = str(getattr(document, "label", "") or "")
                 sequence_tag = str(getattr(document, "sequence_tag", "") or "")
                 useful_tokens = tuple(
-                    str(token)
-                    for token in (
-                        getattr(document, "answer_spans", None)
-                        or getattr(document, "bridge_spans", None)
-                        or getattr(document, "useful_spans", None)
-                        or getattr(document, "useful_tokens", [])
-                        or []
-                    )
+                    normalize_text(str(item.get("answer_span") or ""))
+                    for item in list(getattr(document, "direct_contracts", []) or [])
+                    if isinstance(item, dict)
+                    and normalize_text(str(item.get("answer_span") or ""))
                 )
                 label_status = str(getattr(document, "label_status", "") or "")
-                valid_for_evidence = bool(getattr(document, "valid_for_evidence", True))
+                valid_for_evidence = bool(getattr(document, "valid_for_evidence", False))
                 support_level = str(getattr(document, "support_level", "") or "")
                 can_support_sufficient = bool(
-                    getattr(document, "can_support_sufficient", True)
+                    getattr(document, "can_support_sufficient", valid_for_evidence)
                 )
             result.append(
                 _EvidenceDocument(

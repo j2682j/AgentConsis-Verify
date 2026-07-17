@@ -16,7 +16,7 @@ class TableAggregationRouterHandler:
         "Perform exact CSV or table aggregation, filtering, count, max, min, sum, average, "
         "mean, median, unique count, duplicate count, and simple row/column lookup."
     )
-    supported_attachment_types: set[str] = {".csv", ".tsv", ".txt"}
+    supported_attachment_types: set[str] = {".csv", ".tsv", ".txt", ".xlsx", ".xls", ".json"}
     routing_terms = {"table", "spreadsheet", "csv", "filter", "count", "average", "mean", "median", "sum", "max", "min"}
     input_schema = io_contract(
         name,
@@ -36,7 +36,8 @@ class TableAggregationRouterHandler:
     output_schema = input_schema
 
     def build_input(self, handler_input: HandlerInput) -> dict[str, Any]:
-        rows = self._attachment_rows(handler_input) or parse_inline_delimited_rows(handler_input.combined_text())
+        adapted = handler_input.adapted_inputs()
+        rows = list(adapted.get("rows") or []) or self._attachment_rows(handler_input) or parse_inline_delimited_rows(handler_input.combined_text())
         operation = self._operation(handler_input.question)
         records = self._records(rows)
         target_column = self._target_column(handler_input.question, list(records[0]) if records else [])

@@ -6,7 +6,7 @@ from typing import Any
 
 from utils.network_utils import normalize_text
 
-from ..query.search_intent_planner import SearchIntentPlan
+from ..query.search_intent_plan import SearchIntentPlan
 
 
 @dataclass(frozen=True)

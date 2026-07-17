@@ -14,7 +14,7 @@ class CoordinateDistanceRouterHandler:
         "Compute exact Euclidean or haversine distance between two coordinate pairs, "
         "latitude/longitude pairs, or points with decimal coordinates."
     )
-    supported_attachment_types: set[str] = {".txt", ".csv", ".tsv", ".json"}
+    supported_attachment_types: set[str] = {".txt", ".csv", ".tsv", ".json", ".pdb"}
     routing_terms = {"coordinate", "coordinates", "distance", "latitude", "longitude", "haversine", "euclidean"}
     input_schema = io_contract(
         name,
@@ -53,8 +53,9 @@ class CoordinateDistanceRouterHandler:
         )
 
     def build_input(self, handler_input: HandlerInput) -> dict[str, Any]:
+        adapted = handler_input.adapted_inputs()
         text = handler_input.combined_text()
-        pairs = [
+        pairs = list(adapted.get("pairs") or []) or [
             (float(left), float(right))
             for left, right in self.PAIR_RE.findall(text)
         ]
@@ -62,7 +63,7 @@ class CoordinateDistanceRouterHandler:
             pairs = self._dms_pairs(text)
         return {
             "pairs": pairs[:2],
-            "use_haversine": bool(
+            "use_haversine": bool(adapted.get("use_haversine")) or bool(
                 re.search(r"\b(latitude|longitude|haversine|earth|km|kilometer|degrees?|minutes?|seconds?)\b", text, re.IGNORECASE)
             ),
         }

@@ -82,7 +82,10 @@ class Embedder(object):
 
     def process_text(self, line):
         if isinstance(line, dict):
-            if self.no_title or "title" not in line:
+            record_type = str(line.get("record_type", "") or "")
+            if record_type and record_type != "passage":
+                text = line["text"]
+            elif self.no_title or "title" not in line:
                 text = line["text"]
             else:
                 text = f"{line['title']}: {line['text']}"

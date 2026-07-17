@@ -104,7 +104,10 @@ class EvidenceUtilityGate:
         if not normalize_text(text):
             return self._unsupported("empty_document_text")
 
-        label_contract_valid = self._bool_field(document, "valid_for_evidence")
+        label_contract_valid = self._field(document, "label_status") in {
+            "valid_continue",
+            "valid_terminate",
+        }
         useful_spans = self._clean_items(
             self._list_field(document, "useful_spans")
             or self._list_field(document, "useful_tokens")
@@ -185,7 +188,7 @@ class EvidenceUtilityGate:
                 supporting_context=bridge_context or context,
                 reasons=self._clean_items(reasons),
                 can_support_sufficient=False,
-                valid_for_evidence=True,
+                valid_for_evidence=False,
                 valid_for_next_hop=True,
             )
 
@@ -324,7 +327,7 @@ class EvidenceUtilityGate:
                 reasons=self._clean_items(reasons + ["fallback_recovery_bridge"]),
                 span_recovery_used=True,
                 can_support_sufficient=False,
-                valid_for_evidence=True,
+                valid_for_evidence=False,
                 valid_for_next_hop=True,
             )
 

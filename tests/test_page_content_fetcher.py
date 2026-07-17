@@ -29,6 +29,38 @@ class FakeResponse:
 
 
 class PageContentFetcherTests(unittest.TestCase):
+    def test_browser_access_mode_forces_playwright_before_http_fetch(self):
+        source = SearchSourceCandidate(
+            source_id="S1",
+            query_id="Q1",
+            title="Dynamic catalog",
+            url="https://example.com/catalog",
+            should_fetch_full_page=True,
+            source_kind="collection",
+            access_mode="browser",
+        )
+        rendered = (
+            "Rendered catalog content with enough factual information for retrieval "
+            "and downstream passage construction."
+        )
+
+        with patch(
+            "tools.search_result_builder.source_analyze.seer.page_content_fetcher._fetch_with_playwright",
+            return_value=(rendered, "playwright_body_text"),
+        ) as mock_browser, patch(
+            "tools.search_result_builder.source_analyze.seer.page_content_fetcher.requests.get"
+        ) as mock_get:
+            fetched = PageContentFetcher(
+                max_workers=1,
+                min_content_chars=60,
+            ).fetch_sources([source], max_pages=1)
+
+        self.assertEqual(fetched, 1)
+        self.assertTrue(source.fetched)
+        self.assertIn("Rendered catalog", source.raw_content)
+        mock_browser.assert_called_once()
+        mock_get.assert_not_called()
+
     def test_fetch_page_content_extracts_body_text_without_navigation_noise(self):
         html = """
         <html>
@@ -58,6 +90,7 @@ class PageContentFetcherTests(unittest.TestCase):
         assert result is not None
         self.assertIn("Useful Article", result.content)
         self.assertIn("target answer", result.content)
+        self.assertIn("<article>", result.raw_html)
         self.assertNotIn("Home Search Login", result.content)
         self.assertNotIn("Cookie policy", result.content)
         self.assertTrue(
@@ -102,6 +135,7 @@ class PageContentFetcherTests(unittest.TestCase):
         self.assertTrue(source.fetched)
         self.assertFalse(source.should_fetch_full_page)
         self.assertIn("factual content", source.raw_content)
+        self.assertIn("<main>", source.raw_html)
         self.assertIn("full_page_fetched", source.filter_reasons)
         self.assertTrue(
             any(reason.startswith("fetch_method:") for reason in source.filter_reasons)

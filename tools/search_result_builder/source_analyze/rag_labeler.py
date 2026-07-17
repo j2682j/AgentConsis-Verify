@@ -84,6 +84,8 @@ class EfficientRAGLabelerAdapter:
         max_length: int = LABELER_MAX_LENGTH,
         batch_size: int = 8,
         spacy_model: str = "en_core_web_sm",
+        max_question_tokens: int = 128,
+        min_passage_tokens: int = 320,
     ) -> None:
         self.labeler_checkpoint = str(
             Path(labeler_checkpoint)
@@ -94,6 +96,8 @@ class EfficientRAGLabelerAdapter:
         self.max_length = max(32, max_length)
         self.batch_size = max(1, batch_size)
         self.spacy_model = spacy_model
+        self.max_question_tokens = max(16, max_question_tokens)
+        self.min_passage_tokens = max(32, min_passage_tokens)
         self._tokenizer: Any | None = None
         self._model: Any | None = None
         self._model_device: str | None = None
@@ -271,6 +275,18 @@ class EfficientRAGLabelerAdapter:
             )
             sequence_tag = sequence_label_map.get(sequence_id, TERMINATE_TAG)
             is_useful_sequence = sequence_tag in {CONTINUE_TAG, FINISH_TAG}
+            passage_start, passage_end = self._passage_token_bounds(
+                input_ids=input_ids[index],
+                attention_mask=attention_mask[index],
+            )
+            question_token_count = max(0, passage_start - 2)
+            passage_token_count = max(0, passage_end - passage_start)
+            original_question_tokens = len(
+                self._tokenize_words(self._spacify(question))
+            )
+            original_passage_tokens = len(
+                self._tokenize_words(self._spacify(text))
+            )
             results.append(
                 RAGLabelResult(
                     label=(
@@ -297,6 +313,14 @@ class EfficientRAGLabelerAdapter:
                             round(float(probabilities[index][2].item()), 6)
                             if probabilities.shape[-1] > 2
                             else 0.0
+                        ),
+                        "question_token_count": question_token_count,
+                        "passage_token_count": passage_token_count,
+                        "question_truncated": (
+                            original_question_tokens > question_token_count
+                        ),
+                        "passage_truncated": (
+                            original_passage_tokens > passage_token_count
                         ),
                         **span_metadata,
                     },
@@ -378,6 +402,7 @@ class EfficientRAGLabelerAdapter:
             "rejected_useful_spans": rejected_spans,
             "passage_token_start": passage_start,
             "passage_token_end": passage_end,
+            "positive_token_count": len(positive_positions),
         }
 
     def _passage_token_bounds(
@@ -481,8 +506,15 @@ class EfficientRAGLabelerAdapter:
         cls_tokens = self._tokenizer.tokenize("[CLS]")
         sep_tokens = self._tokenizer.tokenize("[SEP]")
         special_token_count = len(cls_tokens) + 2 * len(sep_tokens)
-        max_question_tokens = max(0, self.max_length - special_token_count)
-        question_tokens = question_tokens[:max_question_tokens]
+        available_tokens = max(0, self.max_length - special_token_count)
+        max_question_tokens = min(
+            self.max_question_tokens,
+            max(0, available_tokens - self.min_passage_tokens),
+        )
+        question_tokens = self._truncate_question_tokens(
+            question_tokens,
+            max_question_tokens,
+        )
         passage_budget = max(
             0,
             self.max_length - special_token_count - len(question_tokens),
@@ -510,6 +542,21 @@ class EfficientRAGLabelerAdapter:
             padding="max_length",
             return_tensors="pt",
         )
+
+    def _truncate_question_tokens(
+        self,
+        tokens: list[str],
+        max_tokens: int,
+    ) -> list[str]:
+        if max_tokens <= 0:
+            return []
+        if len(tokens) <= max_tokens:
+            return tokens
+        head_count = max(1, max_tokens * 2 // 3)
+        tail_count = max_tokens - head_count
+        if tail_count <= 0:
+            return tokens[:max_tokens]
+        return [*tokens[:head_count], *tokens[-tail_count:]]
 
     def _tokenize_words(self, words: list[str]) -> list[str]:
         assert self._tokenizer is not None

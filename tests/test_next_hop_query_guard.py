@@ -1,7 +1,7 @@
 import unittest
 
 from tools.search_result_builder.next_hop_query.query_guard import NextHopQueryGuard
-from tools.search_result_builder.query.search_intent_planner import SearchIntentPlan
+from tools.search_result_builder.query.search_intent_plan import SearchIntentPlan
 
 
 class NextHopQueryGuardTest(unittest.TestCase):

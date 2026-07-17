@@ -98,7 +98,8 @@ class ToolCandidateRouter:
             }
         )
 
-        if routing.get("use_search") or needs_search_for_gap:
+        search_allowed = routing.get("search_allowed") is not False
+        if (routing.get("use_search") and search_allowed) or needs_search_for_gap:
             candidates.append(
                 ToolCandidate(
                     tool_name="search",

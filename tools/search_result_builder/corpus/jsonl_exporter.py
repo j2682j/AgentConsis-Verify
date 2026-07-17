@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Iterable, Protocol
+from typing import Any, Iterable, Protocol
 
 
 class JSONLRecord(Protocol):
-    def to_dict(self) -> dict[str, str]: ...
+    def to_dict(self) -> dict[str, Any]: ...
 
 
 class JSONLExporter:

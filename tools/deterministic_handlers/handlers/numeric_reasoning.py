@@ -15,7 +15,9 @@ class NumericReasoningRouterHandler:
         "Compute exact numeric reasoning tasks such as percentage change, ratio, "
         "difference, range, median, average, rank, and rounding from inline numbers."
     )
-    supported_attachment_types: set[str] = {".txt", ".csv", ".tsv", ".json"}
+    supported_attachment_types: set[str] = {
+        ".txt", ".csv", ".tsv", ".json", ".png", ".jpg", ".jpeg", ".webp",
+    }
     routing_terms = {"percentage", "percent", "ratio", "difference", "range", "median", "average", "round", "rank"}
     input_schema = io_contract(
         name,
@@ -48,9 +50,11 @@ class NumericReasoningRouterHandler:
         )
 
     def build_input(self, handler_input: HandlerInput) -> dict[str, Any]:
+        adapted = handler_input.adapted_inputs()
         return {
             "question": handler_input.question,
-            "numbers": self._numbers(handler_input.combined_text()),
+            "numbers": [Decimal(str(value)) for value in adapted.get("numbers") or []]
+            or self._numbers(handler_input.combined_text()),
             "operation": self._operation(handler_input.question),
             "round_places": self._round_places(handler_input.question),
         }

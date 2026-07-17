@@ -22,7 +22,7 @@ class TableExactRouterHandler:
         "multi-condition filtering, cell lookup, sorting, group by, count, sum, average, "
         "mean, median, unique count, and duplicate count."
     )
-    supported_attachment_types: set[str] = {".csv", ".tsv", ".txt", ".xlsx", ".json"}
+    supported_attachment_types: set[str] = {".csv", ".tsv", ".txt", ".xlsx", ".xls", ".json"}
     routing_terms = {
         "table",
         "spreadsheet",
@@ -76,7 +76,8 @@ class TableExactRouterHandler:
         )
 
     def build_input(self, handler_input: HandlerInput) -> dict[str, Any]:
-        rows = self._attachment_rows(handler_input) or parse_inline_delimited_rows(
+        adapted = handler_input.adapted_inputs()
+        rows = list(adapted.get("rows") or []) or self._attachment_rows(handler_input) or parse_inline_delimited_rows(
             handler_input.combined_text()
         )
         records = self._records(rows)

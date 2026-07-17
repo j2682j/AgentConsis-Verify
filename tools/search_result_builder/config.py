@@ -7,20 +7,18 @@ from typing import Any
 @dataclass
 class SearchSignals:
     """
-    保存搜尋流程需要的輕量問題訊號。
-
-    目前這個資料由 embedding salience query generator 從原始問題抽出的
-    重要 span 建立，不再經過額外的問題分析階段。
+    描述搜尋前處理得到的任務訊號。
 
     Args:
-        - answer_type: 保留欄位，預設 unknown，不在 search 主流程中推斷答案型別。
-        - target_terms: embedding salience 選出的重要文字 span。
-        - constraints: 保留欄位，目前通常為空。
-        - source_hints: 保留欄位，目前通常為空。
-        - needs_multi_hop: 保留欄位，目前由 retrieval controller 判斷是否需要下一跳。
+     - answer_type: 預期答案型態，未知時使用 unknown。
+     - target_terms: semantic impact / query generator 找到的目標片段。
+     - constraints: 題目中必須保留的限制條件。
+     - source_hints: 題目指定或暗示的資料來源。
+     - needs_multi_hop: 任務是否可能需要多跳搜尋。
 
     Returns:
-        - SearchSignals: 搜尋控制用的輕量問題訊號。
+     - SearchSignals: 可傳遞給搜尋規劃與檢索控制的訊號。
+
     """
 
     answer_type: str = "unknown"
@@ -33,25 +31,26 @@ class SearchSignals:
 @dataclass
 class SearchSourceCandidate:
     """
-    保存 search tool 回傳的一筆 source。
+    表示 search backend 回傳後、等待過濾與全文抓取的來源候選。
 
     Args:
-        - source_id: source id。
-        - query_id: 對應的 query id。
-        - title: 搜尋結果標題。
-        - url: 搜尋結果 URL。
-        - domain: URL domain。
-        - snippet: 搜尋結果摘要。
-        - raw_content: full-page fetch 後取得的網頁內容。
-        - rank: 搜尋結果排名。
-        - fetched: 是否已抓取完整頁面。
-        - blocked: 是否被 source filter 擋下。
-        - block_reason: 被擋下的原因。
-        - should_fetch_full_page: 是否建議抓取完整頁面。
-        - filter_reasons: filter / fetch 的判斷紀錄。
+     - source_id: source id。
+     - query_id: 來源 query id。
+     - title: 搜尋結果標題。
+     - url: 搜尋結果 URL。
+     - domain: URL domain。
+     - snippet: 搜尋結果摘要。
+     - raw_content: full-page fetch 後取得的正文。
+     - rank: 搜尋結果排名。
+     - fetched: 是否已經抓取全文。
+     - blocked: 是否被 source filter 擋下。
+     - block_reason: 擋下原因。
+     - should_fetch_full_page: 是否需要進一步抓取完整網頁。
+     - filter_reasons: filter / fetch 過程記錄。
 
     Returns:
-        - SearchSourceCandidate: 搜尋來源資料。
+     - SearchSourceCandidate: 可進入 source analysis 的候選來源。
+
     """
 
     source_id: str
@@ -61,38 +60,48 @@ class SearchSourceCandidate:
     domain: str = ""
     snippet: str = ""
     raw_content: str = ""
+    raw_html: str = ""
+    content_complete: bool = False
+    content_truncated: bool = False
+    original_content_chars: int = 0
+    final_url: str = ""
     rank: int = 0
     fetched: bool = False
     blocked: bool = False
     block_reason: str = ""
     should_fetch_full_page: bool = False
     filter_reasons: list[str] = field(default_factory=list)
+    source_kind: str = "web"
+    access_mode: str = "search"
+    source_hint: str = ""
 
 
 @dataclass
 class EvidenceItem:
     """
-    保存 source analysis 後可交給 Agent 的 evidence chunk。
+    Source analysis 轉給 Agent 使用的 evidence chunk。
 
     Args:
-        - evidence_id: evidence id。
-        - source_id: 對應的 source id。
-        - query_id: 對應的 query id。
-        - text: evidence 文字。
-        - title: source title。
-        - url: source URL。
-        - matched_terms: EfficientRAG labeler 保留的 useful tokens。
-        - matched_spans: useful tokens 對齊回原文後的 spans/context metadata。
-        - retrieval_score: Retriever / FAISS 的相似度分數。
-        - sequence_tag: EfficientRAG labeler 的 CONTINUE / TERMINATE 類標籤。
-        - selection_reason: evidence conversion 選中此 chunk 的原因。
-        - helpfulness_score: Helpfulness Expert 分數。
-        - evidence_quality: next-hop controller 使用的 evidence 品質分數。
-        - conversion_score: evidence conversion 排序用分數。
-        - cleaning_reasons: helpfulness / labeler / dedup 的處理紀錄。
+     - evidence_id: evidence id。
+     - source_id: 來源文件 id。
+     - query_id: 來源 query id。
+     - text: evidence 文字內容。
+     - title: source title。
+     - url: source URL。
+     - matched_terms: labeler / span recovery 找到的 useful terms。
+     - matched_spans: useful terms 還原後的 span metadata。
+     - retrieval_score: Retriever / FAISS 回傳的相似度。
+     - sequence_tag: EfficientRAG labeler 的 CONTINUE / FINISH / TERMINATE 標籤。
+     - selection_reason: evidence bucket selection 選中此 chunk 的原因。
+     - evidence_bucket: evidence contract bucket。
+     - compatible_spans: 符合 answer role 的 useful spans。
+     - helpfulness_score: optional helpfulness score。
+     - evidence_quality: optional evidence quality metadata。
+     - cleaning_reasons: cleaning / labeler / dedup 的記錄。
 
     Returns:
-        - EvidenceItem: prompt-ready evidence。
+     - EvidenceItem: prompt-ready evidence。
+
     """
 
     evidence_id: str
@@ -106,9 +115,10 @@ class EvidenceItem:
     retrieval_score: float = 0.0
     sequence_tag: str = ""
     selection_reason: str = ""
+    evidence_bucket: str = ""
+    compatible_spans: list[str] = field(default_factory=list)
     helpfulness_score: float = 0.0
     evidence_quality: float = 0.0
-    conversion_score: float = 0.0
     cleaning_reasons: list[str] = field(default_factory=list)
 
 

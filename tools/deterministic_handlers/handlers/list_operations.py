@@ -12,7 +12,7 @@ class ListOperationsRouterHandler(SolverBackedRouterHandler):
         "Perform exact list operations such as count items, select the nth item, sort "
         "alphabetically, sort numbers, reverse order, or order comma-separated items."
     )
-    supported_attachment_types: set[str] = {".txt", ".csv", ".tsv", ".json"}
+    supported_attachment_types: set[str] = {".txt", ".csv", ".tsv", ".json", ".docx"}
     routing_terms = {"list", "items", "sort", "order", "alphabetically", "count", "first", "second", "third"}
     missing_inputs = ["list_items", "list_operation"]
     input_schema = io_contract(

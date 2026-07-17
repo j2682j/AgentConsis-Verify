@@ -3,13 +3,21 @@ from __future__ import annotations
 from typing import Iterable
 
 from .base import DeterministicHandler
+from .capability import HandlerCapability
 from .handlers import (
+    BinaryOperationTableRouterHandler,
     BoggleDFSRouterHandler,
+    ChessTacticsRouterHandler,
+    ChessImageSolverRouterHandler,
     CoordinateDistanceRouterHandler,
     DateTimeRouterHandler,
+    FractionDocumentRouterHandler,
     GraphShortestPathRouterHandler,
     ListOperationsRouterHandler,
+    LogicEquivalenceRouterHandler,
+    MultiStepCountingRouterHandler,
     NumericReasoningRouterHandler,
+    ProbabilitySimulationRouterHandler,
     SexagesimalConversionRouterHandler,
     SimpleMathRouterHandler,
     StringTransformRouterHandler,
@@ -18,6 +26,7 @@ from .handlers import (
     TextExtractionRouterHandler,
     UnitConversionRouterHandler,
 )
+from .schema import HandlerIOContract
 
 
 class HandlerRegistry:
@@ -28,12 +37,18 @@ class HandlerRegistry:
     def __init__(self, handlers: Iterable[DeterministicHandler] | None = None) -> None:
         self._handlers: dict[str, DeterministicHandler] = {}
         self._role_aliases: dict[str, set[str]] = {
+            "binary_operation_reasoning": {"binary_operation_table"},
             "boggle_dfs": {"boggle_dfs"},
+            "chess_tactics": {"chess_image_solver", "chess_tactics"},
             "coordinate_distance": {"coordinate_distance"},
             "date_time": {"date_time"},
+            "fraction_document_reasoning": {"fraction_document"},
             "graph_search": {"graph_shortest_path"},
             "list_operation": {"list_operations"},
+            "logic_equivalence": {"logic_equivalence"},
+            "multi_step_counting": {"multi_step_counting"},
             "numeric_arithmetic": {"numeric_reasoning", "simple_math"},
+            "probability_simulation": {"probability_simulation"},
             "simple_math": {"simple_math"},
             "sexagesimal_conversion": {"sexagesimal_conversion"},
             "string_transform": {"string_transform"},
@@ -76,14 +91,51 @@ class HandlerRegistry:
         handler = self.get(name)
         return str(getattr(handler, "handler_role", "") or "") if handler else ""
 
+    def capability_for(
+        self,
+        handler_name: str,
+        *,
+        available_inputs: Iterable[str] = (),
+    ) -> HandlerCapability | None:
+        handler = self.get(handler_name)
+        if handler is None:
+            return None
+        contract = getattr(handler, "input_schema", None)
+        required_inputs: list[str] = []
+        optional_inputs: list[str] = []
+        supported_types = set(getattr(handler, "supported_attachment_types", set()) or set())
+        if isinstance(contract, HandlerIOContract):
+            required_inputs = contract.required_input_names()
+            optional_inputs = [
+                field.name for field in contract.input_fields if not field.required
+            ]
+            supported_types.update(contract.supported_attachment_types)
+        return HandlerCapability(
+            handler_name=handler.name,
+            handler_role=self.role_for_handler(handler.name),
+            capability=str(getattr(handler, "capability_description", "") or ""),
+            required_inputs=required_inputs,
+            optional_inputs=optional_inputs,
+            available_inputs=sorted({str(item) for item in available_inputs if str(item)}),
+            supported_attachment_types=sorted(supported_types),
+            output_type="final_answer",
+        )
+
 
 def default_deterministic_registry() -> HandlerRegistry:
     return HandlerRegistry(
         [
+            BinaryOperationTableRouterHandler(),
             BoggleDFSRouterHandler(),
+            ChessImageSolverRouterHandler(),
+            ChessTacticsRouterHandler(),
             CoordinateDistanceRouterHandler(),
             GraphShortestPathRouterHandler(),
             DateTimeRouterHandler(),
+            FractionDocumentRouterHandler(),
+            LogicEquivalenceRouterHandler(),
+            MultiStepCountingRouterHandler(),
+            ProbabilitySimulationRouterHandler(),
             SexagesimalConversionRouterHandler(),
             UnitConversionRouterHandler(),
             TableExactRouterHandler(),

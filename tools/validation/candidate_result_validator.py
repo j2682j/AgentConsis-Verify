@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
+import re
 from typing import Any
 
 from score.answer_validator import AnswerValidator
@@ -78,7 +79,11 @@ class CandidateResultValidator:
         if cleaned and self.answer_validator.is_refusal_like(cleaned):
             if not self.answer_validator.question_allow_refusal(question):
                 reasons.append("refusal_like")
-        if cleaned and self.answer_validator.is_too_verbose(cleaned):
+        if (
+            cleaned
+            and self.answer_validator.is_too_verbose(cleaned)
+            and not self._is_requested_compact_list(cleaned, question)
+        ):
             reasons.append("too_verbose")
         if cleaned and not evidence_bound:
             reasons.append("missing_evidence_binding")
@@ -91,6 +96,16 @@ class CandidateResultValidator:
             cleaned_answer=cleaned,
             evidence_bound=evidence_bound,
         )
+
+    @staticmethod
+    def _is_requested_compact_list(answer: str, question: str) -> bool:
+        request = str(question or "").lower()
+        if not re.search(r"\b(comma[- ]separated|list of|as a list|order the list)\b", request):
+            return False
+        if "\n" in answer or "," not in answer:
+            return False
+        items = [item.strip() for item in answer.split(",")]
+        return 2 <= len(items) <= 100 and all(item and len(item) <= 80 for item in items)
 
     def _status_from_reasons(self, reasons: list[str]) -> str:
         if "empty_answer" in reasons:

@@ -167,6 +167,7 @@ class ToolManager:
         parameters: dict[str, Any],
         agent_id: str | None = None,
         stage: str | None = None,
+        runtime_context: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """
         執行指定工具並回傳標準化工具結果，同時記錄 tool trace。
@@ -215,7 +216,11 @@ class ToolManager:
             return result
 
         try:
-            raw = tool.run(parameters)
+            contextual_runner = getattr(tool, "run_with_context", None)
+            if callable(contextual_runner) and runtime_context:
+                raw = contextual_runner(parameters, runtime_context)
+            else:
+                raw = tool.run(parameters)
             result = self.normalize_result(tool_name, raw)
         except Exception as exc:
             result = failure_result(

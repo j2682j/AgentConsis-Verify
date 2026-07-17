@@ -15,6 +15,9 @@ class HandlerTrustGateTests(unittest.TestCase):
             confidence=0.9,
             input_summary={"expression": "9 - 4"},
             structured_result={"output_contract": {"required_outputs": ["answer"]}},
+            output_type="final_answer",
+            semantic_role="arithmetic_result",
+            supporting_inputs=["9 - 4"],
         )
 
         trust = HandlerTrustGate().validate(

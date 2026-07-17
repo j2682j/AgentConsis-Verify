@@ -22,6 +22,10 @@ class HandlerInput:
         ]
         return "\n".join(str(part or "").strip() for part in parts if str(part or "").strip())
 
+    def adapted_inputs(self) -> dict[str, Any]:
+        value = self.metadata.get("adapted_inputs") if isinstance(self.metadata, dict) else None
+        return dict(value) if isinstance(value, dict) else {}
+
 
 @dataclass
 class HandlerMatch:

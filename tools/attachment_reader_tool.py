@@ -4,6 +4,8 @@ from pathlib import Path
 from typing import Any
 
 from .attachment_reader import AttachmentEvidenceBuilder
+from .attachment_tool_coordinator import AttachmentToolCoordinator
+from .attachment_workspace import AttachmentWorkspace
 from .base import Tool, ToolParameter
 
 
@@ -18,7 +20,11 @@ class AttachmentReaderTool(Tool):
         - AttachmentReaderTool: Tool wrapper for reading task attachments.
     """
 
-    def __init__(self, builder: AttachmentEvidenceBuilder | None = None) -> None:
+    def __init__(
+        self,
+        builder: AttachmentEvidenceBuilder | None = None,
+        coordinator: AttachmentToolCoordinator | None = None,
+    ) -> None:
         super().__init__(
             name="attachment_reader",
             description="Read a task attachment and return extracted evidence context.",
@@ -51,6 +57,7 @@ class AttachmentReaderTool(Tool):
             deterministic=False,
         )
         self.builder = builder or AttachmentEvidenceBuilder()
+        self.coordinator = coordinator or AttachmentToolCoordinator()
 
     def run(self, parameters: dict[str, Any]) -> dict[str, Any]:
         """
@@ -74,9 +81,41 @@ class AttachmentReaderTool(Tool):
         return {
             "used": bool(result.get("used")),
             "context": str(result.get("context") or ""),
+            "profile": dict(result.get("profile") or {}),
+            "parsed_payload": dict(result.get("parsed_payload") or {}),
             "metadata": metadata,
             "tool_usage": result.get("tool_usage", []),
         }
+
+    def run_with_context(
+        self,
+        parameters: dict[str, Any],
+        runtime_context: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Reuse a task attachment workspace when Stage1 requests attachment evidence."""
+
+        workspace = runtime_context.get("attachment_workspace")
+        if not isinstance(workspace, AttachmentWorkspace):
+            return self.run(parameters)
+        question = str(
+            parameters.get("question")
+            or runtime_context.get("question")
+            or parameters.get("input")
+            or ""
+        ).strip()
+        information_need = str(
+            parameters.get("information_need")
+            or parameters.get("input")
+            or question
+        ).strip()
+        attachment = self._attachment_from_parameters(parameters) or dict(workspace.attachment)
+        return self.coordinator.run(
+            question=question,
+            information_need=information_need,
+            attachment=attachment,
+            workspace=workspace,
+            search_context=str(runtime_context.get("search_context") or ""),
+        )
 
     def get_parameters(self) -> list[ToolParameter]:
         """
@@ -100,6 +139,12 @@ class AttachmentReaderTool(Tool):
                 type="string",
                 description="Absolute or relative path to the attachment file.",
                 required=True,
+            ),
+            ToolParameter(
+                name="information_need",
+                type="string",
+                description="One specific fact or operation needed from the attachment.",
+                required=False,
             ),
         ]
 

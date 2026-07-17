@@ -213,7 +213,7 @@ class ToolCapabilityRegistry:
                 )
             )
 
-        if routing.get("use_search"):
+        if routing.get("use_search") and routing.get("search_allowed") is not False:
             needs.append(
                 ToolNeed(
                     need_type="search",
