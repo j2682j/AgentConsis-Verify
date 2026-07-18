@@ -14,6 +14,15 @@ from .query_token_selector import QueryTokenSelector, SelectedQueryTokens
 from .relation_evidence import RelationEvidence
 from .relation_evidence_binder import RelationBindingResult, RelationEvidenceBinder
 from .relation_goal_resolver import RelationGoalResolver, RelationResolution
+from .goal_completion import (
+    GoalCompletionEntry,
+    GoalCompletionEvaluator,
+    GoalCompletionResult,
+)
+from .retrieval_recovery_policy import (
+    RetrievalRecoveryDecision,
+    RetrievalRecoveryPolicy,
+)
 from .rag_filter import EfficientRAGFilterAdapter, RAGFilterResult
 from .retrieval_controller import RetrievalDecision, RetrievalController
 
@@ -40,6 +49,11 @@ __all__ = [
     "RelationEvidenceBinder",
     "RelationGoalResolver",
     "RelationResolution",
+    "GoalCompletionEntry",
+    "GoalCompletionEvaluator",
+    "GoalCompletionResult",
+    "RetrievalRecoveryDecision",
+    "RetrievalRecoveryPolicy",
     "NextHopQueryGuard",
     "NextHopQueryGuardResult",
     "SearchIntentStateTracker",

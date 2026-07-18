@@ -94,7 +94,7 @@ class FakeFilter:
 
 
 class IterativeRetrievalControlTests(unittest.TestCase):
-    def test_stops_when_filter_returns_same_query(self):
+    def test_incomplete_goal_does_not_accept_surface_sufficiency(self):
         labeler = FakeLabeler()
         rag_filter = FakeFilter(["original query"])
         controller = IterativeRetrievalControl(
@@ -107,20 +107,17 @@ class IterativeRetrievalControlTests(unittest.TestCase):
 
         result = controller.run("original query")
 
-        self.assertEqual(result.stop_reason, "unchanged_query")
+        self.assertEqual(result.stop_reason, "goal_incomplete_no_viable_recovery")
         self.assertEqual(result.searched_queries, ["original query"])
         self.assertEqual(len(result.rounds), 1)
         self.assertEqual(result.rounds[0].documents[0].retrieval_score, 0.9)
         self.assertEqual(
             labeler.calls[0][1],
-            ["A useful bridge token appears here."],
+            ["Relevant document A useful bridge token appears here."],
         )
-        filter_evidence = rag_filter.calls[0][1][0]
-        self.assertEqual(filter_evidence.text, "bridge")
-        self.assertEqual(filter_evidence.matched_terms, ["bridge"])
-        self.assertNotIn("Relevant document", filter_evidence.text)
+        self.assertEqual(rag_filter.calls, [])
 
-    def test_stops_when_next_round_only_contains_duplicate_documents(self):
+    def test_exhausted_corpus_does_not_repeat_duplicate_documents(self):
         controller = IterativeRetrievalControl(
             retriever=FakeRetriever(),
             labeler=FakeLabeler(),
@@ -131,14 +128,9 @@ class IterativeRetrievalControlTests(unittest.TestCase):
 
         result = controller.run("original query")
 
-        self.assertEqual(result.stop_reason, "no_new_documents")
-        self.assertEqual(result.searched_queries, ["original query", "next query"])
-        self.assertEqual(len(result.rounds), 2)
-        self.assertTrue(result.rounds[1].documents[0].duplicate)
-        self.assertEqual(
-            result.rounds[1].documents[0].duplicate_reason,
-            "duplicate_document",
-        )
+        self.assertEqual(result.stop_reason, "goal_incomplete_no_viable_recovery")
+        self.assertEqual(result.searched_queries, ["original query"])
+        self.assertEqual(len(result.rounds), 1)
 
     def test_empty_initial_query_does_not_search(self):
         retriever = FakeRetriever()
@@ -167,12 +159,11 @@ class IterativeRetrievalControlTests(unittest.TestCase):
 
         self.assertEqual(
             result.stop_reason,
-            "no_qualified_continue_chunks",
+            "goal_incomplete_no_viable_recovery",
         )
         self.assertEqual(rag_filter.calls, [])
-        self.assertEqual(
-            result.rounds[0].filter_metadata["qualified_document_count"],
-            0,
+        self.assertFalse(
+            result.rounds[0].filter_metadata["goal_completion"]["sufficient"]
         )
 
     def test_continue_below_absolute_e5_threshold_is_not_sent_to_filter(self):
@@ -190,14 +181,11 @@ class IterativeRetrievalControlTests(unittest.TestCase):
 
         self.assertEqual(
             result.stop_reason,
-            "no_qualified_continue_chunks",
+            "goal_incomplete_no_viable_recovery",
         )
         self.assertEqual(rag_filter.calls, [])
-        self.assertEqual(
-            result.rounds[0].filter_metadata[
-                "effective_retrieval_threshold"
-            ],
-            0.75,
+        self.assertFalse(
+            result.rounds[0].filter_metadata["goal_completion"]["sufficient"]
         )
 
 
@@ -308,7 +296,7 @@ class WebRetrievalControlTests(unittest.TestCase):
         self.assertEqual(len(records), 2)
         self.assertIn("first web query", records[0].to_dict()["text"])
 
-    def test_seer_filter_applies_domain_rules_before_accepting_sources(self):
+    def test_seer_filter_can_rescue_soft_domain_limit_for_minimum_coverage(self):
         sources = [
             SearchSourceCandidate(
                 source_id="S1",
@@ -339,9 +327,13 @@ class WebRetrievalControlTests(unittest.TestCase):
             fetch_limit=3,
         )
 
-        self.assertEqual([source.source_id for source in filtered], ["S2"])
+        self.assertEqual([source.source_id for source in filtered], ["S2", "S3"])
         self.assertEqual(sources[0].block_reason, "blocked_domain")
-        self.assertEqual(sources[2].block_reason, "domain_result_limit")
+        self.assertEqual(sources[2].block_reason, "")
+        self.assertIn(
+            "rescued_soft_block:domain_result_limit",
+            sources[2].filter_reasons,
+        )
 
     def test_seer_filter_marks_question_semantic_echo_without_blocking(self):
         question = "What writer is quoted by Merriam-Webster for the Word of the Day from June 27, 2022?"

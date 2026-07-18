@@ -99,6 +99,9 @@ class CandidateRun:
     agent_confidence: float = 0.0
     agent_answer_frequency: int = 1
     eligible_run_count: int = 1
+    answer_type: str = ""
+    schema_valid: bool = True
+    parse_completed: bool = True
 
 
 @dataclass
@@ -136,7 +139,7 @@ class CandidateEvaluation:
     Args:
      - candidate_key: 對應的答案候選鍵值。
      - eligible: 候選是否可進入最終選擇。
-     - support_tier: 證據支持層級，範圍為 -1 至 4。
+     - support_status: 證據支持類別，不使用加權總分。
      - critical_step_floor: 關鍵推理步驟中最低的 Versa reward probability。
      - critical_step_geometric_mean: 關鍵步驟 reward probabilities 的幾何平均。
 
@@ -148,7 +151,6 @@ class CandidateEvaluation:
     answer: str
     eligible: bool = False
     rejection_reason: str = ""
-    support_tier: int = 0
     support_status: str = "no_support"
     direct_support: bool = False
     contradicted: bool = False
@@ -223,6 +225,7 @@ class StepSupportResult:
     matched_tool_values: list[str] = field(default_factory=list)
     source_tools: list[str] = field(default_factory=list)
     reason: str = ""
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass

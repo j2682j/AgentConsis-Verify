@@ -6,6 +6,12 @@ from typing import Any
 from tools.attachment_reader import AttachmentEvidenceBuilder
 from tools.attachment_workspace import PreparedAttachmentArtifact
 from tools.deterministic_handlers import DeterministicHandlerRouter, HandlerTrustGate
+from tools.evidence.fact_extraction import (
+    AttachmentFactExtractor,
+    EvidenceFact,
+    SemanticExtractionResult,
+    render_attachment_facts,
+)
 
 from .models import AttachmentStrategy, AttachmentStrategyResult
 from .parser import AttachmentStrategyParser
@@ -36,10 +42,14 @@ class AttachmentStrategyExecutor:
         trust_gate: HandlerTrustGate | None = None,
         planner: AttachmentStrategyPlanner | None = None,
         reviewer: AttachmentStrategyReviewer | None = None,
+        attachment_fact_extractor: AttachmentFactExtractor | None = None,
     ) -> None:
         self.attachment_builder = attachment_builder or AttachmentEvidenceBuilder()
         self.handler_router = handler_router or DeterministicHandlerRouter()
         self.trust_gate = trust_gate or HandlerTrustGate()
+        self.attachment_fact_extractor = (
+            attachment_fact_extractor or AttachmentFactExtractor()
+        )
         parser = AttachmentStrategyParser(set(self.allowed_handlers()))
         self.planner = planner or AttachmentStrategyPlanner(parser=parser)
         self.reviewer = reviewer or AttachmentStrategyReviewer(parser=parser)
@@ -104,6 +114,57 @@ class AttachmentStrategyExecutor:
             parsed_payload = dict(read_result.get("parsed_payload") or {})
             tool_usage = list(read_result.get("tool_usage", []) or [])
 
+        fact_tool_usage: dict[str, Any] | None = None
+        fact_result = self._extract_attachment_facts(
+            question=planning_question,
+            answer_requirement=information_need,
+            parsed_payload=parsed_payload,
+        )
+        if fact_result is not None:
+            parsed_payload["semantic_facts"] = [
+                fact.to_dict() for fact in fact_result.facts
+            ]
+            fact_context = render_attachment_facts(fact_result.facts)
+            if fact_context:
+                attachment_context = "\n\n".join(
+                    part for part in (attachment_context, fact_context) if part.strip()
+                )
+            profile.setdefault("content_types", [])
+            profile.setdefault("available_inputs", [])
+            profile.setdefault("structure_summary", {})
+            if fact_result.facts:
+                if "semantic_facts" not in profile["content_types"]:
+                    profile["content_types"].append("semantic_facts")
+                if "semantic_facts" not in profile["available_inputs"]:
+                    profile["available_inputs"].append("semantic_facts")
+            profile["structure_summary"]["semantic_fact_count"] = len(
+                fact_result.facts
+            )
+            fact_tool_usage = {
+                    "ok": bool(fact_result.facts),
+                    "tool_name": "attachment_fact_extractor",
+                    "output_text": fact_context,
+                    "output_type": "evidence_text",
+                    "raw_result": {
+                        "semantic_facts": [
+                            fact.to_dict() for fact in fact_result.facts
+                        ],
+                        "diagnostics": dict(fact_result.diagnostics),
+                    },
+                    "evidence_valid": bool(
+                        any(
+                            fact.grounding_status == "grounded"
+                            for fact in fact_result.facts
+                        )
+                    ),
+                    "status": (
+                        "success"
+                        if fact_result.diagnostics.get("success", True)
+                        else "partial"
+                    ),
+                    "error": fact_result.diagnostics.get("error") or None,
+                }
+
         reader_status = str(profile.get("parse_status") or "failed")
         capability_metadata = {
             "attachment_profile": profile,
@@ -156,6 +217,8 @@ class AttachmentStrategyExecutor:
                 ),
             }
         )
+        if fact_tool_usage is not None:
+            tool_usage.append(fact_tool_usage)
 
         try:
             solver_context, handler_usage = self._run_handlers(
@@ -272,6 +335,41 @@ class AttachmentStrategyExecutor:
                 "handler_status": handler_status,
             },
         )
+
+    def _extract_attachment_facts(
+        self,
+        *,
+        question: str,
+        answer_requirement: str,
+        parsed_payload: dict[str, Any],
+    ) -> SemanticExtractionResult:
+        existing = [
+            EvidenceFact.from_dict(item)
+            for item in list(parsed_payload.get("semantic_facts") or [])
+            if isinstance(item, dict)
+        ]
+        if existing:
+            return SemanticExtractionResult(
+                facts=existing,
+                diagnostics={
+                    "success": True,
+                    "reused_existing_facts": True,
+                    "stored_fact_count": len(existing),
+                },
+            )
+        try:
+            return self.attachment_fact_extractor.extract(
+                question=question,
+                answer_requirement=answer_requirement,
+                parsed_payload=parsed_payload,
+            )
+        except Exception as exc:
+            return SemanticExtractionResult(
+                diagnostics={
+                    "success": False,
+                    "error": f"{type(exc).__name__}: {exc}",
+                }
+            )
 
     @staticmethod
     def _strategy_status(

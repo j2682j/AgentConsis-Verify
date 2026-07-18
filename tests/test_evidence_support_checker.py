@@ -87,6 +87,85 @@ def trusted_final_evidence(answer: str) -> dict:
     }
 
 
+def two_source_numeric_evidence() -> dict:
+    return {
+        "tool_usage": [
+            {
+                "tool_name": "search",
+                "ok": True,
+                "status": "success",
+                "evidence_valid": True,
+                "raw_result": {
+                    "evidence_items": [
+                        {
+                            "evidence_id": "E1",
+                            "source_id": "pace-source",
+                            "title": "Pace record",
+                            "text": "The verified pace was 20 km/h.",
+                            "semantic_facts": [
+                                {
+                                    "fact_id": "F-pace",
+                                    "subject": "verified pace",
+                                    "relation": "was",
+                                    "object": "20 km/h",
+                                    "qualifiers": {
+                                        "evidence_id": "E1",
+                                        "answer_binding": "bridge",
+                                    },
+                                    "role": "BRIDGE",
+                                    "goal_id": "G1",
+                                    "evidence_spans": ["The verified pace was 20 km/h."],
+                                    "context": "The verified pace was 20 km/h.",
+                                    "source_id": "pace-source",
+                                    "source_type": "search",
+                                    "grounding_status": "grounded",
+                                }
+                            ],
+                            "direct_contracts": [
+                                {
+                                    "goal_id": "G1",
+                                    "answer_span": "20 km/h",
+                                }
+                            ],
+                        },
+                        {
+                            "evidence_id": "E2",
+                            "source_id": "distance-source",
+                            "title": "Distance record",
+                            "text": "The required distance was 400 km.",
+                            "semantic_facts": [
+                                {
+                                    "fact_id": "F-distance",
+                                    "subject": "required distance",
+                                    "relation": "was",
+                                    "object": "400 km",
+                                    "qualifiers": {
+                                        "evidence_id": "E2",
+                                        "answer_binding": "bridge",
+                                    },
+                                    "role": "BRIDGE",
+                                    "goal_id": "G2",
+                                    "evidence_spans": ["The required distance was 400 km."],
+                                    "context": "The required distance was 400 km.",
+                                    "source_id": "distance-source",
+                                    "source_type": "search",
+                                    "grounding_status": "grounded",
+                                }
+                            ],
+                            "direct_contracts": [
+                                {
+                                    "goal_id": "G2",
+                                    "answer_span": "400 km",
+                                }
+                            ],
+                        },
+                    ]
+                },
+            }
+        ]
+    }
+
+
 class FakeVersaScorer:
     def score_steps(self, *, question: str, reasoning_steps: list[tuple[int, str]]):
         return VersaPRMScoreResult(
@@ -192,6 +271,82 @@ def case_stage1_intermediate_value_supports_reasoning() -> None:
     assert result.step_results[1].status == "unsupported"
 
 
+def case_two_source_calculation_supports_derived_answer() -> None:
+    reasoning = (
+        "step 1. Evidence gives the pace as 20 km/h. "
+        "step 2. Evidence gives the distance as 400 km. "
+        "step 3. Calculation: 400 km / 20 km/h = 20 hours."
+    )
+    summary = make_summary("a1", "20 hours", reasoning)
+    evidence = two_source_numeric_evidence()
+    result = EvidenceSupportChecker().check_agent(
+        target=summary,
+        reasoning_steps=[
+            (1, "Evidence gives the pace as 20 km/h."),
+            (2, "Evidence gives the distance as 400 km."),
+            (3, "Calculation: 400 km / 20 km/h = 20 hours."),
+        ],
+        evidence=evidence,
+        question="How many hours are required?",
+    )
+
+    assert result.status == "derived_evidence_supported"
+    assert result.step_results[2].status == "supported"
+    assert result.step_results[2].reason == "evidence_grounded_calculation_verified"
+    derivation = result.metadata["numerical_derivation"]
+    assert derivation["final_supported"] is True
+    assert derivation["provenance_ids"] == ["E2", "E1"]
+    assert derivation["goal_ids"] == ["G2", "G1"]
+    assert result.metadata["fact_store"]["derived_fact_count"] == 1
+    assert evidence["_fact_store"].to_dict()["derived_fact_count"] == 0
+
+
+def case_wrong_two_source_calculation_is_contradicted() -> None:
+    reasoning = (
+        "step 1. Evidence gives the pace as 20 km/h. "
+        "step 2. Evidence gives the distance as 400 km. "
+        "step 3. Calculation: 400 / 20 = 25 hours."
+    )
+    summary = make_summary("a1", "25 hours", reasoning)
+    result = EvidenceSupportChecker().check_agent(
+        target=summary,
+        reasoning_steps=[
+            (1, "Evidence gives the pace as 20 km/h."),
+            (2, "Evidence gives the distance as 400 km."),
+            (3, "Calculation: 400 / 20 = 25 hours."),
+        ],
+        evidence=two_source_numeric_evidence(),
+        question="How many hours are required?",
+    )
+
+    assert result.status == "contradicted"
+    assert result.step_results[2].status == "contradicted"
+    assert result.step_results[2].reason == "calculation_result_mismatch"
+
+
+def case_derived_answer_applies_question_output_scale() -> None:
+    summary = make_summary(
+        "a1",
+        "0.02",
+        (
+            "step 1. Calculation: 400 / 20 = 20 hours. "
+            "step 2. Calculation: 20 / 1000 = 0.02 thousand hours."
+        ),
+    )
+    result = EvidenceSupportChecker().check_agent(
+        target=summary,
+        reasoning_steps=[
+            (1, "Calculation: 400 / 20 = 20 hours."),
+            (2, "Calculation: 20 / 1000 = 0.02 thousand hours."),
+        ],
+        evidence=two_source_numeric_evidence(),
+        question="How many thousand hours are required?",
+    )
+
+    assert result.status == "derived_evidence_supported"
+    assert result.metadata["numerical_derivation"]["terminal_value"] == "0.02"
+
+
 def case_failed_attachment_allows_model_only_result_at_low_priority() -> None:
     summary = make_summary(
         "a1",
@@ -215,7 +370,7 @@ def case_failed_attachment_allows_model_only_result_at_low_priority() -> None:
     )
 
     assert result.status == "tool_failed_model_only"
-    assert result.priority == 0
+    assert result.priority == 1
     assert result.step_results[0].status == "tool_failed"
 
 
@@ -240,6 +395,28 @@ def case_stage2_combines_support_status_with_versa_probability() -> None:
     assert result.step_scores[0]["support_status"] == "supported"
     assert result.step_scores[0]["reward_probability"] == 0.97
     assert result.metadata["evidence_support"]["status"] == "tool_final_supported"
+
+
+def case_stage2_exports_numerical_derivation_trace() -> None:
+    reasoning = (
+        "step 1. Evidence gives the pace as 20 km/h. "
+        "step 2. Evidence gives the distance as 400 km. "
+        "step 3. Calculation: 400 / 20 = 20 hours."
+    )
+    summary = make_summary("a1", "20 hours", reasoning)
+    runner = Stage2Runner(
+        question="How many hours are required?",
+        agents=[AgentConfig(agent_id="a1", model_name="test-model")],
+        versa_scorer=FakeVersaScorer(),
+    )
+
+    result = runner.score_candidate(summary, evidence=two_source_numeric_evidence())
+
+    support = result.metadata["evidence_support"]
+    assert support["status"] == "derived_evidence_supported"
+    assert support["metadata"]["numerical_derivation"]["final_supported"] is True
+    assert result.step_scores[2]["support_status"] == "supported"
+    assert result.step_scores[2]["support_metadata"]["derivation"]["computed_value"] == "20"
 
 
 def case_supported_low_consistency_candidate_beats_unsupported_candidate() -> None:
@@ -295,11 +472,23 @@ class EvidenceSupportCheckerTests(unittest.TestCase):
     def test_stage1_intermediate_value_supports_reasoning(self) -> None:
         case_stage1_intermediate_value_supports_reasoning()
 
+    def test_two_source_calculation_supports_derived_answer(self) -> None:
+        case_two_source_calculation_supports_derived_answer()
+
+    def test_wrong_two_source_calculation_is_contradicted(self) -> None:
+        case_wrong_two_source_calculation_is_contradicted()
+
+    def test_derived_answer_applies_question_output_scale(self) -> None:
+        case_derived_answer_applies_question_output_scale()
+
     def test_failed_attachment_allows_model_only_result_at_low_priority(self) -> None:
         case_failed_attachment_allows_model_only_result_at_low_priority()
 
     def test_stage2_combines_support_status_with_versa_probability(self) -> None:
         case_stage2_combines_support_status_with_versa_probability()
+
+    def test_stage2_exports_numerical_derivation_trace(self) -> None:
+        case_stage2_exports_numerical_derivation_trace()
 
     def test_supported_low_consistency_candidate_beats_unsupported_candidate(self) -> None:
         case_supported_low_consistency_candidate_beats_unsupported_candidate()

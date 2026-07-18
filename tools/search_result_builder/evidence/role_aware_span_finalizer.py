@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 import re
 from typing import Any
 
@@ -30,6 +30,8 @@ class FinalizedSpan:
     role: str
     accepted: bool
     reason: str
+    goal_id: str = ""
+    candidate_id: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -148,27 +150,37 @@ class RoleAwareSpanFinalizer:
         for item in items:
             span = normalize_text(item.get("text", ""))
             role = normalize_text(item.get("role", "")).upper()
+            goal_id = normalize_text(item.get("goal_id", ""))
+            candidate_id = normalize_text(item.get("id", ""))
             if role == ANSWER_SUPPORT:
-                finalized.append(self._finalize_answer(span, context))
+                finalized_item = self._finalize_answer(span, context)
             elif role == BRIDGE:
-                finalized.append(self._finalize_bridge(span, context, source_title))
+                finalized_item = self._finalize_bridge(span, context, source_title)
             else:
-                finalized.append(
-                    FinalizedSpan(
-                        original_text=span,
-                        finalized_text="",
-                        role=NOISE,
-                        accepted=False,
-                        reason="noise_role",
-                    )
+                finalized_item = FinalizedSpan(
+                    original_text=span,
+                    finalized_text="",
+                    role=NOISE,
+                    accepted=False,
+                    reason="noise_role",
                 )
+            finalized.append(
+                replace(
+                    finalized_item,
+                    goal_id=goal_id if finalized_item.role != NOISE else "",
+                    candidate_id=candidate_id,
+                )
+            )
 
         reason_counts: dict[str, int] = {}
         accepted_counts: dict[str, int] = {}
+        goal_counts: dict[str, int] = {}
         for item in finalized:
             reason_counts[item.reason] = reason_counts.get(item.reason, 0) + 1
             if item.accepted:
                 accepted_counts[item.role] = accepted_counts.get(item.role, 0) + 1
+                if item.goal_id:
+                    goal_counts[item.goal_id] = goal_counts.get(item.goal_id, 0) + 1
         return RoleAwareSpanFinalizationResult(
             finalized=finalized,
             diagnostics={
@@ -176,6 +188,7 @@ class RoleAwareSpanFinalizer:
                 "accepted_count": sum(1 for item in finalized if item.accepted),
                 "reason_counts": reason_counts,
                 "accepted_role_counts": accepted_counts,
+                "goal_assignment_counts": goal_counts,
             },
         )
 

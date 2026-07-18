@@ -73,11 +73,17 @@ class Stage1OutputValidator:
             validity_labels.append("tool_call_as_final_answer")
         elif self.answer_validator.is_refusal_like(final_answer):
             validity_labels.append("refusal_like_final_answer")
-        elif self.answer_validator.is_too_verbose(final_answer):
+        elif self.answer_validator.is_too_verbose(
+            final_answer,
+            answer_type=output.answer_type,
+        ):
             validity_labels.append("too_verbose_final_answer")
         elif self.answer_validator.is_uncertain(final_answer):
             validity_labels.append("uncertain_final_answer")
-        elif not self.answer_validator.is_valid(final_answer):
+        elif not self.answer_validator.is_valid(
+            final_answer,
+            answer_type=output.answer_type,
+        ):
             validity_labels.append("invalid_final_answer")
 
         schema_valid = not schema_errors

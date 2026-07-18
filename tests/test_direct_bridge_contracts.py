@@ -10,6 +10,9 @@ from tools.search_result_builder.evidence import (
     EvidenceSelectionContract,
     SpanRoleClassifier,
 )
+from tools.search_result_builder.evidence.role_aware_span_finalizer import (
+    RoleAwareSpanFinalizer,
+)
 from tools.search_result_builder.next_hop_query import RelationEvidenceBinder
 from tools.search_result_builder.query import RelationPlan
 from tools.search_result_builder.source_analyze.label_contract import LabelContractValidator
@@ -196,6 +199,77 @@ class EvidenceRoleContractTests(unittest.TestCase):
         )
         self.assertIn("Active Goal: KGOT -> studio location -> mall name", prompt)
         self.assertIn("Next Goal: mall name -> floor area -> mall size", prompt)
+
+    def test_classifier_keeps_only_valid_goal_assignments(self) -> None:
+        classifier = SpanRoleClassifier()
+        candidates = [
+            CandidateSpan("1", "Dimond Center", "KGOT is in Dimond Center."),
+            CandidateSpan("2", "728,000 square feet", "The area is 728,000 square feet."),
+        ]
+        results = classifier._normalize_results(
+            [
+                {"id": "1", "role": "BRIDGE", "goal_id": "G1"},
+                {"id": "2", "role": "ANSWER_SUPPORT", "goal_id": "G9"},
+            ],
+            candidates,
+            valid_goal_ids={"G1", "G2"},
+        )
+        self.assertEqual(results[0].goal_id, "G1")
+        self.assertEqual(results[0].role, "BRIDGE")
+        self.assertEqual(results[1].role, "NOISE")
+        self.assertEqual(results[1].goal_id, "")
+
+    def test_finalizer_and_contract_builder_preserve_goal_id(self) -> None:
+        text = (
+            "KGOT broadcasts from the Dimond Center. "
+            "The Dimond Center has 728,000 square feet of floor area."
+        )
+        finalized = RoleAwareSpanFinalizer().finalize_batch(
+            items=[
+                {"id": "1", "text": "Dimond Center", "role": "BRIDGE", "goal_id": "G1"},
+                {
+                    "id": "2",
+                    "text": "728,000 square feet",
+                    "role": "ANSWER_SUPPORT",
+                    "goal_id": "G2",
+                },
+            ],
+            context=text,
+            source_title="Dimond Center",
+        )
+        assignments = [item.to_dict() for item in finalized.finalized]
+        assignments[1]["semantic_facts"] = [
+            {
+                "fact_id": "F-area",
+                "subject": "Dimond Center",
+                "relation": "has floor area",
+                "object": "728,000 square feet",
+                "qualifiers": {"answer_binding": "direct"},
+                "polarity": "positive",
+                "role": "ANSWER_SUPPORT",
+                "goal_id": "G2",
+                "evidence_spans": [
+                    "The Dimond Center has 728,000 square feet of floor area."
+                ],
+                "context": text,
+                "grounding_status": "grounded",
+            }
+        ]
+        contracts = EvidenceRoleContractBuilder().build(
+            question="How large is the mall where KGOT has studios?",
+            answer_requirement="mall size",
+            answer_target="floor area",
+            relation_plan=_relation_plan(),
+            document_id="D1",
+            source_title="Dimond Center",
+            url="https://example.test/dimond",
+            text=text,
+            span_assignments=assignments,
+        )
+        self.assertEqual(contracts.bridge[0].goal_id, "G1")
+        self.assertEqual(contracts.direct[0].goal_id, "G2")
+        self.assertEqual(contracts.direct[0].answer_span, "728,000 square feet")
+        self.assertNotEqual(contracts.direct[0].answer_span, contracts.direct[0].context)
 
 
 if __name__ == "__main__":

@@ -75,6 +75,7 @@ class AttachmentStrategyResult:
             "coordinate_count": len(parsed_payload.get("coordinates") or []),
             "relation_count": len(parsed_payload.get("relations") or []),
             "visual_block_count": len(parsed_payload.get("visual_blocks") or []),
+            "semantic_fact_count": len(parsed_payload.get("semantic_facts") or []),
         }
         parsed_payload_summary = {
             "schema_version": str(parsed_payload.get("schema_version") or "1.0"),

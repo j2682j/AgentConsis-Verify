@@ -573,21 +573,22 @@ def write_markdown_report(results: dict[str, Any], output_path: str | Path) -> P
         if winner_trace:
             lines.extend(
                 [
-                    "**Candidate-Centric Winner Selection**",
+                    "**Ordered-Gate Winner Selection**",
                     "",
                     f"- Status: {winner_trace.get('status', '')}",
                     f"- Reason: {winner_trace.get('selection_reason', '')}",
                     f"- Selected answer: {winner_trace.get('selected_answer', '') or '-'}",
                     f"- Selected path: {winner_trace.get('selected_agent_id', '') or '-'} / run {winner_trace.get('selected_run_index', 0) or '-'}",
                     "",
-                    "| Candidate | Evidence Tier | Direct Support | Agents | Runs | Critical Floor | Critical Geomean | Eligible |",
-                    "|---|---:|---|---:|---:|---:|---:|---|",
+                    "| Candidate | Evidence Status | Requirement | Direct Support | Agents | Runs | Critical Floor | Critical Geomean | Eligible |",
+                    "|---|---|---|---|---:|---:|---:|---:|---|",
                 ]
             )
             for candidate in winner_trace.get("candidates", []) or []:
                 lines.append(
                     f"| {short_cell(candidate.get('answer', ''), 100)} | "
-                    f"{candidate.get('support_tier', 0)} | "
+                    f"{candidate.get('support_status', 'no_support')} | "
+                    f"{candidate.get('requirement_status', 'not_available')} | "
                     f"{candidate.get('direct_support', False)} | "
                     f"{len(candidate.get('supporting_agent_ids', []) or [])} | "
                     f"{candidate.get('supporting_run_count', 0)} | "
@@ -596,6 +597,26 @@ def write_markdown_report(results: dict[str, Any], output_path: str | Path) -> P
                     f"{candidate.get('eligible', False)} |"
                 )
             lines.append("")
+            gate_trace = winner_trace.get("gate_trace", []) or []
+            if gate_trace:
+                lines.extend(
+                    [
+                        "| Ordered Gate | Survivors | Eliminated | Terminal Status |",
+                        "|---|---|---|---|",
+                    ]
+                )
+                for gate in gate_trace:
+                    eliminated = [
+                        f"{item.get('candidate_key', '')}: {item.get('reason', '')}"
+                        for item in gate.get("eliminated", []) or []
+                    ]
+                    lines.append(
+                        f"| {gate.get('gate_name', '')} | "
+                        f"{short_cell(', '.join(gate.get('survivors', []) or []) or '-', 120)} | "
+                        f"{short_cell('; '.join(eliminated) or '-', 180)} | "
+                        f"{gate.get('terminal_status', '') or '-'} |"
+                    )
+                lines.append("")
 
         context_budget = network_metadata.get("stage1_context_budget", {}) or {}
         if context_budget:

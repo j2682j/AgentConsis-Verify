@@ -11,6 +11,9 @@ from tools.search_result_builder.corpus import (
     DocumentCleaner,
     WebCorpusBuilder,
 )
+from tools.search_result_builder.source_analyze.seer.page_content_fetcher import (
+    PageFetchResult,
+)
 
 
 class WebCorpusBuilderTests(unittest.TestCase):
@@ -154,6 +157,34 @@ class WebCorpusBuilderTests(unittest.TestCase):
 
         self.assertEqual(len(records), 1)
         self.assertEqual(records[0].text, "這是一段可建立 corpus 的搜尋摘要。")
+
+
+    def test_omitted_chunks_cannot_be_marked_as_a_complete_document(self):
+        long_text = "First complete sentence about optics. " * 20
+
+        def fetcher(url: str, *, max_tokens: int):
+            del max_tokens
+            return PageFetchResult(
+                content=long_text,
+                method="test",
+                quality_status="ok",
+                is_complete=True,
+                original_char_count=len(long_text),
+                final_url=url,
+            )
+
+        builder = WebCorpusBuilder(
+            chunker=DocumentChunker(max_chars=120, overlap_chars=0, min_chars=10),
+            page_fetcher=fetcher,
+        )
+        records = builder.build_records(
+            [{"title": "Long article", "url": "https://example.com/long"}],
+            max_chunks_per_url=1,
+        )
+
+        self.assertEqual(len(records), 1)
+        self.assertFalse(records[0].content_complete)
+        self.assertTrue(records[0].content_truncated)
 
 
 if __name__ == "__main__":

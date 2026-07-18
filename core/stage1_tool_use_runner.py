@@ -12,6 +12,12 @@ from core.tool_turn_policy import AdaptiveToolTurnPolicy
 from parsers.tool_request_parser import ToolRequestParser
 from tools.tool_cache import ToolCache
 from tools.attachment_workspace import AttachmentWorkspace
+from tools.evidence.fact_extraction import (
+    SemanticFactExtractor,
+    SemanticSourceUnit,
+    TaskFactCollector,
+    TaskFactStore,
+)
 
 
 class Stage1ToolUseRunner:
@@ -43,6 +49,8 @@ class Stage1ToolUseRunner:
         max_tool_turns: int = 2,
         hard_max_tool_turns: int = 4,
         no_progress_limit: int = 2,
+        semantic_fact_extractor: SemanticFactExtractor | None = None,
+        fact_collector: TaskFactCollector | None = None,
     ) -> None:
         self.context_builder = context_builder or Stage1ToolContextBuilder()
         self.repair_context_builder = (
@@ -57,6 +65,8 @@ class Stage1ToolUseRunner:
             max(0, hard_max_tool_turns),
         )
         self.no_progress_limit = max(1, no_progress_limit)
+        self.semantic_fact_extractor = semantic_fact_extractor
+        self.fact_collector = fact_collector or TaskFactCollector()
 
     def run(
         self,
@@ -70,6 +80,7 @@ class Stage1ToolUseRunner:
         unload_after_run: bool = False,
         search_access_state: Stage1SearchAccessState | None = None,
         attachment_workspace: AttachmentWorkspace | None = None,
+        fact_store: TaskFactStore | None = None,
     ) -> tuple[EachAgentReply, int, int]:
         """
         執行單一 Agent 的 tool-use reasoning 回合，直到產生 final answer 或達到工具上限。
@@ -264,6 +275,18 @@ class Stage1ToolUseRunner:
                             result=tool_result,
                         )
                         tool_result["stage1_search_gate"] = search_access_state.snapshot()
+                    self._attach_semantic_facts(
+                        question=question,
+                        tool_name=tool_name,
+                        tool_result=tool_result,
+                    )
+                    if fact_store is not None:
+                        self.fact_collector.collect_item(
+                            fact_store,
+                            tool_result,
+                            question=question,
+                            source_scope="stage1_tool_use",
+                        )
                     progress = policy.observe(tool_result)
                     tool_result["adaptive_progress"] = progress
                     tool_result["tool_turn_policy"] = policy.snapshot()
@@ -747,6 +770,49 @@ class Stage1ToolUseRunner:
             if retry_hint:
                 lines.append(f"Next action: {retry_hint}")
         return "\n".join(lines)
+
+    def _attach_semantic_facts(
+        self,
+        *,
+        question: str,
+        tool_name: str,
+        tool_result: dict[str, Any],
+    ) -> None:
+        if tool_name not in {
+            "attachment_reader",
+            "video_evidence",
+            "video_transcript",
+        }:
+            return
+        if not tool_result.get("ok") or not tool_result.get("evidence_valid", False):
+            return
+        raw = tool_result.get("raw_result")
+        if not isinstance(raw, dict):
+            raw = {}
+            tool_result["raw_result"] = raw
+        if raw.get("semantic_facts"):
+            return
+        output_text = str(tool_result.get("output_text") or "").strip()
+        if not output_text:
+            return
+        if self.semantic_fact_extractor is None:
+            self.semantic_fact_extractor = SemanticFactExtractor(max_units_per_call=1)
+        result = self.semantic_fact_extractor.extract_batch(
+            question=question,
+            answer_requirement=question,
+            current_goal=question,
+            units=[
+                SemanticSourceUnit(
+                    unit_id="T1",
+                    text=output_text,
+                    source_id=f"stage1:{tool_name}",
+                    source_type=tool_name,
+                    source_title=tool_name.replace("_", " ").title(),
+                )
+            ],
+        )
+        raw["semantic_facts"] = [fact.to_dict() for fact in result.facts]
+        raw["semantic_fact_diagnostics"] = dict(result.diagnostics)
 
 
 __all__ = ["Stage1ToolUseRunner"]

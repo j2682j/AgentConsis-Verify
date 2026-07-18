@@ -50,11 +50,16 @@ class AnswerCandidateClusterer:
             valid_runs = [run for run in summary.runs if self._valid_run(run)]
             eligible_counts[summary.agent_id] = len(valid_runs)
             per_agent_keys[summary.agent_id] = [
-                self.candidate_key(run.final_answer) for run in valid_runs
+                self.candidate_key(
+                    run.final_answer,
+                    answer_type=self._answer_type(run),
+                )
+                for run in valid_runs
             ]
             for run in valid_runs:
                 answer = self.answer_validator.clean(run.final_answer)
-                key = self.candidate_key(answer)
+                answer_type = self._answer_type(run)
+                key = self.candidate_key(answer, answer_type=answer_type)
                 if not key:
                     continue
                 raw_members.append(
@@ -66,6 +71,9 @@ class AnswerCandidateClusterer:
                         normalized_answer=key,
                         reasoning=str(run.reasoning or "").strip(),
                         agent_confidence=float(summary.confidence_score or 0.0),
+                        answer_type=answer_type,
+                        schema_valid=bool(run.schema_valid),
+                        parse_completed=bool(run.parse_completed),
                     )
                 )
 
@@ -100,7 +108,7 @@ class AnswerCandidateClusterer:
             candidate.representative_answer = representative.answer
         return list(groups.values())
 
-    def candidate_key(self, answer: str) -> str:
+    def candidate_key(self, answer: str, *, answer_type: str = "") -> str:
         """
         產生保守且可重現的候選答案分群鍵值。
 
@@ -111,7 +119,10 @@ class AnswerCandidateClusterer:
          - str: 正規化答案；無效答案回傳空字串。
         """
         cleaned = self.answer_validator.clean(answer)
-        if not cleaned or not self.answer_validator.is_valid(cleaned):
+        if not cleaned or not self.answer_validator.is_valid(
+            cleaned,
+            answer_type=answer_type,
+        ):
             return ""
         normalized = normalize_for_exact(cleaned).strip().lower()
         normalized = re.sub(r"\s+", " ", normalized)
@@ -169,12 +180,19 @@ class AnswerCandidateClusterer:
 
     def _valid_run(self, run: object) -> bool:
         answer = self.answer_validator.clean(getattr(run, "final_answer", ""))
+        answer_type = self._answer_type(run)
         return bool(
             answer
             and getattr(run, "parse_completed", False)
             and getattr(run, "eligible_for_winner", True)
-            and self.answer_validator.is_valid(answer)
+            and self.answer_validator.is_valid(answer, answer_type=answer_type)
         )
+
+    def _answer_type(self, run: object) -> str:
+        structured_output = getattr(run, "structured_output", {})
+        if not isinstance(structured_output, dict):
+            return ""
+        return str(structured_output.get("answer_type") or "").strip()
 
     def _member_consistency(self, member: CandidateRun) -> float:
         ratio = member.agent_answer_frequency / max(1, member.eligible_run_count)

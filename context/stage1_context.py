@@ -54,7 +54,9 @@ Rules:
 - If one step needs multiple actions, split it into multiple steps.
 - Keep final_answer short and separate from reasoning_steps.
 - Never include "Final Answer", "Answer", "boxed", or conclusion text inside reasoning_steps.
-- Split lookup, conversion, calculation, rounding, and formatting into separate steps."""
+- Split lookup, conversion, calculation, rounding, and formatting into separate steps.
+- For numeric work, write one explicit equation: "Calculation: <expression> = <value> <unit>".
+- Every equation input must come from the question, Evidence, or a previously computed step."""
 
 
 class Stage1ContextBuilder(ContextBuilder):

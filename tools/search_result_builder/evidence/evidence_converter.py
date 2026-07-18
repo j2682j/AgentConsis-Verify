@@ -203,6 +203,21 @@ class EvidenceConverter:
         ]
         if not direct_contracts:
             return None
+        direct_fact_ids = {
+            normalize_text(str(item.get("fact_id") or ""))
+            for item in direct_contracts
+            if normalize_text(str(item.get("fact_id") or ""))
+        }
+        semantic_facts = [
+            dict(fact)
+            for fact in list(document.get("semantic_facts") or [])
+            if isinstance(fact, dict)
+            and normalize_text(str(fact.get("grounding_status") or "")) == "grounded"
+            and (
+                not direct_fact_ids
+                or normalize_text(str(fact.get("fact_id") or "")) in direct_fact_ids
+            )
+        ]
         matched_terms = [
             normalize_text(str(item.get("answer_span") or ""))
             for item in direct_contracts
@@ -254,6 +269,7 @@ class EvidenceConverter:
             ][:16],
             "bridge_spans": [],
             "direct_contracts": direct_contracts[:16],
+            "semantic_facts": semantic_facts[:16],
             "span_roles": list(document.get("span_roles") or [])[:24],
             "support_level": normalize_text(document.get("support_level", "")),
             "answer_requirement": contract.answer_requirement,

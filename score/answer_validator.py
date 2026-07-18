@@ -88,7 +88,7 @@ class AnswerValidator:
         candidate = " ".join(candidate.split()) if "\n" not in candidate else candidate.strip()
         return candidate.strip()
 
-    def is_valid(self, answer: Any) -> bool:
+    def is_valid(self, answer: Any, *, answer_type: str = "") -> bool:
         """
         判斷候選 final answer 是否可進入 voting、scoring 與 winner selection。
 
@@ -107,7 +107,7 @@ class AnswerValidator:
             return False
         if self.is_refusal_like(candidate):
             return False
-        if self.is_too_verbose(candidate):
+        if self.is_too_verbose(candidate, answer_type=answer_type):
             return False
         if re.search(r"(?:REASONING|WEIGHTS)\s*=", candidate, re.IGNORECASE):
             return False
@@ -159,7 +159,7 @@ class AnswerValidator:
             return True
         return any(re.search(pattern, candidate, re.IGNORECASE) for pattern in self.REFUSAL_PATTERNS)
 
-    def is_too_verbose(self, answer: Any) -> bool:
+    def is_too_verbose(self, answer: Any, *, answer_type: str = "") -> bool:
         """
         判斷 final answer 是否過長或包含過多行，避免長段解釋污染短答案任務。
 
@@ -170,11 +170,27 @@ class AnswerValidator:
             - bool: 若答案超過長度或行數限制則回傳 True。
         """
         candidate = self.clean(answer)
+        if self._is_compact_list_answer(candidate, answer_type=answer_type):
+            return False
         if len(candidate) > 50:
             return True
         if len(candidate.splitlines()) > 1:
             return True
         return False
+
+    def _is_compact_list_answer(self, answer: str, *, answer_type: str = "") -> bool:
+        """Accept long enumerations while continuing to reject prose explanations."""
+        candidate = str(answer or "").strip()
+        if not candidate or len(candidate.splitlines()) != 1 or len(candidate) > 1000:
+            return False
+        parts = [part.strip() for part in re.split(r"[,;]", candidate)]
+        if len(parts) < 2 or any(not part or len(part) > 64 for part in parts):
+            return False
+        if any(re.search(r"[.!?](?:\s|$)", part) for part in parts):
+            return False
+        declared_list = str(answer_type or "").strip().lower() == "list"
+        compact_items = all(len(part.split()) <= 8 for part in parts)
+        return declared_list or compact_items
 
     def _parse_json_fragment(self, text: str) -> Any | None:
         """

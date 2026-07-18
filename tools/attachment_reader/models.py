@@ -125,6 +125,7 @@ class ParsedAttachmentPayload:
     coordinates: list[CoordinateRecord] = field(default_factory=list)
     relations: list[RelationRecord] = field(default_factory=list)
     visual_blocks: list[VisualBlock] = field(default_factory=list)
+    semantic_facts: list[dict[str, Any]] = field(default_factory=list)
     native_metadata: dict[str, Any] = field(default_factory=dict)
     provenance: dict[str, Any] = field(default_factory=dict)
 
@@ -140,6 +141,7 @@ class ParsedAttachmentPayload:
                 self.coordinates,
                 self.relations,
                 self.visual_blocks,
+                self.semantic_facts,
             )
         )
 
@@ -160,6 +162,8 @@ class ParsedAttachmentPayload:
             values.append("image")
             if any(block.text.strip() for block in self.visual_blocks):
                 values.append("ocr_text")
+        if self.semantic_facts:
+            values.append("semantic_facts")
         if attachment_kind in {"audio", "video", "archive", "code"}:
             values.append(attachment_kind)
         if attachment_kind in {"audio", "video"} and self.text_blocks:
@@ -197,6 +201,8 @@ class ParsedAttachmentPayload:
             for key in ("numbers", "grid", "candidate_words", "objects", "colors"):
                 if key in visual_keys:
                     values.append(key)
+        if self.semantic_facts:
+            values.append("semantic_facts")
         attachment_kind = str(self.native_metadata.get("attachment_kind") or "")
         if attachment_kind in {"audio", "video"} and self.text_blocks:
             values.append("transcript")
@@ -216,6 +222,7 @@ class ParsedAttachmentPayload:
             "coordinate_count": len(self.coordinates),
             "relation_count": len(self.relations),
             "visual_block_count": len(self.visual_blocks),
+            "semantic_fact_count": len(self.semantic_facts),
         }
 
 

@@ -233,8 +233,10 @@ class WebCorpusBuilder:
                 else:
                     chunks.extend(self.chunker.chunk(cleaned))
             unique_chunks: list[str] = []
+            chunk_limit_reached = False
             for chunk in chunks:
                 if len(unique_chunks) >= per_url_limit:
+                    chunk_limit_reached = True
                     break
                 if self._is_low_quality_chunk(chunk):
                     continue
@@ -251,6 +253,16 @@ class WebCorpusBuilder:
 
             page_index += 1
             title = self.cleaner.clean_title(source_data["title"])
+            remaining_record_capacity = (
+                len(unique_chunks)
+                if record_limit is None
+                else max(0, record_limit - len(records))
+            )
+            source_content_complete = bool(
+                source_data["content_complete"]
+                and not chunk_limit_reached
+                and remaining_record_capacity >= len(unique_chunks)
+            )
             for chunk_index, chunk in enumerate(unique_chunks):
                 if record_limit is not None and len(records) >= record_limit:
                     break
@@ -267,8 +279,11 @@ class WebCorpusBuilder:
                             if source_data["content_complete"]
                             else "passage"
                         ),
-                        content_complete=source_data["content_complete"],
-                        content_truncated=source_data["content_truncated"],
+                        content_complete=source_content_complete,
+                        content_truncated=(
+                            source_data["content_truncated"]
+                            or not source_content_complete
+                        ),
                         original_content_chars=source_data["original_content_chars"],
                     )
                 )
@@ -290,9 +305,11 @@ class WebCorpusBuilder:
         cleaned = self.cleaner.clean(fetch_result.content)
         if not cleaned:
             return []
-        chunks = self.chunker.chunk(cleaned)[: max(1, max_chunks)]
-        if not chunks:
-            chunks = [cleaned]
+        all_chunks = self.chunker.chunk(cleaned)
+        if not all_chunks:
+            all_chunks = [cleaned]
+        chunks = all_chunks[: max(1, max_chunks)]
+        all_content_preserved = len(chunks) == len(all_chunks)
         collection_record = self._collection_from_mapping(data)
         record_id = str(data.get("record_id") or data.get("id") or "record")
         retrieved_at = str(data.get("retrieved_at") or self._retrieved_date(None))
@@ -314,8 +331,12 @@ class WebCorpusBuilder:
                         f"{collection_record.extraction_method}+linked_content"
                     ).strip("+"),
                     content_scope="full_document",
-                    content_complete=fetch_result.is_complete,
-                    content_truncated=fetch_result.truncated,
+                    content_complete=(
+                        fetch_result.is_complete and all_content_preserved
+                    ),
+                    content_truncated=(
+                        fetch_result.truncated or not all_content_preserved
+                    ),
                     original_content_chars=fetch_result.original_char_count,
                 )
             )

@@ -178,6 +178,7 @@ class Stage2Runner:
             target=target,
             reasoning_steps=reasoning_steps,
             evidence=evidence or {},
+            question=self.question,
         )
         support_by_step = {
             item.step_index: item for item in support_summary.step_results
@@ -206,6 +207,9 @@ class Stage2Runner:
                         list(support.matched_tool_values)
                         if support is not None
                         else []
+                    ),
+                    "support_metadata": (
+                        dict(support.metadata) if support is not None else {}
                     ),
                 }
             )

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import asdict
 from decimal import Decimal, InvalidOperation
+import hashlib
 import re
 from typing import Any, Iterable
 
@@ -12,7 +13,21 @@ from core.config import (
     ToolEvidenceRecord,
 )
 from score.answer_validator import AnswerValidator
+from score.candidate_fact_verifier import (
+    CandidateFactVerification,
+    CandidateFactVerifier,
+)
+from score.numerical_derivation_verifier import (
+    NumericalDerivationSummary,
+    NumericalDerivationVerifier,
+)
 from utils.network_utils import normalize_for_exact
+from tools.evidence.fact_extraction import (
+    FactDerivationEngine,
+    EvidenceFact,
+    TaskFactCollector,
+    TaskFactStore,
+)
 
 
 class EvidenceSupportChecker:
@@ -28,17 +43,20 @@ class EvidenceSupportChecker:
 
     SUPPORT_PRIORITY = {
         "contradicted": -1,
-        "tool_failed_model_only": 0,
+        "tool_failed_model_only": 1,
         "no_support": 1,
         "search_evidence_supported": 3,
         "attachment_evidence_supported": 3,
         "tool_intermediate_supported": 4,
+        "derived_evidence_supported": 4,
         "tool_final_supported": 5,
     }
     _IGNORED_TOOLS = {
         "tool_planner",
         "attachment_strategy_planner",
         "attachment_strategy_reviewer",
+        "attachment_fact_extractor",
+        "semantic_fact_extractor",
     }
     _DETERMINISTIC_TOOLS = {
         "deterministic_handler_router",
@@ -47,8 +65,23 @@ class EvidenceSupportChecker:
         "python_calculator",
     }
 
-    def __init__(self, answer_validator: AnswerValidator | None = None) -> None:
+    def __init__(
+        self,
+        answer_validator: AnswerValidator | None = None,
+        numerical_derivation_verifier: NumericalDerivationVerifier | None = None,
+        candidate_fact_verifier: CandidateFactVerifier | None = None,
+        fact_derivation_engine: FactDerivationEngine | None = None,
+        fact_collector: TaskFactCollector | None = None,
+    ) -> None:
         self.answer_validator = answer_validator or AnswerValidator()
+        self.numerical_derivation_verifier = (
+            numerical_derivation_verifier or NumericalDerivationVerifier()
+        )
+        self.candidate_fact_verifier = candidate_fact_verifier or CandidateFactVerifier(
+            equivalence_fn=self._answers_equivalent,
+        )
+        self.fact_derivation_engine = fact_derivation_engine or FactDerivationEngine()
+        self.fact_collector = fact_collector or TaskFactCollector()
 
     def check_agent(
         self,
@@ -56,6 +89,7 @@ class EvidenceSupportChecker:
         target: AgentReasoningSummary,
         reasoning_steps: list[tuple[int, str]],
         evidence: dict[str, Any] | None = None,
+        question: str = "",
     ) -> AgentEvidenceSupportSummary:
         """
         彙整指定 Agent 可使用的工具紀錄並判斷其證據支持狀態。
@@ -68,8 +102,29 @@ class EvidenceSupportChecker:
         Returns:
          - AgentEvidenceSupportSummary: Agent 與每個步驟的支持分類。
         """
-        records = self.collect_records(target=target, evidence=evidence or {})
         final_answer = self.answer_validator.clean(target.compressed_answer)
+        shared_fact_store = self.collect_fact_store(
+            target=target,
+            evidence=evidence or {},
+        )
+        answer_requirement = str((evidence or {}).get("answer_requirement") or question).strip()
+        fact_derivation = self.fact_derivation_engine.derive(
+            shared_fact_store,
+            answer_requirement=answer_requirement,
+        )
+        if evidence is not None:
+            evidence["fact_store"] = shared_fact_store.to_dict()
+        # Candidate-dependent derivations must not contaminate other candidates.
+        fact_store = TaskFactStore.from_dict(shared_fact_store.to_dict())
+        fact_verification = self.candidate_fact_verifier.verify(
+            candidate_answer=final_answer,
+            fact_store=fact_store,
+            answer_requirement=answer_requirement,
+        )
+        records = self.collect_records(target=target, evidence=evidence or {})
+        records = self._deduplicate_records(
+            [*records, *self._fact_store_records(fact_store)]
+        )
         trusted_finals = self._unique(
             record.value
             for record in records
@@ -85,8 +140,33 @@ class EvidenceSupportChecker:
             value for value in trusted_finals if self._answers_equivalent(final_answer, value)
         ]
 
-        step_results = [
-            self._check_step(
+        numerical_derivation = self.numerical_derivation_verifier.verify(
+            question=question,
+            reasoning_steps=reasoning_steps,
+            final_answer=final_answer,
+            records=records,
+        )
+        numerical_fact = self._numerical_derivation_fact(
+            final_answer=final_answer,
+            numerical_derivation=numerical_derivation,
+            fact_store=fact_store,
+            answer_requirement=answer_requirement,
+        )
+        if numerical_fact is not None and fact_store.add(numerical_fact):
+            records = self._deduplicate_records(
+                [*records, *self._fact_store_records(fact_store)]
+            )
+            fact_verification = self.candidate_fact_verifier.verify(
+                candidate_answer=final_answer,
+                fact_store=fact_store,
+                answer_requirement=answer_requirement,
+            )
+        numerical_by_step = {
+            item.step_index: item for item in numerical_derivation.step_results
+        }
+        step_results = []
+        for step_index, step_text in reasoning_steps:
+            direct_result = self._check_step(
                 step_index=step_index,
                 step_text=step_text,
                 records=records,
@@ -94,8 +174,12 @@ class EvidenceSupportChecker:
                 trusted_finals=trusted_finals,
                 trusted_final_conflict=trusted_final_conflict,
             )
-            for step_index, step_text in reasoning_steps
-        ]
+            step_results.append(
+                self._merge_numerical_support(
+                    direct_result,
+                    numerical_by_step.get(step_index),
+                )
+            )
         status = self._agent_status(
             final_answer=final_answer,
             records=records,
@@ -103,6 +187,9 @@ class EvidenceSupportChecker:
             trusted_finals=trusted_finals,
             matched_final_values=matched_final_values,
             trusted_final_conflict=trusted_final_conflict,
+            numerical_derivation=numerical_derivation,
+            fact_verification=fact_verification,
+            fact_store=fact_store,
         )
         failures = [record for record in records if record.output_type == "failed"]
         return AgentEvidenceSupportSummary(
@@ -123,8 +210,40 @@ class EvidenceSupportChecker:
                 "contradicted_step_count": sum(
                     1 for item in step_results if item.status == "contradicted"
                 ),
+                "numerical_derivation": numerical_derivation.to_dict(),
+                "candidate_fact_verification": fact_verification.to_dict(),
+                "fact_derivation": fact_derivation.to_dict(),
+                "fact_store": fact_store.to_dict(),
             },
         )
+
+    def collect_fact_store(
+        self,
+        *,
+        target: AgentReasoningSummary,
+        evidence: dict[str, Any],
+    ) -> TaskFactStore:
+        """彙整 Evidence Prepare 與 Stage1 Tool Use 產生的任務事實。"""
+
+        store = evidence.get("_fact_store")
+        if not isinstance(store, TaskFactStore):
+            store = TaskFactStore.from_dict(evidence.get("fact_store"))
+        self.fact_collector.collect_many(
+            store,
+            list(evidence.get("tool_usage") or []),
+            question="",
+            source_scope="evidence_prepare",
+        )
+        for run in self._selected_runs(target):
+            self.fact_collector.collect_many(
+                store,
+                list(run.tool_results or []),
+                question="",
+                source_scope="stage1_tool_use",
+            )
+        evidence["_fact_store"] = store
+        evidence["fact_store"] = store.to_dict()
+        return store
 
     def collect_records(
         self,
@@ -144,6 +263,12 @@ class EvidenceSupportChecker:
         """
         records: list[ToolEvidenceRecord] = []
         for item in evidence.get("tool_usage", []) or []:
+            records.extend(
+                self._semantic_fact_records(
+                    item,
+                    source_scope="evidence_prepare",
+                )
+            )
             if isinstance(item, dict) and item.get("tool_name") == "search":
                 records.extend(
                     self._search_evidence_records(
@@ -159,6 +284,14 @@ class EvidenceSupportChecker:
         selected_runs = self._selected_runs(target)
         for run in selected_runs:
             for item in run.tool_results or []:
+                records.extend(
+                    self._semantic_fact_records(
+                        item,
+                        source_scope="stage1_tool_use",
+                        agent_id=target.agent_id,
+                        run_index=run.run_index,
+                    )
+                )
                 if isinstance(item, dict) and item.get("tool_name") == "search":
                     records.extend(
                         self._search_evidence_records(
@@ -207,6 +340,34 @@ class EvidenceSupportChecker:
             text = str(evidence_item.get("text") or "").strip()
             if not text:
                 continue
+            direct_contracts = [
+                dict(contract)
+                for contract in list(evidence_item.get("direct_contracts") or [])
+                if isinstance(contract, dict)
+            ]
+            goal_ids = self._unique(
+                str(contract.get("goal_id") or "")
+                for contract in direct_contracts
+            )
+            answer_spans = self._unique(
+                str(contract.get("answer_span") or "")
+                for contract in direct_contracts
+            )
+            records.extend(
+                self._semantic_fact_records(
+                    {
+                        "tool_name": "search",
+                        "raw_result": {
+                            "semantic_facts": list(
+                                evidence_item.get("semantic_facts") or []
+                            )
+                        },
+                    },
+                    source_scope=source_scope,
+                    agent_id=agent_id,
+                    run_index=run_index,
+                )
+            )
             records.append(
                 ToolEvidenceRecord(
                     tool_name="search",
@@ -225,6 +386,9 @@ class EvidenceSupportChecker:
                         "evidence_bucket": str(evidence_item.get("evidence_bucket") or ""),
                         "sequence_tag": str(evidence_item.get("sequence_tag") or ""),
                         "url": str(evidence_item.get("url") or ""),
+                        "goal_ids": goal_ids,
+                        "answer_spans": answer_spans,
+                        "direct_contracts": direct_contracts,
                     },
                 )
             )
@@ -236,6 +400,7 @@ class EvidenceSupportChecker:
                 "matched_terms",
             ):
                 useful_spans.extend(self._string_list(evidence_item.get(field_name)))
+            useful_spans.extend(answer_spans)
             for span in self._unique(useful_spans):
                 records.append(
                     ToolEvidenceRecord(
@@ -255,9 +420,81 @@ class EvidenceSupportChecker:
                             "source_id": str(evidence_item.get("source_id") or ""),
                             "source_title": str(evidence_item.get("title") or ""),
                             "evidence_bucket": str(evidence_item.get("evidence_bucket") or ""),
+                            "goal_ids": self._unique(
+                                str(contract.get("goal_id") or "")
+                                for contract in direct_contracts
+                                if self._answers_equivalent(
+                                    span,
+                                    str(contract.get("answer_span") or ""),
+                                )
+                            ),
+                            "answer_spans": [span],
                         },
                     )
                 )
+        return records
+
+    def _semantic_fact_records(
+        self,
+        item: Any,
+        *,
+        source_scope: str,
+        agent_id: str = "",
+        run_index: int = 0,
+    ) -> list[ToolEvidenceRecord]:
+        if not isinstance(item, dict):
+            return []
+        raw = item.get("raw_result") if isinstance(item.get("raw_result"), dict) else {}
+        facts = list(item.get("semantic_facts") or raw.get("semantic_facts") or [])
+        tool_name = str(item.get("tool_name") or "semantic_fact_extractor").strip()
+        records: list[ToolEvidenceRecord] = []
+        for fact in facts:
+            if not isinstance(fact, dict):
+                continue
+            if str(fact.get("grounding_status") or "").strip().lower() != "grounded":
+                continue
+            value = str(fact.get("object") or "").strip()
+            role = str(fact.get("role") or "CONTEXT").strip().upper()
+            evidence_spans = self._string_list(fact.get("evidence_spans"))
+            qualifiers = dict(fact.get("qualifiers") or {})
+            evidence_text = str(fact.get("context") or "").strip()
+            if not evidence_text:
+                evidence_text = " ".join(evidence_spans).strip()
+            if not value or not evidence_text:
+                continue
+            records.append(
+                ToolEvidenceRecord(
+                    tool_name=tool_name,
+                    output_type="evidence_fact",
+                    value=value,
+                    role=role,
+                    trusted=False,
+                    evidence_valid=True,
+                    source_scope=source_scope,
+                    agent_id=agent_id,
+                    run_index=int(run_index or 0),
+                    status="grounded_fact",
+                    evidence_text=evidence_text,
+                    metadata={
+                        "fact_id": str(fact.get("fact_id") or ""),
+                        "evidence_id": str(qualifiers.get("evidence_id") or ""),
+                        "subject": str(fact.get("subject") or ""),
+                        "relation": str(fact.get("relation") or ""),
+                        "object": value,
+                        "qualifiers": qualifiers,
+                        "polarity": str(fact.get("polarity") or "positive"),
+                        "goal_ids": self._string_list(fact.get("goal_id")),
+                        "source_id": str(fact.get("source_id") or ""),
+                        "source_type": str(fact.get("source_type") or ""),
+                        "source_title": str(fact.get("source_title") or ""),
+                        "grounding_status": "grounded",
+                        "extraction_method": str(
+                            fact.get("extraction_method") or ""
+                        ),
+                        "evidence_spans": evidence_spans,
+                    },
+                )
+            )
         return records
 
     def _selected_runs(self, target: AgentReasoningSummary) -> list[Any]:
@@ -411,9 +648,17 @@ class EvidenceSupportChecker:
             record
             for record in records
             if (
-                record.output_type in {"final_answer", "intermediate_value"}
+                record.output_type in {
+                    "final_answer",
+                    "intermediate_value",
+                    "evidence_fact",
+                }
                 and record.value
                 and record.evidence_valid
+                and not (
+                    record.output_type == "evidence_fact"
+                    and str(record.metadata.get("polarity") or "positive") == "negative"
+                )
                 and self._value_mentioned(record.value, step_text)
             )
         ]
@@ -434,7 +679,7 @@ class EvidenceSupportChecker:
                 record.output_type == "evidence_text"
                 and record.evidence_valid
                 and final_answer
-                and self._answer_in_evidence(final_answer, record.evidence_text)
+                and self._record_directly_supports_answer(record, final_answer)
                 and self._value_mentioned(final_answer, step_text)
             )
         ]
@@ -497,9 +742,68 @@ class EvidenceSupportChecker:
         trusted_finals: list[str],
         matched_final_values: list[str],
         trusted_final_conflict: bool,
+        numerical_derivation: NumericalDerivationSummary,
+        fact_verification: CandidateFactVerification,
+        fact_store: TaskFactStore,
     ) -> str:
+        if fact_verification.status == "contradicted":
+            return "contradicted"
+        if fact_verification.status == "supported":
+            if fact_verification.support_kind == "derived":
+                return "derived_evidence_supported"
+            supporting_facts = [
+                fact_store.get(fact_id)
+                for fact_id in fact_verification.supporting_fact_ids
+            ]
+            if any(
+                fact is not None and fact.source_type in {"search", "web"}
+                for fact in supporting_facts
+            ):
+                return "search_evidence_supported"
+            if any(
+                fact is not None and fact.source_type in {"handler", "stage1_tool"}
+                for fact in supporting_facts
+            ):
+                return "tool_final_supported"
+            return "attachment_evidence_supported"
+        if numerical_derivation.status == "contradicted":
+            return "contradicted"
         if matched_final_values:
             return "tool_final_supported"
+        if numerical_derivation.final_supported:
+            return "derived_evidence_supported"
+        supporting_fact_records = [
+            record
+            for record in records
+            if (
+                record.output_type == "evidence_fact"
+                and record.evidence_valid
+                and record.role == "ANSWER_SUPPORT"
+                and str(record.metadata.get("polarity") or "positive") == "positive"
+                and self._answers_equivalent(final_answer, record.value)
+            )
+        ]
+        if supporting_fact_records:
+            if any(
+                record.tool_name == "search"
+                or str(record.metadata.get("source_type") or "") == "web"
+                for record in supporting_fact_records
+            ):
+                return "search_evidence_supported"
+            return "attachment_evidence_supported"
+        contradicted_fact_records = [
+            record
+            for record in records
+            if (
+                record.output_type == "evidence_fact"
+                and record.evidence_valid
+                and record.role == "ANSWER_SUPPORT"
+                and str(record.metadata.get("polarity") or "positive") == "negative"
+                and self._answers_equivalent(final_answer, record.value)
+            )
+        ]
+        if contradicted_fact_records:
+            return "contradicted"
         if (
             trusted_finals
             and not trusted_final_conflict
@@ -513,7 +817,7 @@ class EvidenceSupportChecker:
             if (
                 record.output_type == "evidence_text"
                 and record.evidence_valid
-                and self._answer_in_evidence(final_answer, record.evidence_text)
+                and self._record_directly_supports_answer(record, final_answer)
             )
         ]
         if supporting_text_records:
@@ -540,6 +844,179 @@ class EvidenceSupportChecker:
         ):
             return "tool_failed_model_only"
         return "no_support"
+
+    def _fact_store_records(
+        self,
+        fact_store: TaskFactStore,
+    ) -> list[ToolEvidenceRecord]:
+        records: list[ToolEvidenceRecord] = []
+        for fact in fact_store.all():
+            if fact.grounding_status != "grounded" or not fact.object:
+                continue
+            records.append(
+                ToolEvidenceRecord(
+                    tool_name=fact.source_type or "fact_store",
+                    output_type="evidence_fact",
+                    value=fact.object,
+                    role=fact.role,
+                    trusted=False,
+                    evidence_valid=True,
+                    source_scope="task_fact_store",
+                    status=("derived_fact" if fact.parent_fact_ids else "grounded_fact"),
+                    evidence_text=fact.context or " ".join(fact.evidence_spans),
+                    metadata={
+                        "fact_id": fact.fact_id,
+                        "evidence_id": fact.qualifiers.get("evidence_id", ""),
+                        "subject": fact.subject,
+                        "relation": fact.relation,
+                        "object": fact.object,
+                        "qualifiers": dict(fact.qualifiers),
+                        "polarity": fact.polarity,
+                        "goal_ids": self._string_list(fact.goal_id),
+                        "source_id": fact.source_id,
+                        "source_type": fact.source_type,
+                        "source_title": fact.source_title,
+                        "grounding_status": fact.grounding_status,
+                        "extraction_method": fact.extraction_method,
+                        "evidence_spans": list(fact.evidence_spans),
+                        "parent_fact_ids": list(fact.parent_fact_ids),
+                        "derivation_type": fact.derivation_type,
+                    },
+                )
+            )
+        return records
+
+    def _numerical_derivation_fact(
+        self,
+        *,
+        final_answer: str,
+        numerical_derivation: NumericalDerivationSummary,
+        fact_store: TaskFactStore,
+        answer_requirement: str,
+    ) -> EvidenceFact | None:
+        if not numerical_derivation.final_supported or not final_answer:
+            return None
+        provenance = set(numerical_derivation.provenance_ids)
+        parent_fact_ids = [
+            fact.fact_id
+            for fact in fact_store.all()
+            if str(fact.qualifiers.get("evidence_id") or "") in provenance
+            or fact.fact_id in provenance
+        ]
+        if not parent_fact_ids:
+            return None
+        payload = "\x1f".join([final_answer, *parent_fact_ids])
+        fact_id = "derived-numeric-" + hashlib.sha1(
+            payload.encode("utf-8")
+        ).hexdigest()[:16]
+        contexts = [
+            fact.context
+            for fact_id_value in parent_fact_ids
+            if (fact := fact_store.get(fact_id_value)) is not None and fact.context
+        ]
+        return EvidenceFact(
+            fact_id=fact_id,
+            subject=answer_requirement or "requested result",
+            relation="has verified numerical result",
+            object=final_answer,
+            qualifiers={
+                "terminal_value": numerical_derivation.terminal_value,
+                "goal_ids": ",".join(numerical_derivation.goal_ids),
+                "answer_binding": "direct",
+                "answer_requirement": answer_requirement,
+            },
+            polarity="positive",
+            role="ANSWER_SUPPORT",
+            goal_id=(numerical_derivation.goal_ids[0] if numerical_derivation.goal_ids else ""),
+            evidence_spans=[final_answer],
+            context="\n".join(contexts),
+            source_id="numerical_derivation",
+            source_type="derived",
+            source_title="Verified numerical derivation",
+            grounding_status="grounded",
+            extraction_method="numerical_derivation_verifier",
+            parent_fact_ids=parent_fact_ids,
+            derivation_type="numerical_calculation",
+        )
+
+    def _record_directly_supports_answer(
+        self,
+        record: ToolEvidenceRecord,
+        final_answer: str,
+    ) -> bool:
+        """Require an answer-bound evidence contract instead of text occurrence."""
+        metadata = record.metadata if isinstance(record.metadata, dict) else {}
+        contracts = [
+            item
+            for item in list(metadata.get("direct_contracts") or [])
+            if isinstance(item, dict)
+        ]
+        for contract in contracts:
+            answer_span = str(contract.get("answer_span") or "").strip()
+            context = str(contract.get("context") or record.evidence_text or "").strip()
+            requirement = str(contract.get("answer_requirement") or "").strip()
+            if not answer_span or not requirement:
+                continue
+            if not self._answers_equivalent(final_answer, answer_span):
+                continue
+            if not self._answer_in_evidence(answer_span, context):
+                continue
+            if contract.get("relation_resolved") is False:
+                continue
+            return True
+        return False
+
+    def _merge_numerical_support(
+        self,
+        direct_result: StepSupportResult,
+        numerical_result: Any | None,
+    ) -> StepSupportResult:
+        if numerical_result is None:
+            return direct_result
+        numerical_metadata = {
+            "support_kind": "numerical_derivation",
+            "derivation": numerical_result.to_dict(),
+        }
+        if numerical_result.status == "contradicted":
+            return StepSupportResult(
+                step_index=direct_result.step_index,
+                step_text=direct_result.step_text,
+                status="contradicted",
+                matched_tool_values=list(numerical_result.matched_values),
+                source_tools=list(numerical_result.source_tools),
+                reason=numerical_result.reason,
+                metadata=numerical_metadata,
+            )
+        if numerical_result.status == "derived_supported":
+            return StepSupportResult(
+                step_index=direct_result.step_index,
+                step_text=direct_result.step_text,
+                status="supported",
+                matched_tool_values=self._unique(
+                    [
+                        *direct_result.matched_tool_values,
+                        *numerical_result.matched_values,
+                        numerical_result.claimed_value,
+                    ]
+                ),
+                source_tools=self._unique(
+                    [*direct_result.source_tools, *numerical_result.source_tools]
+                ),
+                reason="evidence_grounded_calculation_verified",
+                metadata=numerical_metadata,
+            )
+        if direct_result.status == "unsupported":
+            return StepSupportResult(
+                step_index=direct_result.step_index,
+                step_text=direct_result.step_text,
+                status="unsupported",
+                matched_tool_values=list(numerical_result.matched_values),
+                source_tools=list(numerical_result.source_tools),
+                reason=numerical_result.reason,
+                metadata=numerical_metadata,
+            )
+        direct_result.metadata.update(numerical_metadata)
+        return direct_result
 
     def _answer_in_evidence(self, answer: str, evidence_text: str) -> bool:
         answer_key = self._answer_key(answer)
@@ -620,10 +1097,13 @@ class EvidenceSupportChecker:
         seen: set[tuple[Any, ...]] = set()
         result: list[ToolEvidenceRecord] = []
         for record in records:
+            metadata = record.metadata if isinstance(record.metadata, dict) else {}
             key = (
                 record.tool_name,
                 record.output_type,
                 self._answer_key(record.value),
+                str(metadata.get("evidence_id") or ""),
+                str(metadata.get("source_id") or ""),
                 record.source_scope,
                 record.agent_id,
                 record.run_index,

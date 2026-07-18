@@ -9,6 +9,7 @@ from core.config import AgentConfig, AgentReasoningSummary, EachAgentReply
 from core.slm_agent import SLM_Agent
 from core.stage1_search_gate import Stage1SearchAccessState
 from core.stage1_tool_use_runner import Stage1ToolUseRunner
+from tools.evidence.fact_extraction import TaskFactStore
 from parsers import SelfReviewParser, Stage1ReplyParser
 from score import AgentAnswerAggregator, Stage1Aggregator
 from tools.attachment_workspace import AttachmentWorkspace
@@ -466,103 +467,6 @@ class Stage1Runner:
         )
         return [{"role": "user", "content": content}]
 
-    def review_final_candidates(
-        self,
-        *,
-        candidate_answers: list[str],
-        evidence_context: str = "",
-        preferred_agent_id: str = "",
-    ) -> dict[str, Any]:
-        """
-        在分層 winner selection 完全平手時執行一次候選答案對比審查。
-
-        Args:
-         - candidate_answers: 僅包含平手候選的短答案清單。
-         - evidence_context: 經截短的必要 search、attachment 或 tool evidence。
-         - preferred_agent_id: 優先負責審查的 Agent ID。
-
-        Returns:
-         - dict[str, Any]: 審查答案、解析狀態、token usage 與錯誤資訊。
-        """
-        candidates = [
-            str(answer or "").strip()
-            for answer in candidate_answers
-            if str(answer or "").strip()
-        ]
-        metadata: dict[str, Any] = {
-            "applied": False,
-            "candidate_answers": candidates,
-            "review_agent_id": "",
-            "answer": "",
-            "raw_reply": "",
-            "parse_completed": False,
-            "error": "",
-        }
-        if len(candidates) < 2 or not self.agents:
-            metadata["error"] = "insufficient_review_candidates"
-            return metadata
-        config = next(
-            (
-                agent
-                for agent in self.agents
-                if agent.agent_id == preferred_agent_id
-            ),
-            self.agents[0],
-        )
-        metadata["review_agent_id"] = config.agent_id
-        candidate_lines = "\n".join(
-            f"- {answer}" for answer in candidates
-        )
-        content = (
-            "You are comparing tied final-answer candidates.\n\n"
-            f"Question:\n{self.question}\n\n"
-            f"Candidate Answers:\n{candidate_lines}\n\n"
-            f"Evidence:\n{str(evidence_context or '').strip() or 'None'}\n\n"
-            "Task:\n"
-            "Select the candidate that is directly supported by the evidence and satisfies the question.\n\n"
-            "Rules:\n"
-            "- Select only one answer from Candidate Answers.\n"
-            "- Do not create a new answer.\n"
-            "- If neither candidate is supported, return unresolved.\n"
-            "- Output JSON only.\n\n"
-            "Return one of:\n"
-            '{"type":"final_answer","answer":"..."}\n'
-            '{"type":"final_answer","answer":"unresolved"}\n'
-        )
-        try:
-            raw_reply, prompt_tokens, completion_tokens = self.get_agent(
-                config
-            ).invoke_with_usage([{"role": "user", "content": content}])
-            self.record_token_usage(
-                stage="stage1",
-                prompt_tokens=prompt_tokens,
-                completion_tokens=completion_tokens,
-            )
-            metadata["raw_reply"] = raw_reply
-            parsed = self.self_review_parser.parse(raw_reply)
-            metadata["parse"] = parsed.to_dict()
-            if parsed.reply_type == "final_answer" and parsed.answer:
-                metadata.update(
-                    {
-                        "applied": True,
-                        "answer": str(parsed.answer).strip(),
-                        "parse_completed": bool(parsed.parse_completed),
-                        "error": parsed.error,
-                    }
-                )
-            else:
-                metadata["error"] = parsed.error or "contrastive_review_parse_failed"
-        except Exception as exc:
-            metadata["error"] = (
-                f"contrastive_review_call_failed:{type(exc).__name__}: {exc}"
-            )
-        finally:
-            self._unload_agent_model(
-                config=config,
-                phase="after_contrastive_winner_review",
-            )
-        return metadata
-
     def _normalize_review_tool_name(self, tool_name: str) -> str:
         name = str(tool_name or "").strip()
         if name in {"calculator", "python"}:
@@ -801,6 +705,11 @@ class Stage1Runner:
                 unload_after_run=unload_after_call,
                 search_access_state=self.search_access_state,
                 attachment_workspace=self.attachment_workspace,
+                fact_store=(
+                    evidence.get("_fact_store")
+                    if isinstance(evidence.get("_fact_store"), TaskFactStore)
+                    else None
+                ),
             )
             self.record_token_usage(
                 stage="stage1",

@@ -118,6 +118,29 @@ class Stage1StructuredOutputTests(unittest.TestCase):
         self.assertEqual(parsed["structured_output"]["answer_type"], "unknown")
         self.assertTrue(parsed["eligible_for_winner"])
 
+    def test_compact_long_list_remains_eligible(self):
+        parser = Stage1OutputParser()
+        answer = (
+            "3/4,1/4,3/4,3/4,2/4,1/2,5/35,7/21,30/5,30/5,"
+            "3/4,1/15,1/3,4/9,1/8,32/23,103/170"
+        )
+
+        parsed = parser.parse(
+            "{"
+            '"type":"final_answer",'
+            '"reasoning_steps":["step 1. Read the requested sequence."],'
+            f'"final_answer":"{answer}",'
+            '"confidence":1.0,'
+            '"used_evidence_ids":[], '
+            '"answer_type":"list",'
+            '"tool_request":null'
+            "}"
+        )
+
+        self.assertTrue(parsed["schema_valid"])
+        self.assertTrue(parsed["eligible_for_winner"])
+        self.assertEqual(parsed["final_answer"], answer)
+
     def test_repairs_broken_json_final_answer_field(self):
         parser = ToolRequestParser()
 

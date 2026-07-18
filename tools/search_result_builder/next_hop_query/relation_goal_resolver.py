@@ -16,6 +16,7 @@ class RelationResolution:
     plan: RelationPlan
     resolved_goal_ids: list[str] = field(default_factory=list)
     activated_goal_id: str = ""
+    transitions: list[dict[str, str]] = field(default_factory=list)
 
 
 class RelationGoalResolver:
@@ -45,6 +46,10 @@ class RelationGoalResolver:
     ) -> RelationResolution:
         active = plan.active_goal
         if active is None:
+            return RelationResolution(plan=plan)
+        if active.state == "resolved":
+            return RelationResolution(plan=plan)
+        if active.polarity == "negative":
             return RelationResolution(plan=plan)
 
         matched = [item for item in evidence if item.goal_id == active.goal_id]
@@ -78,6 +83,15 @@ class RelationGoalResolver:
             plan=updated_plan,
             resolved_goal_ids=[active.goal_id],
             activated_goal_id=activated_goal_id,
+            transitions=[
+                {
+                    "goal_id": active.goal_id,
+                    "from_state": active.state,
+                    "to_state": "resolved",
+                    "resolution_type": "bridge",
+                    "activated_goal_id": activated_goal_id,
+                }
+            ],
         )
 
     def resolve_direct(
@@ -85,10 +99,12 @@ class RelationGoalResolver:
         plan: RelationPlan,
         contracts: Iterable[Any],
     ) -> RelationResolution:
-        """Resolve the final goal when a grounded Direct contract already answers it."""
-        if not plan.goals:
+        """Resolve only the active goal from its explicitly bound Direct contracts."""
+        active = plan.active_goal
+        if active is None or active.state == "resolved":
             return RelationResolution(plan=plan)
-        final_goal = plan.goals[-1]
+        if active.polarity == "negative":
+            return RelationResolution(plan=plan)
         values: list[str] = []
         evidence_ids: list[str] = []
         for contract in contracts:
@@ -96,7 +112,7 @@ class RelationGoalResolver:
                 getter = contract.get
             else:
                 getter = lambda key, default="": getattr(contract, key, default)
-            if normalize_text(str(getter("goal_id", ""))) != final_goal.goal_id:
+            if normalize_text(str(getter("goal_id", ""))) != active.goal_id:
                 continue
             values.append(normalize_text(str(getter("answer_span", ""))))
             evidence_ids.append(normalize_text(str(getter("document_id", ""))))
@@ -104,21 +120,36 @@ class RelationGoalResolver:
         if not values:
             return RelationResolution(plan=plan)
 
-        updated_final = final_goal.replace(
+        updated_active = active.replace(
             state="resolved",
-            resolved_values=self._dedupe([*final_goal.resolved_values, *values]),
-            evidence_ids=self._dedupe([*final_goal.evidence_ids, *evidence_ids]),
+            resolved_values=self._dedupe([*active.resolved_values, *values]),
+            evidence_ids=self._dedupe([*active.evidence_ids, *evidence_ids]),
         )
         goals = [
-            updated_final if goal.goal_id == final_goal.goal_id else goal
+            updated_active if goal.goal_id == active.goal_id else goal
             for goal in plan.goals
         ]
-        active_goal_id = plan.active_goal_id
-        if active_goal_id == final_goal.goal_id:
-            active_goal_id = ""
+        next_goal = next((goal for goal in goals if goal.state == "pending"), None)
+        activated_goal_id = ""
+        if next_goal is not None:
+            activated_goal_id = next_goal.goal_id
+            goals = [
+                goal.replace(state="active") if goal.goal_id == next_goal.goal_id else goal
+                for goal in goals
+            ]
         return RelationResolution(
-            plan=RelationPlan(goals=goals, active_goal_id=active_goal_id),
-            resolved_goal_ids=[final_goal.goal_id],
+            plan=RelationPlan(goals=goals, active_goal_id=activated_goal_id),
+            resolved_goal_ids=[active.goal_id],
+            activated_goal_id=activated_goal_id,
+            transitions=[
+                {
+                    "goal_id": active.goal_id,
+                    "from_state": active.state,
+                    "to_state": "resolved",
+                    "resolution_type": "direct",
+                    "activated_goal_id": activated_goal_id,
+                }
+            ],
         )
 
     def _dedupe(self, values: Iterable[str]) -> list[str]:

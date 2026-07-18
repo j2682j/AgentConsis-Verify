@@ -12,6 +12,11 @@ from .labeler_input_builder import (
     LabelerPreparedBatch,
     LabelerPreparedInput,
 )
+from .full_document_verifier import (
+    DocumentVerification,
+    FullDocumentVerifier,
+    NegativeVerificationResult,
+)
 
 __all__ = [
     "CONTINUE_TAG",
@@ -25,4 +30,7 @@ __all__ = [
     "PROJECT_LABELER_CHECKPOINT",
     "RAGLabelResult",
     "TERMINATE_TAG",
+    "DocumentVerification",
+    "FullDocumentVerifier",
+    "NegativeVerificationResult",
 ]

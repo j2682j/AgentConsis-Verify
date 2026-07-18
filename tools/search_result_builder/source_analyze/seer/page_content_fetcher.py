@@ -98,7 +98,12 @@ def _limit_text(text: str, token_limit: int) -> str:
 
 def _content_scope(text: str, token_limit: int, quality_status: str) -> dict[str, object]:
     original_char_count = len(str(text or ""))
-    truncated = original_char_count > token_limit * CHARS_PER_TOKEN
+    lowered = str(text or "").casefold()
+    truncated = (
+        original_char_count > token_limit * CHARS_PER_TOKEN
+        or "[section truncated]" in lowered
+        or "[truncated]" in lowered
+    )
     return {
         "is_complete": quality_status == "ok" and not truncated,
         "truncated": truncated,

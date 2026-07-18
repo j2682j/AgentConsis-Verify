@@ -274,7 +274,7 @@ class RelationAwareControlTests(unittest.TestCase):
         plan = SearchIntentPlan(relation_plan=RelationAwareMultiHopTests()._plan())
         result = controller.run("How large is the mall where KGOT has studios?", intent_plan=plan)
 
-        self.assertEqual(result.stop_reason, "direct_evidence_resolved")
+        self.assertEqual(result.stop_reason, "goal_completion_sufficient")
         self.assertEqual(len(result.rounds), 2)
         self.assertTrue(loaded_queries)
         self.assertIn("Dimond Center", loaded_queries[0])

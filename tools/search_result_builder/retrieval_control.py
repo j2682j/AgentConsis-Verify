@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, Callable, Iterable
 
 from utils.network_utils import normalize_text
+from tools.evidence.fact_extraction import EvidenceFact, TaskFactStore
 
 from .config import EvidenceItem, SearchSourceCandidate
 from .corpus import DocumentChunker, TaskCorpusSession, WebCorpusBuilder
@@ -26,11 +27,13 @@ from .evidence import (
 )
 from .next_hop_query.coverage_assessor import CoverageAssessor
 from .next_hop_query.evidence_sufficiency_gate import EvidenceSufficiencyGate
+from .next_hop_query.goal_completion import GoalCompletionEvaluator
 from .next_hop_query.intent_state_tracker import SearchIntentStateTracker
 from .next_hop_query.next_hop_evidence_selector import NextHopEvidenceSelector
 from .next_hop_query.next_hop_query_composer import NextHopQueryComposer
 from .next_hop_query.relation_evidence_binder import RelationEvidenceBinder
 from .next_hop_query.relation_goal_resolver import RelationGoalResolver
+from .next_hop_query.retrieval_recovery_policy import RetrievalRecoveryPolicy
 from .next_hop_query.query_guard import NextHopQueryGuard
 from .next_hop_query.rag_filter import EfficientRAGFilterAdapter, RAGFilterResult
 from .passage_retriever import Retriever
@@ -95,7 +98,8 @@ class RetrievedDocumentTrace:
     classified_spans: list[str] = field(default_factory=list)
     answer_support_spans: list[str] = field(default_factory=list)
     bridge_spans: list[str] = field(default_factory=list)
-    span_roles: list[dict[str, str]] = field(default_factory=list)
+    span_roles: list[dict[str, Any]] = field(default_factory=list)
+    semantic_facts: list[dict[str, Any]] = field(default_factory=list)
     support_level: str = ""
     valid_for_next_hop: bool = False
     valid_for_evidence: bool = False
@@ -165,6 +169,7 @@ class IterativeRetrievalResult:
     searched_queries: list[str]
     unique_document_count: int
     relation_plan: dict[str, object] = field(default_factory=dict)
+    semantic_facts: list[dict[str, Any]] = field(default_factory=list)
 
 
 @dataclass
@@ -269,6 +274,8 @@ class IterativeRetrievalControl:
         relative_score_margin: float = 0.08,
         relation_binder: RelationEvidenceBinder | None = None,
         relation_resolver: RelationGoalResolver | None = None,
+        goal_completion_evaluator: GoalCompletionEvaluator | None = None,
+        recovery_policy: RetrievalRecoveryPolicy | None = None,
         external_source_loader: Callable[[list[SearchQueryRequest]], int] | None = None,
         max_relation_branches: int = 2,
     ) -> None:
@@ -308,6 +315,10 @@ class IterativeRetrievalControl:
         )
         self.external_source_loader = external_source_loader
         self.max_relation_branches = max(1, max_relation_branches)
+        self.goal_completion_evaluator = (
+            goal_completion_evaluator or GoalCompletionEvaluator()
+        )
+        self.recovery_policy = recovery_policy or RetrievalRecoveryPolicy()
 
     def run(
         self,
@@ -348,7 +359,11 @@ class IterativeRetrievalControl:
         seen_document_ids: set[str] = set()
         seen_chunk_keys: set[str] = set()
         unique_document_count = 0
-        stop_reason = "max_iter_reached"
+        stop_reason = "goal_incomplete_budget_exhausted"
+        attempted_recoveries: set[str] = set()
+        retrieval_top_k = self.top_k
+        retrieval_candidate_pool_size = self.candidate_pool_size
+        answer_gate_satisfied = False
 
         for round_index in range(1, self.max_iter + 1):
             active_queries: list[str] = []
@@ -361,8 +376,35 @@ class IterativeRetrievalControl:
                 active_queries.append(candidate)
                 active_query_keys.append(key)
             if not active_queries:
-                query_key = self._query_key(current_query)
-                stop_reason = "duplicate_query" if query_key else "empty_query"
+                round_trace = RetrievalRoundTrace(
+                    round_index=round_index,
+                    query=current_query,
+                    branch_queries=list(current_queries),
+                )
+                round_trace.filter_metadata["next_query_failure"] = (
+                    "duplicate_query" if self._query_key(current_query) else "empty_query"
+                )
+                recovery = self._prepare_goal_recovery(
+                    relation_plan=current_relation_plan,
+                    attempted=attempted_recoveries,
+                    top_k=retrieval_top_k,
+                    candidate_pool_size=retrieval_candidate_pool_size,
+                    original_question=initial_query,
+                    round_trace=round_trace,
+                    round_index=round_index,
+                    seen_query_keys=seen_query_keys,
+                )
+                rounds.append(round_trace)
+                if recovery is not None:
+                    (
+                        current_queries,
+                        retrieval_top_k,
+                        retrieval_candidate_pool_size,
+                    ) = recovery
+                    current_query = current_queries[0]
+                    continue
+                round_trace.stop_reason = "goal_incomplete_no_viable_recovery"
+                stop_reason = round_trace.stop_reason
                 break
             current_query = active_queries[0]
             if not current_query:
@@ -374,6 +416,8 @@ class IterativeRetrievalControl:
             retrieved = self._search_with_scores_many(
                 active_queries,
                 original_question=initial_query,
+                top_k=retrieval_top_k,
+                candidate_pool_size=retrieval_candidate_pool_size,
             )
             round_trace = RetrievalRoundTrace(
                 round_index=round_index,
@@ -411,8 +455,26 @@ class IterativeRetrievalControl:
                         "score_based_sufficient": False,
                         "sufficient": current_intent_plan.state == "sufficient",
                     }
-                round_trace.stop_reason = "no_new_documents"
+                recovery = self._prepare_goal_recovery(
+                    relation_plan=current_relation_plan,
+                    attempted=attempted_recoveries,
+                    top_k=retrieval_top_k,
+                    candidate_pool_size=retrieval_candidate_pool_size,
+                    original_question=initial_query,
+                    round_trace=round_trace,
+                    round_index=round_index,
+                    seen_query_keys=seen_query_keys,
+                )
                 rounds.append(round_trace)
+                if recovery is not None:
+                    (
+                        current_queries,
+                        retrieval_top_k,
+                        retrieval_candidate_pool_size,
+                    ) = recovery
+                    current_query = current_queries[0]
+                    continue
+                round_trace.stop_reason = "goal_incomplete_no_viable_recovery"
                 stop_reason = round_trace.stop_reason
                 break
 
@@ -450,13 +512,14 @@ class IterativeRetrievalControl:
 
             relation_requires_more = bool(
                 current_relation_plan is not None
-                and current_relation_plan.is_multihop
+                and current_relation_plan.goals
                 and not current_relation_plan.complete
             )
             if relation_requires_more and current_relation_plan is not None:
                 relation_documents = [
                     document
-                    for document in round_trace.documents
+                    for observed_round in [*rounds, round_trace]
+                    for document in observed_round.documents
                     if not document.duplicate
                 ]
                 direct_contracts = [
@@ -464,57 +527,74 @@ class IterativeRetrievalControl:
                     for document in relation_documents
                     for contract in document.direct_contracts
                 ]
-                direct_resolution = self.relation_resolver.resolve_direct(
-                    current_relation_plan,
-                    direct_contracts,
-                )
-                if direct_resolution.resolved_goal_ids:
-                    current_relation_plan = direct_resolution.plan
-                    if current_intent_plan is not None:
-                        current_intent_plan = current_intent_plan.replace(
-                            relation_plan=current_relation_plan
-                        )
-                    round_trace.filter_metadata = {
-                        **round_trace.filter_metadata,
-                        "direct_evidence_resolution": {
-                            "resolved_goal_ids": direct_resolution.resolved_goal_ids,
-                            "contract_count": len(direct_contracts),
-                            "plan": current_relation_plan.to_dict(),
-                        },
-                    }
-                    round_trace.stop_reason = "direct_evidence_resolved"
-                    rounds.append(round_trace)
-                    stop_reason = round_trace.stop_reason
-                    break
-                binding = self.relation_binder.bind(
-                    plan=current_relation_plan,
-                    documents=relation_documents,
-                )
-                resolution = self.relation_resolver.resolve(
-                    current_relation_plan,
-                    binding.evidence,
-                )
-                current_relation_plan = resolution.plan
+                resolved_goal_ids: list[str] = []
+                activated_goal_ids: list[str] = []
+                transitions: list[dict[str, str]] = []
+                bound_evidence: list[Any] = []
+                rejected_bindings: list[str] = []
+                for _ in range(len(current_relation_plan.goals)):
+                    direct_resolution = self.relation_resolver.resolve_direct(
+                        current_relation_plan,
+                        direct_contracts,
+                    )
+                    if direct_resolution.resolved_goal_ids:
+                        current_relation_plan = direct_resolution.plan
+                        resolved_goal_ids.extend(direct_resolution.resolved_goal_ids)
+                        transitions.extend(direct_resolution.transitions)
+                        if direct_resolution.activated_goal_id:
+                            activated_goal_ids.append(
+                                direct_resolution.activated_goal_id
+                            )
+                        continue
+
+                    binding = self.relation_binder.bind(
+                        plan=current_relation_plan,
+                        documents=relation_documents,
+                    )
+                    bound_evidence.extend(binding.evidence)
+                    rejected_bindings.extend(binding.rejected)
+                    resolution = self.relation_resolver.resolve(
+                        current_relation_plan,
+                        binding.evidence,
+                    )
+                    if not resolution.resolved_goal_ids:
+                        break
+                    current_relation_plan = resolution.plan
+                    resolved_goal_ids.extend(resolution.resolved_goal_ids)
+                    transitions.extend(resolution.transitions)
+                    if resolution.activated_goal_id:
+                        activated_goal_ids.append(resolution.activated_goal_id)
+
                 if current_intent_plan is not None:
                     current_intent_plan = current_intent_plan.replace(
                         relation_plan=current_relation_plan
                     )
                 round_trace.filter_metadata = {
                     **round_trace.filter_metadata,
+                    "direct_evidence_resolution": {
+                        "resolved_goal_ids": [
+                            item["goal_id"]
+                            for item in transitions
+                            if item.get("resolution_type") == "direct"
+                        ],
+                        "contract_count": len(direct_contracts),
+                        "plan": current_relation_plan.to_dict(),
+                    },
                     "relation_binding": {
-                        "evidence": [item.to_dict() for item in binding.evidence],
-                        "rejected": list(binding.rejected),
-                        "resolved_goal_ids": list(resolution.resolved_goal_ids),
-                        "activated_goal_id": resolution.activated_goal_id,
+                        "evidence": [item.to_dict() for item in bound_evidence],
+                        "rejected": list(rejected_bindings),
+                        "resolved_goal_ids": self._dedupe_tokens(resolved_goal_ids),
+                        "activated_goal_id": current_relation_plan.active_goal_id,
+                        "activated_goal_ids": self._dedupe_tokens(activated_goal_ids),
+                        "transitions": transitions,
                         "plan": current_relation_plan.to_dict(),
                     },
                 }
-                if current_relation_plan.complete:
-                    round_trace.stop_reason = "relation_goals_resolved"
-                    rounds.append(round_trace)
-                    stop_reason = round_trace.stop_reason
-                    break
-                if resolution.activated_goal_id and round_index < self.max_iter:
+                if (
+                    transitions
+                    and not current_relation_plan.complete
+                    and round_index < self.max_iter
+                ):
                     relation_requests = self.next_hop_composer.build_relation_requests(
                         relation_plan=current_relation_plan,
                         constraints=(
@@ -541,12 +621,17 @@ class IterativeRetrievalControl:
                         current_queries = next_queries
                         current_query = next_queries[0]
                         continue
-                    round_trace.stop_reason = (
+                    round_trace.filter_metadata["relation_next_hop"][
+                        "failure_reason"
+                    ] = (
                         "relation_source_empty" if next_queries else "empty_relation_query"
                     )
-                    rounds.append(round_trace)
-                    stop_reason = round_trace.stop_reason
-                    break
+
+            relation_requires_more = bool(
+                current_relation_plan is not None
+                and current_relation_plan.goals
+                and not current_relation_plan.complete
+            )
 
             non_duplicate_documents = [
                 document
@@ -564,6 +649,7 @@ class IterativeRetrievalControl:
                 intent_plan=current_intent_plan,
                 coverage=coverage,
             )
+            answer_gate_satisfied = answer_gate_satisfied or gate_result.sufficient
             score_based_sufficient = bool(coverage.sufficient)
             if coverage.sufficient and not gate_result.sufficient:
                 coverage = replace(
@@ -605,10 +691,9 @@ class IterativeRetrievalControl:
                     and gate_result.sufficient
                     and not relation_requires_more
                 ):
-                    round_trace.stop_reason = "intent_state_sufficient"
-                    rounds.append(round_trace)
-                    stop_reason = round_trace.stop_reason
-                    break
+                    round_trace.filter_metadata["legacy_sufficiency_signal"] = (
+                        "intent_state_sufficient"
+                    )
                 if intent_state_sufficient and not gate_result.sufficient:
                     round_trace.filter_metadata = {
                         **round_trace.filter_metadata,
@@ -626,15 +711,46 @@ class IterativeRetrievalControl:
                     and gate_result.sufficient
                     and not relation_requires_more
                 ):
-                    round_trace.stop_reason = "coverage_sufficient"
-                    rounds.append(round_trace)
-                    stop_reason = round_trace.stop_reason
-                    break
+                    round_trace.filter_metadata["legacy_sufficiency_signal"] = (
+                        "coverage_sufficient"
+                    )
                 if coverage.sufficient and not gate_result.sufficient:
                     round_trace.filter_metadata = {
                         **round_trace.filter_metadata,
                         "sufficiency_gate_failed": gate_result.to_dict(),
                     }
+
+            observed_documents = [
+                document
+                for previous_round in rounds
+                for document in previous_round.documents
+                if not document.duplicate
+            ] + non_duplicate_documents
+            goal_completion = self.goal_completion_evaluator.evaluate(
+                relation_plan=current_relation_plan,
+                documents=observed_documents,
+                corpus_documents=self.retriever.passage_map.values(),
+                answer_gate_sufficient=answer_gate_satisfied,
+            )
+            current_relation_plan = goal_completion.relation_plan
+            if current_intent_plan is not None:
+                current_intent_plan = current_intent_plan.replace(
+                    relation_plan=current_relation_plan
+                )
+            self._apply_negative_verification_contracts(
+                documents=observed_documents,
+                goal_completion=goal_completion,
+                question=initial_query,
+            )
+            round_trace.filter_metadata["goal_completion"] = (
+                goal_completion.to_dict()
+            )
+            round_trace.coverage["sufficient"] = goal_completion.sufficient
+            if goal_completion.sufficient:
+                round_trace.stop_reason = "goal_completion_sufficient"
+                rounds.append(round_trace)
+                stop_reason = round_trace.stop_reason
+                break
 
             continue_documents = [
                 trace
@@ -683,8 +799,26 @@ class IterativeRetrievalControl:
                         current_query = next_query
                         current_queries = [next_query]
                         continue
-                round_trace.stop_reason = "no_continue_chunks"
+                recovery = self._prepare_goal_recovery(
+                    relation_plan=current_relation_plan,
+                    attempted=attempted_recoveries,
+                    top_k=retrieval_top_k,
+                    candidate_pool_size=retrieval_candidate_pool_size,
+                    original_question=initial_query,
+                    round_trace=round_trace,
+                    round_index=round_index,
+                    seen_query_keys=seen_query_keys,
+                )
                 rounds.append(round_trace)
+                if recovery is not None:
+                    (
+                        current_queries,
+                        retrieval_top_k,
+                        retrieval_candidate_pool_size,
+                    ) = recovery
+                    current_query = current_queries[0]
+                    continue
+                round_trace.stop_reason = "goal_incomplete_no_viable_recovery"
                 stop_reason = round_trace.stop_reason
                 break
 
@@ -747,8 +881,26 @@ class IterativeRetrievalControl:
                         current_query = next_query
                         current_queries = [next_query]
                         continue
-                round_trace.stop_reason = "no_qualified_continue_chunks"
+                recovery = self._prepare_goal_recovery(
+                    relation_plan=current_relation_plan,
+                    attempted=attempted_recoveries,
+                    top_k=retrieval_top_k,
+                    candidate_pool_size=retrieval_candidate_pool_size,
+                    original_question=initial_query,
+                    round_trace=round_trace,
+                    round_index=round_index,
+                    seen_query_keys=seen_query_keys,
+                )
                 rounds.append(round_trace)
+                if recovery is not None:
+                    (
+                        current_queries,
+                        retrieval_top_k,
+                        retrieval_candidate_pool_size,
+                    ) = recovery
+                    current_query = current_queries[0]
+                    continue
+                round_trace.stop_reason = "goal_incomplete_no_viable_recovery"
                 stop_reason = round_trace.stop_reason
                 break
 
@@ -789,8 +941,26 @@ class IterativeRetrievalControl:
                         current_query = next_query
                         current_queries = [next_query]
                         continue
-                round_trace.stop_reason = "no_useful_tokens"
+                recovery = self._prepare_goal_recovery(
+                    relation_plan=current_relation_plan,
+                    attempted=attempted_recoveries,
+                    top_k=retrieval_top_k,
+                    candidate_pool_size=retrieval_candidate_pool_size,
+                    original_question=initial_query,
+                    round_trace=round_trace,
+                    round_index=round_index,
+                    seen_query_keys=seen_query_keys,
+                )
                 rounds.append(round_trace)
+                if recovery is not None:
+                    (
+                        current_queries,
+                        retrieval_top_k,
+                        retrieval_candidate_pool_size,
+                    ) = recovery
+                    current_query = current_queries[0]
+                    continue
+                round_trace.stop_reason = "goal_incomplete_no_viable_recovery"
                 stop_reason = round_trace.stop_reason
                 break
 
@@ -816,14 +986,30 @@ class IterativeRetrievalControl:
                 "kept_evidence_tokens": filter_result.kept_evidence_tokens,
             }
 
-            if not next_query:
-                round_trace.stop_reason = "empty_next_query"
+            if not next_query or self._is_duplicate_query(next_query, seen_query_keys):
+                round_trace.filter_metadata["next_query_failure"] = (
+                    "empty_next_query" if not next_query else "duplicate_next_query"
+                )
+                recovery = self._prepare_goal_recovery(
+                    relation_plan=current_relation_plan,
+                    attempted=attempted_recoveries,
+                    top_k=retrieval_top_k,
+                    candidate_pool_size=retrieval_candidate_pool_size,
+                    original_question=initial_query,
+                    round_trace=round_trace,
+                    round_index=round_index,
+                    seen_query_keys=seen_query_keys,
+                )
                 rounds.append(round_trace)
-                stop_reason = round_trace.stop_reason
-                break
-            if self._is_duplicate_query(next_query, seen_query_keys):
-                round_trace.stop_reason = "duplicate_next_query"
-                rounds.append(round_trace)
+                if recovery is not None:
+                    (
+                        current_queries,
+                        retrieval_top_k,
+                        retrieval_candidate_pool_size,
+                    ) = recovery
+                    current_query = current_queries[0]
+                    continue
+                round_trace.stop_reason = "goal_incomplete_no_viable_recovery"
                 stop_reason = round_trace.stop_reason
                 break
 
@@ -832,12 +1018,20 @@ class IterativeRetrievalControl:
             current_query = next_query
             current_queries = [next_query]
         else:
-            stop_reason = "max_iter_reached"
+            stop_reason = "goal_incomplete_budget_exhausted"
 
         final_query = (
             rounds[-1].next_query
             if rounds and rounds[-1].next_query
             else current_query
+        )
+        task_fact_store = TaskFactStore()
+        task_fact_store.extend(
+            EvidenceFact.from_dict(fact)
+            for round_trace in rounds
+            for document in round_trace.documents
+            for fact in document.semantic_facts
+            if isinstance(fact, dict)
         )
         return IterativeRetrievalResult(
             initial_query=initial_query,
@@ -851,6 +1045,7 @@ class IterativeRetrievalControl:
                 if current_relation_plan is not None
                 else {}
             ),
+            semantic_facts=[fact.to_dict() for fact in task_fact_store.all()],
         )
 
     def _load_external_sources(self, requests: list[SearchQueryRequest]) -> int:
@@ -861,17 +1056,148 @@ class IterativeRetrievalControl:
         except Exception:
             return 0
 
+    def _apply_negative_verification_contracts(
+        self,
+        *,
+        documents: list[RetrievedDocumentTrace],
+        goal_completion: Any,
+        question: str,
+    ) -> None:
+        by_id = {document.document_id: document for document in documents}
+        for result in goal_completion.negative_verifications:
+            if not result.resolved:
+                continue
+            for verification in result.verifications:
+                if verification.status != "absent_verified":
+                    continue
+                document = by_id.get(verification.document_id)
+                if document is None:
+                    continue
+                contract = {
+                    "goal_id": result.goal_id,
+                    "answer_span": verification.title,
+                    "context": (
+                        f"Complete document verified absent term: {verification.target}"
+                    ),
+                    "document_id": verification.document_id,
+                    "source_title": verification.title,
+                    "url": document.url,
+                    "answer_requirement": normalize_text(question),
+                    "verification_scope": "full_document",
+                }
+                if contract not in document.direct_contracts:
+                    document.direct_contracts.append(contract)
+                document.valid_for_evidence = True
+                document.support_level = "direct"
+
+    def _attempt_goal_recovery(
+        self,
+        *,
+        relation_plan: Any,
+        attempted: set[str],
+        top_k: int,
+        candidate_pool_size: int,
+        original_question: str,
+        round_trace: RetrievalRoundTrace,
+    ):
+        history: list[dict[str, Any]] = []
+        for _ in range(4):
+            decision = self.recovery_policy.decide(
+                relation_plan=relation_plan,
+                corpus_documents=self.retriever.passage_map.values(),
+                attempted=attempted,
+                top_k=top_k,
+                candidate_pool_size=candidate_pool_size,
+                original_question=original_question,
+            )
+            attempted.add(decision.fingerprint)
+            entry = decision.to_dict()
+            if not decision.viable:
+                history.append(entry)
+                round_trace.filter_metadata["goal_recovery"] = history
+                return decision
+            if decision.action == "expand_retrieval":
+                history.append(entry)
+                round_trace.filter_metadata["goal_recovery"] = history
+                return decision
+
+            added_count = self._load_external_sources(decision.requests)
+            entry["added_record_count"] = added_count
+            history.append(entry)
+            if added_count > 0:
+                if decision.action in {"direct_fetch", "browser"}:
+                    decision = replace(
+                        decision,
+                        next_queries=[normalize_text(original_question)],
+                    )
+                round_trace.filter_metadata["goal_recovery"] = history
+                return decision
+        round_trace.filter_metadata["goal_recovery"] = history
+        return self.recovery_policy.decide(
+            relation_plan=relation_plan,
+            corpus_documents=self.retriever.passage_map.values(),
+            attempted=attempted,
+            top_k=top_k,
+            candidate_pool_size=candidate_pool_size,
+            original_question=original_question,
+        )
+
+    def _prepare_goal_recovery(
+        self,
+        *,
+        relation_plan: Any,
+        attempted: set[str],
+        top_k: int,
+        candidate_pool_size: int,
+        original_question: str,
+        round_trace: RetrievalRoundTrace,
+        round_index: int,
+        seen_query_keys: set[str],
+    ) -> tuple[list[str], int, int] | None:
+        if round_index >= self.max_iter:
+            return None
+        decision = self._attempt_goal_recovery(
+            relation_plan=relation_plan,
+            attempted=attempted,
+            top_k=top_k,
+            candidate_pool_size=candidate_pool_size,
+            original_question=original_question,
+            round_trace=round_trace,
+        )
+        next_queries = [
+            normalize_text(query) for query in decision.next_queries if normalize_text(query)
+        ]
+        if not decision.viable or not next_queries:
+            return None
+        for query in next_queries:
+            seen_query_keys.discard(self._query_key(query))
+        round_trace.next_queries = list(next_queries)
+        round_trace.next_query = next_queries[0]
+        round_trace.stop_reason = f"goal_recovery:{decision.action}"
+        return (
+            next_queries,
+            max(top_k, decision.top_k),
+            max(candidate_pool_size, decision.candidate_pool_size),
+        )
+
     def _search_with_scores_many(
         self,
         queries: list[str],
         *,
         original_question: str = "",
+        top_k: int | None = None,
+        candidate_pool_size: int | None = None,
     ) -> list[tuple[dict[str, Any], float]]:
+        active_top_k = max(1, int(top_k or self.top_k))
+        active_candidate_pool_size = max(
+            active_top_k,
+            int(candidate_pool_size or self.candidate_pool_size),
+        )
         ranked_dense_lists: dict[str, list[tuple[str, float]]] = {}
         for index, query in enumerate(queries, start=1):
             ranked_dense_lists[f"dense_branch_{index}"] = self._dense_rank(
                 query,
-                self.candidate_pool_size,
+                active_candidate_pool_size,
             )
         if all(
             normalize_text(original_question).casefold()
@@ -880,13 +1206,13 @@ class IterativeRetrievalControl:
         ):
             ranked_dense_lists["dense_original"] = self._dense_rank(
                 original_question,
-                min(20, self.candidate_pool_size),
+                min(20, active_candidate_pool_size),
             )
         selections = self.passage_selector.select(
             passage_map=self.retriever.passage_map,
             ranked_dense_lists=ranked_dense_lists,
             lexical_query=" ".join([*queries, original_question]),
-            max_items=self.top_k,
+            max_items=active_top_k,
         )
         results: list[tuple[dict[str, Any], float]] = []
         for selection in selections:
@@ -1199,6 +1525,7 @@ class IterativeRetrievalControl:
             trace.direct_contracts = []
             trace.bridge_contracts = []
             trace.rejected_contracts = []
+            trace.semantic_facts = []
         if not candidates:
             round_trace.filter_metadata = {
                 **round_trace.filter_metadata,
@@ -1247,6 +1574,8 @@ class IterativeRetrievalControl:
                     text=candidate.text,
                     local_context=candidate.local_context,
                     source_title=candidate.source_title,
+                    source_id=candidate.source_id,
+                    source_type=candidate.source_type,
                 )
             )
             reindexed_map[span_id] = (mapped[0], candidate.text)
@@ -1274,6 +1603,7 @@ class IterativeRetrievalControl:
             answer_target=self._answer_target(intent_plan),
             active_goal=self._relation_goal_text(intent_plan, active=True),
             next_goal=self._relation_goal_text(intent_plan, active=False),
+            relation_goals=self._relation_goal_options(intent_plan),
             spans=candidates,
         )
         diagnostics = dict(result.diagnostics)
@@ -1296,7 +1626,7 @@ class IterativeRetrievalControl:
                 }
             return
 
-        by_trace_index: dict[int, list[dict[str, str]]] = {}
+        by_trace_index: dict[int, list[dict[str, Any]]] = {}
         for role_result in result.results:
             mapped = candidate_map.get(role_result.id)
             if mapped is None:
@@ -1304,8 +1634,13 @@ class IterativeRetrievalControl:
             trace_index, span_text = mapped
             by_trace_index.setdefault(trace_index, []).append(
                 {
+                    "id": role_result.id,
                     "text": span_text,
                     "role": role_result.role,
+                    "goal_id": role_result.goal_id,
+                    "semantic_facts": [
+                        fact.to_dict() for fact in role_result.semantic_facts
+                    ],
                 }
             )
 
@@ -1334,6 +1669,10 @@ class IterativeRetrievalControl:
                 source_title=trace.title,
             )
             finalized_items = [item.to_dict() for item in finalization.finalized]
+            for index, finalized_item in enumerate(finalized_items):
+                finalized_item["semantic_facts"] = list(
+                    role_items[index].get("semantic_facts") or []
+                )
             answer_support = self._dedupe_tokens(
                 item.finalized_text
                 for item in finalization.finalized
@@ -1364,13 +1703,17 @@ class IterativeRetrievalControl:
                 source_title=trace.title,
                 url=trace.url,
                 text=trace.text,
-                direct_spans=answer_support,
-                bridge_spans=bridge,
+                span_assignments=finalized_items,
             )
             trace.direct_contracts = [item.to_dict() for item in contracts.direct]
             trace.bridge_contracts = [item.to_dict() for item in contracts.bridge]
             trace.rejected_contracts = [
                 item.to_dict() for item in contracts.unsupported
+            ]
+            trace.semantic_facts = [
+                fact
+                for item in role_items
+                for fact in list(item.get("semantic_facts") or [])
             ]
             trace.answer_support_spans = [
                 item.answer_span for item in contracts.direct
@@ -1435,8 +1778,19 @@ class IterativeRetrievalControl:
                     for trace in round_trace.documents
                     if trace.bridge_contracts
                 ],
+                "contracts_by_goal": self._contract_counts_by_goal(
+                    round_trace.documents
+                ),
             },
         }
+        fact_store = TaskFactStore()
+        fact_store.extend(
+            EvidenceFact.from_dict(fact)
+            for trace in round_trace.documents
+            for fact in trace.semantic_facts
+            if isinstance(fact, dict)
+        )
+        round_trace.filter_metadata["semantic_fact_store"] = fact_store.to_dict()
 
     def _mark_span_quality_rejected(
         self,
@@ -1543,6 +1897,8 @@ class IterativeRetrievalControl:
                         text=cleaned,
                         source_title=trace.title,
                         local_context=self._span_local_context(cleaned, trace.text),
+                        source_id=trace.document_id,
+                        source_type="web",
                     )
                 )
                 candidate_map[span_id] = (trace_index, cleaned)
@@ -1629,6 +1985,41 @@ class IterativeRetrievalControl:
                 if normalize_text(part)
             )
         )
+
+    def _relation_goal_options(
+        self,
+        intent_plan: SearchIntentPlan | None,
+    ) -> list[dict[str, str]]:
+        if intent_plan is None:
+            return []
+        return [
+            {
+                "goal_id": goal.goal_id,
+                "state": goal.state,
+                "subject": goal.subject,
+                "relation": goal.relation,
+                "target": goal.target,
+            }
+            for goal in intent_plan.relation_plan.goals
+        ]
+
+    def _contract_counts_by_goal(
+        self,
+        documents: Iterable[RetrievedDocumentTrace],
+    ) -> dict[str, dict[str, int]]:
+        counts: dict[str, dict[str, int]] = {}
+        for document in documents:
+            for contract_type, contracts in (
+                ("direct", document.direct_contracts),
+                ("bridge", document.bridge_contracts),
+            ):
+                for contract in contracts:
+                    goal_id = normalize_text(str(contract.get("goal_id", "")))
+                    if not goal_id:
+                        continue
+                    bucket = counts.setdefault(goal_id, {"direct": 0, "bridge": 0})
+                    bucket[contract_type] += 1
+        return counts
 
     def _apply_restricted_span_recovery(
         self,
@@ -2141,10 +2532,14 @@ class WebRetrievalControl:
                 query_text_by_id=query_map,
                 fetch_limit=self.max_pages_to_fetch,
             )
+            full_document_recovery = any(
+                request.source_requirement.access_mode in {"direct_fetch", "browser"}
+                for request in requests
+            )
             self.page_content_fetcher.fetch_sources(
                 filtered,
                 max_pages=self.max_pages_to_fetch,
-                max_tokens_per_source=5000,
+                max_tokens_per_source=(12000 if full_document_recovery else 5000),
             )
             filtered = self.source_filter.apply_post_fetch_safety(
                 filtered,
@@ -2158,10 +2553,52 @@ class WebRetrievalControl:
             new_records = self.corpus_builder.build_records(
                 filtered,
                 fetch_missing=False,
-                max_chunks_per_url=self.max_chunks_per_url,
+                max_chunks_per_url=(
+                    max(self.max_chunks_per_url, 50)
+                    if full_document_recovery
+                    else self.max_chunks_per_url
+                ),
                 max_records=remaining,
             )
-            return len(corpus_session.add_records(new_records))
+            record_metadata_by_url: dict[str, dict[str, Any]] = {}
+            for document in retriever.passage_map.values():
+                content_url = normalize_text(document.get("content_url", ""))
+                if not content_url:
+                    continue
+                record_metadata_by_url.setdefault(
+                    content_url.casefold().rstrip("/"),
+                    document,
+                )
+            linked_new_records = []
+            for record in new_records:
+                metadata = record_metadata_by_url.get(
+                    normalize_text(record.url).casefold().rstrip("/")
+                )
+                if metadata is None:
+                    linked_new_records.append(record)
+                    continue
+                linked_new_records.append(
+                    replace(
+                        record,
+                        record_type=(
+                            normalize_text(metadata.get("record_type", ""))
+                            or record.record_type
+                        ),
+                        record_id=(
+                            normalize_text(metadata.get("record_id", ""))
+                            or record.record_id
+                        ),
+                        content_url=(
+                            normalize_text(metadata.get("content_url", ""))
+                            or record.content_url
+                        ),
+                        parent_url=(
+                            normalize_text(metadata.get("parent_url", ""))
+                            or record.parent_url
+                        ),
+                    )
+                )
+            return len(corpus_session.add_records(linked_new_records))
 
         retrieval = IterativeRetrievalControl(
             retriever=retriever,
@@ -2291,6 +2728,15 @@ class WebRetrievalControl:
             if isinstance(final.get("intent_state"), dict)
             else {}
         )
+        final_goal_completion = {}
+        recovery_actions: list[dict[str, Any]] = []
+        for round_item in rounds:
+            metadata = dict(round_item.filter_metadata or {})
+            if isinstance(metadata.get("goal_completion"), dict):
+                final_goal_completion = dict(metadata["goal_completion"])
+            for action in list(metadata.get("goal_recovery") or []):
+                if isinstance(action, dict):
+                    recovery_actions.append(dict(action))
         next_hop_triggers = [
             item.get("trigger_reason", "")
             for item in coverage_items
@@ -2307,6 +2753,8 @@ class WebRetrievalControl:
             "next_hop_triggered_by": next_hop_triggers[-1] if next_hop_triggers else "",
             "intent_states": intent_states,
             "final_intent_state": final_intent_state,
+            "goal_completion": final_goal_completion,
+            "recovery_actions": recovery_actions,
         }
 
     def _search_queries(

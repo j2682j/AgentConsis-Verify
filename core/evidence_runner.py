@@ -11,6 +11,12 @@ from tools.attachment_reader import AttachmentEvidenceBuilder
 from tools.attachment_strategy import AttachmentStrategyExecutor
 from tools.attachment_workspace import AttachmentWorkspace
 from tools.deterministic_handlers import DeterministicHandlerRouter, HandlerTrustGate
+from tools.evidence.fact_extraction import (
+    SemanticFactExtractor,
+    SemanticSourceUnit,
+    TaskFactCollector,
+    TaskFactStore,
+)
 from tools.search_result_builder.evidence import (
     EvidenceConverter,
     EvidenceSelectionContract,
@@ -74,6 +80,9 @@ class EvidenceRunner:
         enable_tool_planner: bool = False,
         max_parallel_next_hop_queries: int = 2,
         attachment_workspace: AttachmentWorkspace | None = None,
+        semantic_fact_extractor: SemanticFactExtractor | None = None,
+        fact_store: TaskFactStore | None = None,
+        fact_collector: TaskFactCollector | None = None,
     ) -> None:
         self.question = question
         self.attachment = attachment or {}
@@ -107,6 +116,9 @@ class EvidenceRunner:
         self.enable_deterministic_handler_router = enable_deterministic_handler_router
         self.enable_tool_planner = enable_tool_planner
         self.max_parallel_next_hop_queries = max(0, max_parallel_next_hop_queries)
+        self.semantic_fact_extractor = semantic_fact_extractor
+        self.fact_store = fact_store or TaskFactStore()
+        self.fact_collector = fact_collector or TaskFactCollector()
 
     def run(self) -> dict[str, Any]:
         """
@@ -298,7 +310,7 @@ class EvidenceRunner:
             skip_reason=search_skip_reason,
             tool_usage=tool_usage,
         )
-        return {
+        return self._finalize_evidence_bundle({
             "search_result": search_result.strip(),
             "attachment_result": attachment_result.strip(),
             "solver_result": solver_result.strip(),
@@ -309,7 +321,7 @@ class EvidenceRunner:
                 attachment_strategy_metadata.get("attachment_profile") or {}
             ),
             "attachment_strategy": attachment_strategy_metadata,
-        }
+        })
 
     def _run_with_tool_plan(self, routing: dict[str, Any]) -> dict[str, Any]:
         """
@@ -505,7 +517,7 @@ class EvidenceRunner:
 
         deterministic_gap = self._deterministic_gap_from_usage(tool_usage)
         search_executed = bool(search_result.strip())
-        return {
+        return self._finalize_evidence_bundle({
             "search_result": search_result.strip(),
             "attachment_result": attachment_result.strip(),
             "solver_result": solver_result.strip(),
@@ -530,7 +542,22 @@ class EvidenceRunner:
                 attachment_strategy_metadata.get("attachment_profile") or {}
             ),
             "attachment_strategy": attachment_strategy_metadata,
-        }
+        })
+
+    def _finalize_evidence_bundle(
+        self,
+        bundle: dict[str, Any],
+    ) -> dict[str, Any]:
+        """將證據準備階段的各類來源寫入任務級事實庫。"""
+
+        self.fact_collector.collect_many(
+            self.fact_store,
+            list(bundle.get("tool_usage") or []),
+            question=self.question,
+            source_scope="evidence_prepare",
+        )
+        bundle["fact_store"] = self.fact_store.to_dict()
+        return bundle
 
     def _primary_route_from_routing(self, routing: dict[str, Any]) -> str:
         initial_route = str(routing.get("initial_route") or "").strip().lower()
@@ -762,6 +789,13 @@ class EvidenceRunner:
         output_text = str(result.get("output_text") or "").strip()
         if result.get("ok") and output_text:
             result.setdefault("evidence_valid", True)
+            output_text = self._augment_unstructured_tool_facts(
+                tool_name="video_evidence",
+                output_text=output_text,
+                result=result,
+                answer_requirement=self.question,
+                answer_target=answer_role,
+            )
             return self._validate_tool_context("video_evidence", output_text, [result])
         if str(result.get("error_code") or "") == "video_download_failed":
             transcript_text, transcript_usage = self._build_video_transcript_evidence()
@@ -778,6 +812,52 @@ class EvidenceRunner:
         result.setdefault("output_text", "")
         result.setdefault("error", result.get("error_message"))
         return self._validate_tool_context("video_evidence", "", [result])
+
+    def _augment_unstructured_tool_facts(
+        self,
+        *,
+        tool_name: str,
+        output_text: str,
+        result: dict[str, Any],
+        answer_requirement: str,
+        answer_target: str = "",
+    ) -> str:
+        raw = result.get("raw_result")
+        if not isinstance(raw, dict):
+            raw = {}
+            result["raw_result"] = raw
+        if raw.get("semantic_facts"):
+            return output_text
+        if self.semantic_fact_extractor is None:
+            self.semantic_fact_extractor = SemanticFactExtractor(max_units_per_call=1)
+        extraction = self.semantic_fact_extractor.extract_batch(
+            question=self.question,
+            answer_requirement=answer_requirement,
+            current_goal=answer_requirement,
+            units=[
+                SemanticSourceUnit(
+                    unit_id="U1",
+                    text=output_text,
+                    source_id=f"evidence_prepare:{tool_name}",
+                    source_type=tool_name,
+                    source_title=tool_name.replace("_", " ").title(),
+                    metadata={"answer_target": answer_target},
+                )
+            ],
+        )
+        raw["semantic_facts"] = [fact.to_dict() for fact in extraction.facts]
+        raw["semantic_fact_diagnostics"] = dict(extraction.diagnostics)
+        fact_lines = [
+            f"- {fact.subject} --{fact.relation}--> {fact.object}"
+            for fact in extraction.facts
+            if fact.grounding_status == "grounded"
+        ]
+        if not fact_lines:
+            return output_text
+        return self._merge_contexts(
+            output_text,
+            "Extracted Evidence Facts:\n" + "\n".join(fact_lines[:8]),
+        )
 
     def _infer_video_answer_role(self, question: str) -> str:
         lowered = normalize_text(question).lower()
@@ -1084,6 +1164,12 @@ class EvidenceRunner:
             if result.get("ok") and output_text:
                 result["output_text"] = output_text
                 result.setdefault("evidence_valid", True)
+                output_text = self._augment_unstructured_tool_facts(
+                    tool_name="video_transcript",
+                    output_text=output_text,
+                    result=result,
+                    answer_requirement=self.question,
+                )
                 return self._validate_tool_context(
                     "video_transcript",
                     self._render_video_transcript_evidence(output_text),
@@ -1112,6 +1198,12 @@ class EvidenceRunner:
             raw_result={"url": url, "transcript": output_text},
             evidence_valid=True,
         ).to_dict()
+        output_text = self._augment_unstructured_tool_facts(
+            tool_name="video_transcript",
+            output_text=output_text,
+            result=result,
+            answer_requirement=self.question,
+        )
         return self._validate_tool_context(
             "video_transcript",
             self._render_video_transcript_evidence(output_text),

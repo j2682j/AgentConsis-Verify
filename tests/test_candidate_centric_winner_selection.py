@@ -71,11 +71,6 @@ class SequenceVersaScorer:
         )
 
 
-class ReviewAgent:
-    def invoke_with_usage(self, messages: list[dict[str, str]]):
-        return '{"type":"final_answer","answer":"Paris"}', 10, 5
-
-
 class CandidateCentricWinnerSelectionTests(unittest.TestCase):
     def test_cross_agent_minority_answer_is_not_lost(self) -> None:
         configs = [
@@ -133,7 +128,14 @@ class CandidateCentricWinnerSelectionTests(unittest.TestCase):
                                 "evidence_id": "E1",
                                 "title": "France",
                                 "text": "Paris is the capital and largest city of France.",
-                                "compatible_spans": ["Paris"],
+                                "direct_contracts": [
+                                    {
+                                        "goal_id": "G1",
+                                        "answer_span": "Paris",
+                                        "context": "Paris is the capital and largest city of France.",
+                                        "answer_requirement": "the capital of France",
+                                    }
+                                ],
                             }
                         ]
                     },
@@ -150,6 +152,33 @@ class CandidateCentricWinnerSelectionTests(unittest.TestCase):
         self.assertEqual(support.status, "search_evidence_supported")
         self.assertEqual(support.priority, 3)
         self.assertEqual(support.step_results[0].status, "supported")
+
+    def test_answer_mention_without_direct_contract_is_not_support(self) -> None:
+        target = summary(
+            "a1",
+            [run("a1", 1, "7", "step 1. The answer is 7.")],
+            answer="7",
+            confidence=1.0,
+        )
+        evidence = {
+            "tool_usage": [
+                {
+                    "tool_name": "attachment_reader",
+                    "ok": True,
+                    "evidence_valid": True,
+                    "output_text": "[slide 1] A [slide 7] B [slide 8] C",
+                }
+            ]
+        }
+
+        support = EvidenceSupportChecker().check_agent(
+            target=target,
+            reasoning_steps=[(1, "The answer is 7.")],
+            evidence=evidence,
+        )
+
+        self.assertEqual(support.status, "no_support")
+        self.assertEqual(support.step_results[0].status, "unsupported")
 
     def test_critical_step_floor_exposes_low_answer_step(self) -> None:
         target = summary(
@@ -287,7 +316,7 @@ class CandidateCentricWinnerSelectionTests(unittest.TestCase):
             ["paris", "lyon"],
         )
 
-    def test_exact_hierarchical_tie_requests_contrastive_review(self) -> None:
+    def test_exact_hierarchical_tie_remains_unresolved(self) -> None:
         configs = [
             AgentConfig(agent_id="a1", model_name="test-model"),
             AgentConfig(agent_id="a2", model_name="test-model"),
@@ -317,29 +346,107 @@ class CandidateCentricWinnerSelectionTests(unittest.TestCase):
         )
 
         self.assertIsNone(selection.winner)
-        self.assertEqual(selection.status, "review_required")
+        self.assertEqual(selection.status, "unresolved_missing_verification")
 
-    def test_contrastive_review_can_only_return_a_candidate(self) -> None:
-        token_usage: list[tuple[int, int]] = []
-        runner = Stage1Runner(
-            question="Which city is the capital of France?",
-            agents=[AgentConfig(agent_id="a1", model_name="test-model")],
-            get_agent=lambda config: ReviewAgent(),
-            record_token_usage=lambda **usage: token_usage.append(
-                (usage["prompt_tokens"], usage["completion_tokens"])
+    def test_unsupported_factual_candidates_remain_unresolved(self) -> None:
+        configs = [
+            AgentConfig(agent_id="a1", model_name="test-model"),
+            AgentConfig(agent_id="a2", model_name="test-model"),
+        ]
+        results = [
+            summary(
+                "a1",
+                [run("a1", 1, "Paris", "step 1. Paris.")],
+                answer="Paris",
+                confidence=1.0,
             ),
-            stage1_runs_per_agent=1,
+            summary(
+                "a2",
+                [run("a2", 1, "Lyon", "step 1. Lyon.")],
+                answer="Lyon",
+                confidence=1.0,
+            ),
+        ]
+        network = Network("Which city?", configs)
+        candidates = network.answer_candidate_clusterer.cluster(results)
+        verifier_results = [
+            VerifierScoreByReasoning(
+                verifier_id="versa_prm",
+                target_agent_id=agent_id,
+                verifier_score=reward,
+                metadata={
+                    "candidate_key": answer.lower(),
+                    "target_run_index": 1,
+                    "evidence_support": {
+                        "status": "no_support",
+                        "priority": 1,
+                    },
+                    "process_verification": {
+                        "critical_step_floor": reward,
+                        "critical_step_geometric_mean": reward,
+                    },
+                },
+            )
+            for agent_id, answer, reward in (
+                ("a1", "Paris", 0.99),
+                ("a2", "Lyon", 0.80),
+            )
+        ]
+
+        selection = network.final_winner_selector.select(
+            stage1_results=results,
+            candidates=candidates,
+            verifier_results=verifier_results,
+            evidence={"routing": {"primary_route": "factual_search"}},
         )
 
-        result = runner.review_final_candidates(
-            candidate_answers=["Paris", "Lyon"],
-            evidence_context="Paris is the capital of France.",
-            preferred_agent_id="a1",
+        self.assertIsNone(selection.winner)
+        self.assertEqual(
+            selection.status,
+            "unresolved_unsupported_factual_conflict",
+        )
+        self.assertEqual(
+            selection.reason,
+            "factual_candidates_have_no_verified_evidence_support",
         )
 
-        self.assertTrue(result["applied"])
-        self.assertEqual(result["answer"], "Paris")
-        self.assertEqual(token_usage, [(10, 5)])
+    def test_network_does_not_call_model_for_unresolved_selection(self) -> None:
+        configs = [
+            AgentConfig(agent_id="a1", model_name="test-model"),
+            AgentConfig(agent_id="a2", model_name="test-model"),
+        ]
+        results = [
+            summary(
+                "a1",
+                [run("a1", 1, "Paris", "step 1. Paris.")],
+                answer="Paris",
+                confidence=1.0,
+            ),
+            summary(
+                "a2",
+                [run("a2", 1, "Lyon", "step 1. Lyon.")],
+                answer="Lyon",
+                confidence=1.0,
+            ),
+        ]
+        network = Network("Which city?", configs)
+        model_calls = 0
+
+        def fail_if_called(config: AgentConfig):
+            nonlocal model_calls
+            model_calls += 1
+            raise AssertionError("Final winner selection must not call a model.")
+
+        network.stage1_runner.get_agent = fail_if_called
+
+        winner = network._select_winner(results)
+
+        self.assertIsNone(winner)
+        self.assertEqual(model_calls, 0)
+        self.assertEqual(
+            network._last_winner_selection_trace["status"],
+            "unresolved_missing_verification",
+        )
 
 
 if __name__ == "__main__":

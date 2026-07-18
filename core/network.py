@@ -24,6 +24,7 @@ from score.versa_prm_scorer import (
     DEFAULT_VERSA_PRM_MODEL_ID,
 )
 from tools.attachment_workspace import AttachmentWorkspace
+from tools.evidence.fact_extraction import TaskFactStore
 from utils.network_utils import normalize_for_exact
 
 
@@ -127,6 +128,7 @@ class Network:
         self.final_winner_selector = FinalWinnerSelector(
             clusterer=self.answer_candidate_clusterer,
             answer_validator=self.answer_validator,
+            question=self.question,
         )
         self._last_winner_selection_trace: dict[str, Any] = {}
         self.attachment_workspace = AttachmentWorkspace(self.attachment)
@@ -179,6 +181,11 @@ class Network:
         response_started_at = time.perf_counter()
         self._reset_token_usage()
         evidence = self.evidence_runner.run() if self.enable_evidence_prepare else self._empty_evidence_bundle()
+        if self.enable_evidence_prepare:
+            evidence["_fact_store"] = self.evidence_runner.fact_store
+        if not isinstance(evidence.get("_fact_store"), TaskFactStore):
+            evidence["_fact_store"] = TaskFactStore.from_dict(evidence.get("fact_store"))
+        evidence["fact_store"] = evidence["_fact_store"].to_dict()
 
         stage1_attempts = 0
         early_stop_reason = ""
@@ -361,6 +368,11 @@ class Network:
                 "solver_used": bool(evidence["solver_result"].strip()),
                 "routing": evidence.get("routing", {}),
                 "tool_usage": evidence.get("tool_usage", []),
+                "fact_store": (
+                    evidence["_fact_store"].to_dict()
+                    if isinstance(evidence.get("_fact_store"), TaskFactStore)
+                    else evidence.get("fact_store", {})
+                ),
             },
         )
 
@@ -379,6 +391,7 @@ class Network:
                 "use_python_solver": False,
             },
             "tool_usage": [],
+            "fact_store": TaskFactStore().to_dict(),
         }
 
     def _confidence_one_answer_consensus(
@@ -689,63 +702,8 @@ class Network:
             verifier_results=verifier_results or [],
             evidence=evidence or {},
         )
-        if selection.status == "review_required":
-            tied_evaluations = [
-                item
-                for item in selection.evaluations
-                if selection.evaluation is not None
-                and self.final_winner_selector.rank_tuple(item)
-                == self.final_winner_selector.rank_tuple(selection.evaluation)
-            ]
-            review = self.stage1_runner.review_final_candidates(
-                candidate_answers=[item.answer for item in tied_evaluations],
-                evidence_context=self._minimal_winner_review_evidence(evidence or {}),
-                preferred_agent_id=(
-                    selection.evaluation.selected_agent_id
-                    if selection.evaluation is not None
-                    else ""
-                ),
-            )
-            reviewed_key = self.answer_candidate_clusterer.candidate_key(
-                str(review.get("answer") or "")
-            )
-            reviewed_candidates = [
-                candidate
-                for candidate in candidates
-                if candidate.candidate_key == reviewed_key
-                and any(
-                    item.candidate_key == candidate.candidate_key
-                    for item in tied_evaluations
-                )
-            ]
-            if review.get("applied") and len(reviewed_candidates) == 1:
-                selection = self.final_winner_selector.select(
-                    stage1_results=stage1_results,
-                    candidates=reviewed_candidates,
-                    verifier_results=verifier_results or [],
-                    evidence=evidence or {},
-                )
-            trace = selection.to_dict()
-            trace["contrastive_review"] = review
-            self._last_winner_selection_trace = trace
-            return selection.winner
-
         self._last_winner_selection_trace = selection.to_dict()
         return selection.winner
-
-    def _minimal_winner_review_evidence(self, evidence: dict[str, Any]) -> str:
-        """建立候選平手審查使用的最小必要 evidence context。"""
-        sections = []
-        for label, key in (
-            ("Answer Requirement", "answer_requirement"),
-            ("Search Evidence", "search_result"),
-            ("Attachment Evidence", "attachment_result"),
-            ("Tool Evidence", "solver_result"),
-        ):
-            text = str(evidence.get(key) or "").strip()
-            if text:
-                sections.append(f"{label}:\n{text}")
-        return "\n\n".join(sections)[:3000]
 
     def _support_metadata_by_agent(
         self,
@@ -835,6 +793,11 @@ class Network:
             status = "answerable"
         elif answerable and trace_status in {
             "unresolved",
+            "unresolved_requirement_conflict",
+            "unresolved_unsupported_factual_conflict",
+            "unresolved_factual_without_support",
+            "unresolved_missing_verification",
+            "unresolved_exact_tie",
             "no_eligible_candidate",
             "selected_member_missing",
         }:

@@ -105,7 +105,7 @@ class FixedFilter:
 
 
 class IterativeRetrievalCoverageTests(unittest.TestCase):
-    def test_no_bridge_span_stops_without_fallback_next_hop_query(self):
+    def test_no_bridge_span_does_not_repeat_an_exhausted_corpus(self):
         controller = IterativeRetrievalControl(
             retriever=FakeRetriever(),
             labeler=NoContinueLabeler(),
@@ -120,7 +120,7 @@ class IterativeRetrievalCoverageTests(unittest.TestCase):
 
         self.assertEqual(result.searched_queries[0], "Who led Example Org in Taiwan in 2024?")
         self.assertEqual(len(result.searched_queries), 1)
-        self.assertEqual(result.rounds[0].stop_reason, "no_continue_chunks")
+        self.assertEqual(result.stop_reason, "goal_incomplete_no_viable_recovery")
         self.assertFalse(
             any(document.valid_for_next_hop for document in result.rounds[0].documents)
         )
