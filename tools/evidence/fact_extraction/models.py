@@ -10,6 +10,49 @@ VALID_GROUNDING_STATUSES = {"grounded", "ambiguous", "invalid"}
 
 
 @dataclass(frozen=True)
+class FactEvidenceRef:
+    """保存一段事實在原始來源單位中的可追溯位置。"""
+
+    source_id: str
+    unit_id: str
+    text: str
+    document_id: str = ""
+    page: int | None = None
+    section: str = ""
+    start_offset: int = -1
+    end_offset: int = -1
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, value: dict[str, Any]) -> "FactEvidenceRef":
+        page_value = value.get("page")
+        try:
+            page = int(page_value) if page_value not in (None, "") else None
+        except (TypeError, ValueError):
+            page = None
+        try:
+            start_offset = int(value.get("start_offset", -1))
+        except (TypeError, ValueError):
+            start_offset = -1
+        try:
+            end_offset = int(value.get("end_offset", -1))
+        except (TypeError, ValueError):
+            end_offset = -1
+        return cls(
+            source_id=str(value.get("source_id") or "").strip(),
+            unit_id=str(value.get("unit_id") or "").strip(),
+            text=str(value.get("text") or "").strip(),
+            document_id=str(value.get("document_id") or "").strip(),
+            page=page,
+            section=str(value.get("section") or "").strip(),
+            start_offset=start_offset,
+            end_offset=end_offset,
+        )
+
+
+@dataclass(frozen=True)
 class EvidenceFact:
     """
     保存一筆可回溯至來源文字的語意事實。
@@ -33,6 +76,7 @@ class EvidenceFact:
     role: str = "CONTEXT"
     goal_id: str = ""
     evidence_spans: list[str] = field(default_factory=list)
+    evidence_refs: list[FactEvidenceRef] = field(default_factory=list)
     context: str = ""
     source_id: str = ""
     source_type: str = ""
@@ -65,6 +109,11 @@ class EvidenceFact:
                 str(item).strip()
                 for item in list(value.get("evidence_spans") or [])[:2]
                 if str(item).strip()
+            ],
+            evidence_refs=[
+                FactEvidenceRef.from_dict(item)
+                for item in list(value.get("evidence_refs") or [])
+                if isinstance(item, dict)
             ],
             context=str(value.get("context") or "").strip(),
             source_id=str(value.get("source_id") or "").strip(),
@@ -118,6 +167,7 @@ class SemanticExtractionResult:
 
 __all__ = [
     "EvidenceFact",
+    "FactEvidenceRef",
     "SemanticExtractionResult",
     "SemanticSourceUnit",
     "VALID_FACT_ROLES",

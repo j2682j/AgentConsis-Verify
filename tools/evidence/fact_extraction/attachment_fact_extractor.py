@@ -10,6 +10,10 @@ from utils.network_utils import normalize_text
 from .fact_store import TaskFactStore
 from .models import EvidenceFact, SemanticExtractionResult, SemanticSourceUnit
 from .semantic_fact_extractor import SemanticFactExtractor
+from .context_assembler import CrossContextAssembler
+from .cross_context_fact_extractor import CrossContextFactExtractor
+from .completeness_contract import CompletenessContractBuilder
+from .set_difference_deriver import SetDifferenceFactDeriver
 
 
 class AttachmentFactExtractor:
@@ -30,10 +34,27 @@ class AttachmentFactExtractor:
         self,
         *,
         semantic_extractor: SemanticFactExtractor | None = None,
+        cross_context_assembler: CrossContextAssembler | None = None,
+        cross_context_extractor: CrossContextFactExtractor | None = None,
+        completeness_contract_builder: CompletenessContractBuilder | None = None,
+        set_difference_deriver: SetDifferenceFactDeriver | None = None,
         max_semantic_units: int = 8,
     ) -> None:
         self.semantic_extractor = semantic_extractor or SemanticFactExtractor(
             max_units_per_call=max_semantic_units
+        )
+        self.cross_context_assembler = (
+            cross_context_assembler or CrossContextAssembler(max_windows=6)
+        )
+        self.cross_context_extractor = (
+            cross_context_extractor
+            or CrossContextFactExtractor(semantic_extractor=self.semantic_extractor)
+        )
+        self.completeness_contract_builder = (
+            completeness_contract_builder or CompletenessContractBuilder()
+        )
+        self.set_difference_deriver = (
+            set_difference_deriver or SetDifferenceFactDeriver()
         )
         self.max_semantic_units = max(1, int(max_semantic_units))
 
@@ -45,6 +66,10 @@ class AttachmentFactExtractor:
         parsed_payload: dict[str, Any],
     ) -> SemanticExtractionResult:
         store = TaskFactStore()
+        completeness_contract = (
+            self.completeness_contract_builder.from_attachment_payload(parsed_payload)
+        )
+        store.add_completeness_contract(completeness_contract)
         structured = self._structured_relation_facts(parsed_payload)
         store.extend(structured)
 
@@ -59,17 +84,94 @@ class AttachmentFactExtractor:
             units=units,
         )
         store.extend(semantic.facts)
+        windows = self.cross_context_assembler.assemble(
+            units,
+            anchor_unit_ids=[unit.unit_id for unit in units],
+        )
+        cross_context = self.cross_context_extractor.extract_windows(
+            question=question,
+            answer_requirement=answer_requirement,
+            answer_target=answer_requirement,
+            current_goal=answer_requirement,
+            windows=windows,
+        )
+        store.extend(cross_context.facts)
+        set_difference = self._derive_set_difference(
+            parsed_payload=parsed_payload,
+            completeness_contract=completeness_contract,
+            answer_requirement=answer_requirement or question,
+        )
+        if set_difference is not None:
+            derivation, derived_facts = set_difference
+            store.add_set_difference_derivation(derivation)
+            store.extend(derived_facts)
         facts = store.all()
         diagnostics = {
             **semantic.diagnostics,
             "structured_fact_count": len(structured),
             "semantic_unit_count": len(units),
             "stored_fact_count": len(facts),
+            "cross_context": cross_context.diagnostics,
+            "cross_context_window_count": len(windows),
+            "cross_context_fact_count": len(cross_context.facts),
+            "completeness_contracts": [completeness_contract.to_dict()],
+            "absence_checks": [],
+            "set_difference_derivations": [
+                item.to_dict() for item in store.set_difference_derivations()
+            ],
+            "set_difference_fact_count": sum(
+                fact.derivation_type == "set_difference" for fact in facts
+            ),
         }
         return SemanticExtractionResult(
             facts=facts,
-            rejected_items=list(semantic.rejected_items),
+            rejected_items=[
+                *semantic.rejected_items,
+                *cross_context.rejected_items,
+            ],
             diagnostics=diagnostics,
+        )
+
+    def _derive_set_difference(
+        self,
+        *,
+        parsed_payload: dict[str, Any],
+        completeness_contract: Any,
+        answer_requirement: str,
+    ):
+        native = dict(parsed_payload.get("native_metadata") or {})
+        spec = parsed_payload.get("set_difference_inputs")
+        if not isinstance(spec, dict):
+            spec = native.get("set_difference_inputs")
+        if not isinstance(spec, dict):
+            return None
+        universe = list(spec.get("universe_values") or [])
+        observed = list(spec.get("observed_values") or [])
+        if not universe:
+            return None
+        provenance = dict(parsed_payload.get("provenance") or {})
+        return self.set_difference_deriver.derive(
+            universe_values=[str(item) for item in universe],
+            observed_values=[str(item) for item in observed],
+            completeness_contracts=[completeness_contract],
+            universe_fact_ids=[
+                str(item) for item in list(spec.get("universe_fact_ids") or [])
+            ],
+            observed_fact_ids=[
+                str(item) for item in list(spec.get("observed_fact_ids") or [])
+            ],
+            negative_relation=str(spec.get("negative_relation") or "is absent from"),
+            negative_object=str(spec.get("negative_object") or "observed set"),
+            answer_subject=str(spec.get("answer_subject") or "missing value"),
+            answer_relation=str(spec.get("answer_relation") or "is"),
+            answer_requirement=answer_requirement,
+            goal_id=str(spec.get("goal_id") or ""),
+            source_id=str(
+                provenance.get("file_path")
+                or provenance.get("source")
+                or "attachment"
+            ),
+            source_type=str(provenance.get("file_type") or "attachment"),
         )
 
     def _structured_relation_facts(
@@ -126,6 +228,7 @@ class AttachmentFactExtractor:
         candidates: list[tuple[int, int, SemanticSourceUnit]] = []
         question_terms = self._terms(question)
 
+        order = 0
         for index, block in enumerate(list(parsed_payload.get("text_blocks") or []), start=1):
             if not isinstance(block, dict):
                 continue
@@ -134,15 +237,74 @@ class AttachmentFactExtractor:
                 continue
             page = block.get("page")
             section = normalize_text(str(block.get("section") or ""))
+            order += 1
             unit = SemanticSourceUnit(
                 unit_id=f"T{index}",
                 text=text,
-                source_id=f"{base_source_id}#text-{index}",
+                source_id=base_source_id,
                 source_type=source_type,
                 source_title=section or (f"Page {page}" if page is not None else "Attachment text"),
-                metadata={"page": page, "section": section},
+                metadata={
+                    "page": page,
+                    "section": section,
+                    "order": order,
+                    "document_id": f"T{index}",
+                    "record_type": normalize_text(str(block.get("block_type") or "text")),
+                },
             )
             candidates.append((self._overlap(question_terms, text), index, unit))
+
+        for table_index, table in enumerate(list(parsed_payload.get("tables") or []), start=1):
+            if not isinstance(table, dict):
+                continue
+            columns = [normalize_text(str(item)) for item in list(table.get("columns") or [])]
+            table_id = f"TABLE{table_index}"
+            if columns:
+                order += 1
+                header_text = "Columns: " + " | ".join(columns)
+                header = SemanticSourceUnit(
+                    unit_id=f"{table_id}-H",
+                    text=header_text,
+                    source_id=base_source_id,
+                    source_type=source_type,
+                    source_title=normalize_text(str(table.get("name") or "Table")),
+                    metadata={
+                        "order": order,
+                        "document_id": f"{table_id}-H",
+                        "record_type": "table",
+                        "table_id": table_id,
+                        "section": normalize_text(str(table.get("name") or "")),
+                    },
+                )
+                candidates.append((self._overlap(question_terms, header_text) + 1, order, header))
+            for row_index, row in enumerate(list(table.get("rows") or []), start=1):
+                if not isinstance(row, list):
+                    continue
+                values = [normalize_text(str(item)) for item in row]
+                pairs = [
+                    f"{columns[index]}: {value}"
+                    for index, value in enumerate(values)
+                    if value and index < len(columns)
+                ]
+                row_text = " | ".join(pairs or values)
+                if not row_text:
+                    continue
+                order += 1
+                row_unit = SemanticSourceUnit(
+                    unit_id=f"{table_id}-R{row_index}",
+                    text=row_text,
+                    source_id=base_source_id,
+                    source_type=source_type,
+                    source_title=normalize_text(str(table.get("name") or "Table")),
+                    metadata={
+                        "order": order,
+                        "document_id": f"{table_id}-R{row_index}",
+                        "record_type": "table_row",
+                        "table_id": table_id,
+                        "row_index": row_index,
+                    },
+                )
+                candidates.append((self._overlap(question_terms, row_text) + 1, order, row_unit))
 
         offset = len(candidates)
         for index, block in enumerate(list(parsed_payload.get("visual_blocks") or []), start=1):
@@ -152,13 +314,19 @@ class AttachmentFactExtractor:
             if not text:
                 continue
             attributes = dict(block.get("attributes") or {})
+            order += 1
             unit = SemanticSourceUnit(
                 unit_id=f"V{index}",
                 text=text,
-                source_id=f"{base_source_id}#visual-{index}",
+                source_id=base_source_id,
                 source_type="visual_observation",
                 source_title=normalize_text(str(block.get("region") or "Visual observation")),
-                metadata=attributes,
+                metadata={
+                    **attributes,
+                    "order": order,
+                    "document_id": f"V{index}",
+                    "record_type": "visual_observation",
+                },
             )
             candidates.append((self._overlap(question_terms, text) + 1, offset + index, unit))
 

@@ -9,7 +9,15 @@ from pathlib import Path
 from typing import Any, Callable, Iterable
 
 from utils.network_utils import normalize_text
-from tools.evidence.fact_extraction import EvidenceFact, TaskFactStore
+from tools.evidence.fact_extraction import (
+    AbsenceCheck,
+    CompletenessContract,
+    CrossContextAssembler,
+    CrossContextFactExtractor,
+    EvidenceFact,
+    SemanticSourceUnit,
+    TaskFactStore,
+)
 
 from .config import EvidenceItem, SearchSourceCandidate
 from .corpus import DocumentChunker, TaskCorpusSession, WebCorpusBuilder
@@ -137,6 +145,7 @@ class RetrievalRoundTrace:
     query: str
     branch_queries: list[str] = field(default_factory=list)
     documents: list[RetrievedDocumentTrace] = field(default_factory=list)
+    cross_context_facts: list[dict[str, Any]] = field(default_factory=list)
     useful_tokens: list[str] = field(default_factory=list)
     next_query: str = ""
     next_queries: list[str] = field(default_factory=list)
@@ -170,6 +179,9 @@ class IterativeRetrievalResult:
     unique_document_count: int
     relation_plan: dict[str, object] = field(default_factory=dict)
     semantic_facts: list[dict[str, Any]] = field(default_factory=list)
+    completeness_contracts: list[dict[str, Any]] = field(default_factory=list)
+    absence_checks: list[dict[str, Any]] = field(default_factory=list)
+    set_difference_derivations: list[dict[str, Any]] = field(default_factory=list)
 
 
 @dataclass
@@ -263,6 +275,8 @@ class IterativeRetrievalControl:
         span_quality_gate: CandidateSpanQualityGate | None = None,
         span_finalizer: RoleAwareSpanFinalizer | None = None,
         span_role_classifier: SpanRoleClassifier | None = None,
+        cross_context_assembler: CrossContextAssembler | None = None,
+        cross_context_fact_extractor: CrossContextFactExtractor | None = None,
         labeler_input_builder: LabelerInputBuilder | None = None,
         intent_state_tracker: SearchIntentStateTracker | None = None,
         query_guard: NextHopQueryGuard | None = None,
@@ -297,6 +311,12 @@ class IterativeRetrievalControl:
         self.span_quality_gate = span_quality_gate or CandidateSpanQualityGate()
         self.span_finalizer = span_finalizer or RoleAwareSpanFinalizer()
         self.span_role_classifier = span_role_classifier or SpanRoleClassifier()
+        self.cross_context_assembler = (
+            cross_context_assembler or CrossContextAssembler()
+        )
+        self.cross_context_fact_extractor = (
+            cross_context_fact_extractor or CrossContextFactExtractor()
+        )
         self.labeler_input_builder = labeler_input_builder or LabelerInputBuilder()
         self.intent_state_tracker = intent_state_tracker or SearchIntentStateTracker()
         self.query_guard = query_guard or NextHopQueryGuard()
@@ -505,6 +525,11 @@ class IterativeRetrievalControl:
                 )
 
             self._apply_span_role_classification(
+                round_trace=round_trace,
+                question=initial_query,
+                intent_plan=current_intent_plan,
+            )
+            self._apply_cross_context_fact_extraction(
                 round_trace=round_trace,
                 question=initial_query,
                 intent_plan=current_intent_plan,
@@ -1029,10 +1054,31 @@ class IterativeRetrievalControl:
         task_fact_store.extend(
             EvidenceFact.from_dict(fact)
             for round_trace in rounds
-            for document in round_trace.documents
-            for fact in document.semantic_facts
+            for fact in [
+                *round_trace.cross_context_facts,
+                *[
+                    item
+                    for document in round_trace.documents
+                    for item in document.semantic_facts
+                ],
+            ]
             if isinstance(fact, dict)
         )
+        for round_trace in rounds:
+            goal_metadata = round_trace.filter_metadata.get("goal_completion")
+            if not isinstance(goal_metadata, dict):
+                continue
+            for result in list(goal_metadata.get("negative_verifications") or []):
+                if not isinstance(result, dict):
+                    continue
+                for item in list(result.get("completeness_contracts") or []):
+                    if isinstance(item, dict):
+                        task_fact_store.add_completeness_contract(
+                            CompletenessContract.from_dict(item)
+                        )
+                for item in list(result.get("absence_checks") or []):
+                    if isinstance(item, dict):
+                        task_fact_store.add_absence_check(AbsenceCheck.from_dict(item))
         return IterativeRetrievalResult(
             initial_query=initial_query,
             final_query=final_query,
@@ -1046,6 +1092,16 @@ class IterativeRetrievalControl:
                 else {}
             ),
             semantic_facts=[fact.to_dict() for fact in task_fact_store.all()],
+            completeness_contracts=[
+                item.to_dict() for item in task_fact_store.completeness_contracts()
+            ],
+            absence_checks=[
+                item.to_dict() for item in task_fact_store.absence_checks()
+            ],
+            set_difference_derivations=[
+                item.to_dict()
+                for item in task_fact_store.set_difference_derivations()
+            ],
         )
 
     def _load_external_sources(self, requests: list[SearchQueryRequest]) -> int:
@@ -1065,6 +1121,10 @@ class IterativeRetrievalControl:
     ) -> None:
         by_id = {document.document_id: document for document in documents}
         for result in goal_completion.negative_verifications:
+            negative_by_title = {
+                normalize_text(fact.subject).casefold(): fact
+                for fact in result.negative_facts
+            }
             if not result.resolved:
                 continue
             for verification in result.verifications:
@@ -1073,6 +1133,13 @@ class IterativeRetrievalControl:
                 document = by_id.get(verification.document_id)
                 if document is None:
                     continue
+                negative_fact = negative_by_title.get(
+                    normalize_text(verification.title).casefold()
+                )
+                if negative_fact is not None:
+                    serialized_fact = negative_fact.to_dict()
+                    if serialized_fact not in document.semantic_facts:
+                        document.semantic_facts.append(serialized_fact)
                 contract = {
                     "goal_id": result.goal_id,
                     "answer_span": verification.title,
@@ -1084,6 +1151,10 @@ class IterativeRetrievalControl:
                     "url": document.url,
                     "answer_requirement": normalize_text(question),
                     "verification_scope": "full_document",
+                    "fact_id": negative_fact.fact_id if negative_fact else "",
+                    "polarity": "negative",
+                    "grounding_status": "grounded",
+                    "answer_binding": "direct",
                 }
                 if contract not in document.direct_contracts:
                     document.direct_contracts.append(contract)
@@ -1814,6 +1885,224 @@ class IterativeRetrievalControl:
                     "dropped_count": diagnostics.get("dropped_count", 0),
                 },
             }
+
+    def _apply_cross_context_fact_extraction(
+        self,
+        *,
+        round_trace: RetrievalRoundTrace,
+        question: str,
+        intent_plan: SearchIntentPlan | None,
+    ) -> None:
+        """從檢索錨點的相鄰 corpus passages 抽取可追溯的跨單位事實。"""
+
+        units = self._cross_context_source_units(intent_plan=intent_plan)
+        anchor_ids = [
+            trace.document_id
+            for trace in round_trace.documents
+            if (
+                not trace.duplicate
+                and (
+                    trace.raw_labeler_spans
+                    or trace.useful_spans
+                    or trace.sequence_tag in {CONTINUE_TAG, FINISH_TAG}
+                )
+            )
+        ]
+        windows = self.cross_context_assembler.assemble(
+            units,
+            anchor_unit_ids=anchor_ids,
+        )
+        if not windows:
+            round_trace.filter_metadata["cross_context_fact_extraction"] = {
+                "success": True,
+                "window_count": 0,
+                "anchor_count": len(anchor_ids),
+                "empty_reason": "no_eligible_cross_context_windows",
+            }
+            return
+
+        result = self.cross_context_fact_extractor.extract_windows(
+            question=question,
+            answer_requirement=self._answer_requirement(intent_plan),
+            answer_target=self._answer_target(intent_plan),
+            current_goal=self._relation_goal_text(intent_plan, active=True),
+            current_goal_id=self._relation_goal_id(intent_plan),
+            windows=windows,
+        )
+        round_trace.cross_context_facts = [fact.to_dict() for fact in result.facts]
+        round_trace.filter_metadata["cross_context_fact_extraction"] = {
+            **dict(result.diagnostics),
+            "anchor_count": len(anchor_ids),
+            "window_ids": [window.window_id for window in windows],
+            "rejected_items": list(result.rejected_items),
+        }
+        grounded_facts = [
+            fact for fact in result.facts if fact.grounding_status == "grounded"
+        ]
+        if not grounded_facts:
+            return
+
+        windows_by_id = {window.window_id: window for window in windows}
+        facts_by_window: dict[str, list[EvidenceFact]] = {}
+        for fact in grounded_facts:
+            window_id = normalize_text(
+                str(fact.qualifiers.get("cross_context_window_id") or "")
+            )
+            if window_id in windows_by_id:
+                facts_by_window.setdefault(window_id, []).append(fact)
+
+        trace_by_id = {
+            trace.document_id: trace
+            for trace in round_trace.documents
+            if not trace.duplicate
+        }
+        relation_plan = intent_plan.relation_plan if intent_plan is not None else None
+        for window_id, facts in facts_by_window.items():
+            window = windows_by_id[window_id]
+            assignments = [
+                {
+                    "accepted": True,
+                    "role": fact.role,
+                    "goal_id": fact.goal_id,
+                    "original_text": fact.object,
+                    "finalized_text": fact.object,
+                    "semantic_facts": [fact.to_dict()],
+                }
+                for fact in facts
+                if fact.role in {ANSWER_SUPPORT, BRIDGE}
+            ]
+            if not assignments:
+                continue
+            first_unit = window.units[0]
+            first_metadata = dict(first_unit.metadata or {})
+            url = normalize_text(str(first_metadata.get("url") or window.source_id))
+            synthetic_id = f"cross-context:{window_id}"
+            contracts = self.evidence_contract_builder.build(
+                question=question,
+                answer_requirement=self._answer_requirement(intent_plan),
+                answer_target=self._answer_target(intent_plan),
+                relation_plan=relation_plan,
+                document_id=synthetic_id,
+                source_title=first_unit.source_title,
+                url=url,
+                text=window.text,
+                span_assignments=assignments,
+            )
+            if not contracts.direct and not contracts.bridge:
+                continue
+            referenced_scores = [
+                trace_by_id[ref.document_id].retrieval_score
+                for fact in facts
+                for ref in fact.evidence_refs
+                if ref.document_id in trace_by_id
+            ]
+            direct_spans = [item.answer_span for item in contracts.direct]
+            bridge_spans = [item.bridge_span for item in contracts.bridge]
+            synthetic = RetrievedDocumentTrace(
+                document_id=synthetic_id,
+                title=normalize_text(first_unit.source_title),
+                text=window.text,
+                url=url,
+                retrieval_score=max(referenced_scores, default=0.0),
+                record_type="cross_context",
+                content_scope="cross_context_window",
+                sequence_tag="<CROSS_CONTEXT>",
+                useful_tokens=self._dedupe_tokens([*direct_spans, *bridge_spans]),
+                useful_spans=self._dedupe_tokens([*direct_spans, *bridge_spans]),
+                classified_spans=self._dedupe_tokens([*direct_spans, *bridge_spans]),
+                answer_support_spans=direct_spans,
+                bridge_spans=bridge_spans,
+                semantic_facts=[fact.to_dict() for fact in facts],
+                support_level=("direct" if direct_spans else "bridge"),
+                valid_for_next_hop=bool(bridge_spans),
+                valid_for_evidence=bool(direct_spans),
+                direct_contracts=[item.to_dict() for item in contracts.direct],
+                bridge_contracts=[item.to_dict() for item in contracts.bridge],
+                rejected_contracts=[item.to_dict() for item in contracts.unsupported],
+                label="useful",
+                label_status="cross_context_fact_contract",
+                labeler_diagnostics={
+                    "cross_context_window": {
+                        "window_id": window.window_id,
+                        "unit_ids": list(window.unit_ids),
+                        "boundary_reason": window.boundary_reason,
+                    }
+                },
+            )
+            round_trace.documents.append(synthetic)
+
+        round_trace.filter_metadata["cross_context_fact_extraction"].update(
+            {
+                "synthetic_document_count": sum(
+                    trace.record_type == "cross_context"
+                    for trace in round_trace.documents
+                ),
+                "direct_contract_count": sum(
+                    len(trace.direct_contracts)
+                    for trace in round_trace.documents
+                    if trace.record_type == "cross_context"
+                ),
+                "bridge_contract_count": sum(
+                    len(trace.bridge_contracts)
+                    for trace in round_trace.documents
+                    if trace.record_type == "cross_context"
+                ),
+            }
+        )
+
+    def _cross_context_source_units(
+        self,
+        *,
+        intent_plan: SearchIntentPlan | None,
+    ) -> list[SemanticSourceUnit]:
+        units: list[SemanticSourceUnit] = []
+        for order, document in enumerate(self.retriever.passage_map.values()):
+            document_id = normalize_text(str(document.get("id") or ""))
+            text = normalize_text(str(document.get("text") or ""))
+            source_id = self._cross_context_source_id(document)
+            if not document_id or not text or not source_id:
+                continue
+            extra_fields = dict(document.get("extra_fields") or {})
+            units.append(
+                SemanticSourceUnit(
+                    unit_id=document_id,
+                    text=text,
+                    source_id=source_id,
+                    source_type="web",
+                    source_title=normalize_text(str(document.get("title") or "")),
+                    goal_id=self._relation_goal_id(intent_plan),
+                    metadata={
+                        "order": order,
+                        "document_id": document_id,
+                        "url": normalize_text(str(document.get("url") or "")),
+                        "record_id": normalize_text(str(document.get("record_id") or "")),
+                        "record_type": normalize_text(str(document.get("record_type") or "passage")),
+                        "section": normalize_text(str(extra_fields.get("section") or "")),
+                        "page": extra_fields.get("page"),
+                        "table_id": normalize_text(str(extra_fields.get("table_id") or "")),
+                        "answer_target": self._answer_target(intent_plan),
+                    },
+                )
+            )
+        return units
+
+    @staticmethod
+    def _cross_context_source_id(document: dict[str, Any]) -> str:
+        source = normalize_text(
+            str(
+                document.get("parent_url")
+                or document.get("url")
+                or document.get("content_url")
+                or document.get("record_id")
+                or ""
+            )
+        )
+        return source.split("#", 1)[0].rstrip("/").casefold()
+
+    def _relation_goal_id(self, intent_plan: SearchIntentPlan | None) -> str:
+        if intent_plan is None or intent_plan.relation_plan.active_goal is None:
+            return ""
+        return normalize_text(intent_plan.relation_plan.active_goal.goal_id)
 
     def _retain_grounded_spans(
         self,

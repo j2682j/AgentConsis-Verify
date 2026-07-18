@@ -7,6 +7,8 @@ from utils.network_utils import normalize_text
 
 from .models import (
     EvidenceFact,
+    FactEvidenceRef,
+    SemanticSourceUnit,
     VALID_FACT_ROLES,
     VALID_POLARITIES,
 )
@@ -93,6 +95,98 @@ class FactGroundingValidator:
             for fact in facts
         ]
 
+    def validate_cross_context(
+        self,
+        fact: EvidenceFact,
+        *,
+        units: list[SemanticSourceUnit],
+    ) -> EvidenceFact:
+        """驗證跨單位事實的每一段文字與來源識別是否可追溯。"""
+
+        unit_by_id = {normalize_text(unit.unit_id): unit for unit in units}
+        refs: list[FactEvidenceRef] = []
+        invalid_ref = False
+        for ref in fact.evidence_refs:
+            unit = unit_by_id.get(normalize_text(ref.unit_id))
+            if unit is None or normalize_text(ref.source_id) != normalize_text(unit.source_id):
+                invalid_ref = True
+                continue
+            source_text = normalize_text(unit.text)
+            evidence_text = normalize_text(ref.text)
+            start = source_text.casefold().find(evidence_text.casefold())
+            if not evidence_text or start < 0:
+                invalid_ref = True
+                continue
+            metadata = dict(unit.metadata or {})
+            refs.append(
+                replace(
+                    ref,
+                    document_id=(
+                        normalize_text(ref.document_id)
+                        or normalize_text(str(metadata.get("document_id") or unit.unit_id))
+                    ),
+                    page=(ref.page if ref.page is not None else self._page(metadata.get("page"))),
+                    section=(
+                        normalize_text(ref.section)
+                        or normalize_text(str(metadata.get("section") or ""))
+                    ),
+                    start_offset=start,
+                    end_offset=start + len(evidence_text),
+                )
+            )
+
+        role = str(fact.role or "CONTEXT").upper()
+        polarity = str(fact.polarity or "positive").lower()
+        source_ids = {normalize_text(ref.source_id) for ref in refs if ref.source_id}
+        unit_ids = {normalize_text(ref.unit_id) for ref in refs if ref.unit_id}
+        context = "\n\n".join(
+            f"[Unit {unit.unit_id}]\n{normalize_text(unit.text)}" for unit in units
+        )
+        spans = self._dedupe([ref.text for ref in refs])[: self.max_evidence_spans]
+        structurally_valid = bool(
+            role in VALID_FACT_ROLES
+            and polarity in VALID_POLARITIES
+            and fact.subject.strip()
+            and fact.relation.strip()
+            and fact.object.strip()
+            and len(unit_ids) >= 2
+            and len(source_ids) == 1
+            and not invalid_ref
+        )
+        if not structurally_valid:
+            return replace(
+                fact,
+                role=role if role in VALID_FACT_ROLES else "CONTEXT",
+                polarity=polarity if polarity in VALID_POLARITIES else "positive",
+                evidence_spans=spans,
+                evidence_refs=refs,
+                context=context,
+                grounding_status="invalid",
+            )
+
+        support_text = normalize_text(" ".join(ref.text for ref in refs))
+        subject_grounded = self._entity_grounded(
+            fact.subject,
+            support_text,
+            support_text,
+        )
+        object_grounded = self._entity_grounded(
+            fact.object,
+            support_text,
+            support_text,
+        )
+        status = "grounded" if subject_grounded and object_grounded else "ambiguous"
+        return replace(
+            fact,
+            role=role,
+            polarity=polarity,
+            evidence_spans=spans,
+            evidence_refs=refs,
+            context=context,
+            source_id=next(iter(source_ids)),
+            grounding_status=status,
+        )
+
     def _entity_grounded(self, value: str, evidence: str, context: str) -> bool:
         cleaned = normalize_text(value)
         if not cleaned:
@@ -115,6 +209,13 @@ class FactGroundingValidator:
     @staticmethod
     def _contains(container: str, value: str) -> bool:
         return normalize_text(value).casefold() in normalize_text(container).casefold()
+
+    @staticmethod
+    def _page(value: object) -> int | None:
+        try:
+            return int(value) if value not in (None, "") else None
+        except (TypeError, ValueError):
+            return None
 
     def _repair_prompt_label(self, span: str, context: str) -> str:
         cleaned = normalize_text(span)

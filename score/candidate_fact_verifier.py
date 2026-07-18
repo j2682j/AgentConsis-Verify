@@ -59,6 +59,7 @@ class CandidateFactVerifier:
             )
         ]
         if negative_subject_support:
+            support_reason = self._negative_support_reason(negative_subject_support)
             return CandidateFactVerification(
                 status="supported",
                 supporting_fact_ids=[fact.fact_id for fact in negative_subject_support],
@@ -71,7 +72,7 @@ class CandidateFactVerifier:
                     if all(fact.parent_fact_ids for fact in negative_subject_support)
                     else "direct"
                 ),
-                reason="candidate_subject_satisfies_grounded_negative_condition",
+                reason=support_reason,
                 answer_requirement=answer_requirement,
             )
         negative = [
@@ -108,11 +109,26 @@ class CandidateFactVerifier:
                 ),
                 answer_requirement=answer_requirement,
             )
+        if any(check.status == "unknown" for check in fact_store.absence_checks()):
+            return CandidateFactVerification(
+                status="unknown",
+                reason="absence_unverifiable_in_incomplete_scope",
+                answer_requirement=answer_requirement,
+            )
         return CandidateFactVerification(
             status="unknown",
             reason="no_answer_bound_fact_matches_candidate",
             answer_requirement=answer_requirement,
         )
+
+    @staticmethod
+    def _negative_support_reason(facts: list[EvidenceFact]) -> str:
+        types = {fact.qualifiers.get("negation_type", "") for fact in facts}
+        if "explicit_negative" in types:
+            return "candidate_supported_by_explicit_negative_fact"
+        if types & {"closed_world_absence", "closed_world_set_difference"}:
+            return "candidate_supported_by_closed_world_absence"
+        return "candidate_subject_satisfies_grounded_negative_condition"
 
     def _parent_ids(
         self,

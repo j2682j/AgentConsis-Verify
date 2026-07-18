@@ -13,6 +13,7 @@ from utils.network_utils import normalize_text
 from .answer_bound_validator import AnswerBoundFactValidator
 from .grounding_validator import FactGroundingValidator
 from .models import EvidenceFact, SemanticExtractionResult, SemanticSourceUnit
+from .negative_fact_builder import NegativeFactBuilder
 
 
 class SemanticFactExtractor:
@@ -35,6 +36,7 @@ class SemanticFactExtractor:
         llm_client: LLMClient | None = None,
         grounding_validator: FactGroundingValidator | None = None,
         answer_bound_validator: AnswerBoundFactValidator | None = None,
+        negative_fact_builder: NegativeFactBuilder | None = None,
         max_units_per_call: int = 8,
         max_context_chars: int = 700,
         max_tokens: int = 768,
@@ -50,6 +52,7 @@ class SemanticFactExtractor:
         self.answer_bound_validator = (
             answer_bound_validator or AnswerBoundFactValidator()
         )
+        self.negative_fact_builder = negative_fact_builder or NegativeFactBuilder()
         self.max_units_per_call = max(1, int(max_units_per_call))
         self.max_context_chars = max(160, int(max_context_chars))
         self.max_tokens = max(128, int(max_tokens))
@@ -192,6 +195,8 @@ class SemanticFactExtractor:
                 "- For count, maximum, minimum, list, or calculated questions, do not mark an item as ANSWER_SUPPORT unless Text explicitly states the aggregate result.",
                 "- Use CONTEXT for topical facts that do not fill the answer or a required intermediate relation.",
                 "- Preserve dates, units, locations, counts, and other restrictions in qualifiers.",
+                "- Use negative only when an evidence span itself explicitly states the negation.",
+                "- Never infer a negative fact merely because the Question asks who or what is missing.",
                 "- Return an empty facts array when a unit has no explicit useful fact.",
             ]
         )
@@ -287,6 +292,7 @@ class SemanticFactExtractor:
                     }
                 )
                 grounded = self.grounding_validator.validate(fact, source_text=unit.text)
+                grounded = self.negative_fact_builder.validate_explicit(grounded)
                 bound = self.answer_bound_validator.bind(
                     grounded,
                     question=question,

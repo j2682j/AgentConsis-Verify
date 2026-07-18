@@ -7,6 +7,11 @@ from typing import Any, Iterable, Protocol
 from utils.network_utils import normalize_text
 
 from .fact_store import TaskFactStore
+from .completeness_contract import (
+    AbsenceCheck,
+    CompletenessContract,
+    SetDifferenceDerivation,
+)
 from .models import EvidenceFact
 
 
@@ -306,6 +311,7 @@ class TaskFactCollector:
     ) -> int:
         if not isinstance(item, dict):
             return 0
+        self._collect_audit_records(store, item)
         added = 0
         for adapter in self.adapters:
             if adapter.supports(item, source_scope=source_scope):
@@ -317,6 +323,48 @@ class TaskFactCollector:
                     )
                 )
         return added
+
+    def _collect_audit_records(
+        self,
+        store: TaskFactStore,
+        item: dict[str, Any],
+    ) -> None:
+        raw = item.get("raw_result")
+        containers = [item]
+        if isinstance(raw, dict):
+            containers.append(raw)
+            diagnostics = raw.get("diagnostics")
+            if isinstance(diagnostics, dict):
+                containers.append(diagnostics)
+            retrieval = raw.get("retrieval")
+            if isinstance(retrieval, dict):
+                containers.append(retrieval)
+        seen: set[tuple[str, str]] = set()
+        for container in containers:
+            for value in list(container.get("completeness_contracts") or []):
+                if not isinstance(value, dict):
+                    continue
+                contract = CompletenessContract.from_dict(value)
+                key = ("contract", contract.contract_id)
+                if key not in seen:
+                    store.add_completeness_contract(contract)
+                    seen.add(key)
+            for value in list(container.get("absence_checks") or []):
+                if not isinstance(value, dict):
+                    continue
+                check = AbsenceCheck.from_dict(value)
+                key = ("absence", check.check_id)
+                if key not in seen:
+                    store.add_absence_check(check)
+                    seen.add(key)
+            for value in list(container.get("set_difference_derivations") or []):
+                if not isinstance(value, dict):
+                    continue
+                derivation = SetDifferenceDerivation.from_dict(value)
+                key = ("set_difference", derivation.derivation_id)
+                if key not in seen:
+                    store.add_set_difference_derivation(derivation)
+                    seen.add(key)
 
     def collect_many(
         self,
