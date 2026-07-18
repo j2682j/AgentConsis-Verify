@@ -1,4 +1,9 @@
-from parsers.reasoning_parser import extract_reasoning_steps, format_reasoning_steps
+from parsers.reasoning_parser import (
+    ReasoningParseQuality,
+    extract_reasoning_steps,
+    format_reasoning_steps,
+    prepare_reasoning_for_verifier,
+)
 
 
 def test_extracts_standard_step_markers() -> None:
@@ -97,3 +102,52 @@ def test_keeps_answer_formatting_action_without_final_answer_marker() -> None:
     assert extract_reasoning_steps(text) == [
         (1, "Format the computed value according to the question.")
     ]
+
+
+def test_structured_steps_strip_final_answer_before_versa() -> None:
+    result = prepare_reasoning_for_verifier(
+        "",
+        final_answer="17",
+        structured_steps=[
+            "step 1. Read the value.",
+            "step 2. Round the value. Final Answer: 17",
+        ],
+    )
+
+    assert result.steps == [(1, "Read the value."), (2, "Round the value.")]
+    assert result.quality_status == ReasoningParseQuality.REPAIRED
+    assert result.versa_eligible
+    assert result.diagnostics.final_answer_removed
+
+
+def test_atomizes_clear_multiple_sentences() -> None:
+    result = prepare_reasoning_for_verifier(
+        "step 1. Read E1. Compare it with E2. Compute the difference."
+    )
+
+    assert result.steps == [
+        (1, "Read E1."),
+        (2, "Compare it with E2."),
+        (3, "Compute the difference."),
+    ]
+    assert result.quality_status == ReasoningParseQuality.REPAIRED
+
+
+def test_does_not_split_nominal_and_or_numeric_range() -> None:
+    result = prepare_reasoning_for_verifier(
+        "step 1. Compare France and Germany between 2010 and 2020."
+    )
+
+    assert result.steps == [
+        (1, "Compare France and Germany between 2010 and 2020.")
+    ]
+    assert result.quality_status == ReasoningParseQuality.VALID
+
+
+def test_only_final_answer_is_unreliable_but_answer_is_preserved() -> None:
+    result = prepare_reasoning_for_verifier("Final Answer: Tokyo")
+
+    assert result.steps == []
+    assert result.extracted_final_answer == "Tokyo"
+    assert result.quality_status == ReasoningParseQuality.UNRELIABLE
+    assert not result.versa_eligible

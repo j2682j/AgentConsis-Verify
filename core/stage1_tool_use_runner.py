@@ -403,6 +403,7 @@ class Stage1ToolUseRunner:
             "source": final_answer_source,
             "success": bool(parsed.get("eligible_for_winner")),
         }
+        reasoning_parse = dict(parsed.get("reasoning_parse") or {})
         return EachAgentReply(
             agent_id=config.agent_id,
             model_name=config.model_name,
@@ -428,6 +429,18 @@ class Stage1ToolUseRunner:
             final_answer_source=final_answer_source,
             repair_metadata=repair_metadata,
             context_budget=self._context_budget_summary(trajectory),
+            reasoning_parse_quality=str(
+                reasoning_parse.get("quality_status") or "unreliable"
+            ),
+            reasoning_versa_eligible=bool(reasoning_parse.get("versa_eligible")),
+            reasoning_parse_diagnostics=dict(
+                reasoning_parse.get("diagnostics") or {}
+            ),
+            reasoning_steps=[
+                (int(item[0]), str(item[1]))
+                for item in list(reasoning_parse.get("steps") or [])
+                if isinstance(item, (list, tuple)) and len(item) >= 2
+            ],
         )
 
     def _make_no_final_reply(

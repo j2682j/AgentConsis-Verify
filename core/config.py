@@ -49,6 +49,10 @@ class EachAgentReply:
     final_answer_source: str = "original"
     repair_metadata: dict = field(default_factory=dict)
     context_budget: dict = field(default_factory=dict)
+    reasoning_parse_quality: str = "unreliable"
+    reasoning_versa_eligible: bool = False
+    reasoning_parse_diagnostics: dict = field(default_factory=dict)
+    reasoning_steps: list[tuple[int, str]] = field(default_factory=list)
 
     
 @dataclass
@@ -102,6 +106,11 @@ class CandidateRun:
     answer_type: str = ""
     schema_valid: bool = True
     parse_completed: bool = True
+    eligible_for_winner: bool = True
+    validity_labels: list[str] = field(default_factory=list)
+    reasoning_steps: list[tuple[int, str]] = field(default_factory=list)
+    reasoning_parse_quality: str = "unreliable"
+    reasoning_versa_eligible: bool = False
 
 
 @dataclass
@@ -247,12 +256,69 @@ class AgentEvidenceSupportSummary:
     agent_id: str
     status: str
     priority: int
+    support_level: str = "unsupported"
     step_results: list[StepSupportResult] = field(default_factory=list)
     evidence_records: list[ToolEvidenceRecord] = field(default_factory=list)
     matched_final_values: list[str] = field(default_factory=list)
     trusted_final_answers: list[str] = field(default_factory=list)
     tool_failure_count: int = 0
     metadata: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class CandidatePathIdentity:
+    """Identify one candidate reasoning path within an evidence revision."""
+
+    candidate_key: str
+    agent_id: str
+    run_index: int
+    evidence_revision: int = 0
+
+
+@dataclass
+class CandidatePathEvaluation:
+    """Store the immutable evaluation snapshot for one candidate reasoning path."""
+
+    identity: CandidatePathIdentity
+    answer: str
+    answer_type: str = ""
+    valid: bool = False
+    eligible_for_winner: bool = False
+    schema_valid: bool = False
+    parse_completed: bool = False
+    validity_labels: list[str] = field(default_factory=list)
+    reasoning: str = ""
+    reasoning_steps: list[tuple[int, str]] = field(default_factory=list)
+    reasoning_parse_quality: str = "unreliable"
+    reasoning_versa_eligible: bool = False
+    evidence_support_status: str = "no_support"
+    evidence_support_level: str = "unsupported"
+    contradicted: bool = False
+    direct_support: bool = False
+    step_support_results: list[StepSupportResult] = field(default_factory=list)
+    evidence_support_metadata: dict[str, Any] = field(default_factory=dict)
+    versa_available: bool = False
+    versa_status: str = "disabled"
+    critical_step_floor: float | None = None
+    critical_step_geometric_mean: float | None = None
+    average_verifier_probability: float | None = None
+    versa_step_scores: list[dict[str, Any]] = field(default_factory=list)
+    agent_answer_frequency: int = 1
+    eligible_run_count: int = 1
+    agent_confidence: float = 0.0
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class CandidateEvaluationBundle:
+    """Return candidate path evaluations and legacy verifier report records."""
+
+    path_evaluations: list[CandidatePathEvaluation]
+    verifier_results: list["VerifierScoreByReasoning"]
+    evidence_revision: int = 0
+    support_context_metadata: dict[str, Any] = field(default_factory=dict)
+    cache_hits: int = 0
+    cache_misses: int = 0
 
 
 @dataclass

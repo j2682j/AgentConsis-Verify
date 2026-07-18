@@ -5,9 +5,14 @@ import json
 import math
 from typing import Any
 
-from core.config import AgentConfig, AgentReasoningSummary, VerifierScoreByReasoning
-from parsers.reasoning_parser import extract_reasoning_steps
-from score.evidence_support_checker import EvidenceSupportChecker
+from core.config import (
+    AgentConfig,
+    AgentEvidenceSupportSummary,
+    AgentReasoningSummary,
+    StepSupportResult,
+    VerifierScoreByReasoning,
+)
+from parsers.reasoning_parser import prepare_reasoning_for_verifier
 from score.answer_validator import AnswerValidator
 from score.versa_prm_scorer import (
     DEFAULT_VERSA_PRM_BASE_MODEL_ID,
@@ -47,7 +52,7 @@ class Stage2Runner:
         versa_prm_dtype: str = "auto",
         versa_prm_local_files_only: bool = True,
         versa_scorer: VersaPRMScorer | None = None,
-        evidence_support_checker: EvidenceSupportChecker | None = None,
+        evidence_support_checker: Any | None = None,
     ) -> None:
         if verifier_mode != "versa":
             raise ValueError("Only verifier_mode='versa' is supported.")
@@ -66,9 +71,6 @@ class Stage2Runner:
             device=self.versa_prm_device,
             dtype=self.versa_prm_dtype,
             local_files_only=self.versa_prm_local_files_only,
-        )
-        self.evidence_support_checker = (
-            evidence_support_checker or EvidenceSupportChecker()
         )
         self.answer_validator = AnswerValidator()
 
@@ -174,14 +176,29 @@ class Stage2Runner:
          - VerifierScoreByReasoning: 包含平均 reward probability 與每步 reward。
         """
         reasoning_steps = self._reasoning_steps(target.compressed_reasoning)
-        support_summary = self.evidence_support_checker.check_agent(
-            target=target,
+        return self.score_reasoning_path(
+            target_agent_id=target.agent_id,
+            candidate_key=candidate_key,
+            target_run_index=target_run_index,
+            final_answer=target.compressed_answer,
             reasoning_steps=reasoning_steps,
-            evidence=evidence or {},
-            question=self.question,
         )
+
+    def score_reasoning_path(
+        self,
+        *,
+        target_agent_id: str,
+        candidate_key: str,
+        target_run_index: int,
+        final_answer: str,
+        reasoning_steps: list[tuple[int, str]],
+        step_support_results: list[StepSupportResult] | None = None,
+        support_summary: AgentEvidenceSupportSummary | None = None,
+    ) -> VerifierScoreByReasoning:
+        """Score canonical reasoning steps with Versa without rebuilding evidence."""
+
         support_by_step = {
-            item.step_index: item for item in support_summary.step_results
+            item.step_index: item for item in list(step_support_results or [])
         }
         score_result = self.versa_scorer.score_steps(
             question=self.question,
@@ -215,14 +232,37 @@ class Stage2Runner:
             )
         process_verification = self._process_verification_summary(
             step_scores=step_scores,
-            final_answer=target.compressed_answer,
+            final_answer=final_answer,
         )
-        support_payload = self.evidence_support_checker.summary_to_dict(
-            support_summary
+        support_payload = (
+            {
+                "agent_id": support_summary.agent_id,
+                "status": support_summary.status,
+                "priority": support_summary.priority,
+                "support_level": support_summary.support_level,
+                "step_results": [
+                    {
+                        "step_index": item.step_index,
+                        "step_text": item.step_text,
+                        "status": item.status,
+                        "matched_tool_values": list(item.matched_tool_values),
+                        "source_tools": list(item.source_tools),
+                        "reason": item.reason,
+                        "metadata": dict(item.metadata),
+                    }
+                    for item in support_summary.step_results
+                ],
+                "matched_final_values": list(support_summary.matched_final_values),
+                "trusted_final_answers": list(support_summary.trusted_final_answers),
+                "tool_failure_count": support_summary.tool_failure_count,
+                "metadata": dict(support_summary.metadata),
+            }
+            if support_summary is not None
+            else {}
         )
         return VerifierScoreByReasoning(
             verifier_id="versa_prm",
-            target_agent_id=target.agent_id,
+            target_agent_id=target_agent_id,
             verifier_score=score_result.avg_reward_probability,
             step_scores=step_scores,
             raw_reply=json.dumps(
@@ -241,7 +281,7 @@ class Stage2Runner:
                 "process_verification": process_verification,
                 "candidate_key": candidate_key,
                 "target_run_index": int(target_run_index or 0),
-                "target_answer": target.compressed_answer,
+                "target_answer": final_answer,
             },
         )
 
@@ -335,11 +375,7 @@ class Stage2Runner:
         return dict(unload())
 
     def _reasoning_steps(self, reasoning: str) -> list[tuple[int, str]]:
-        steps = extract_reasoning_steps(reasoning)
-        if steps:
-            return steps
-        text = " ".join(str(reasoning or "").strip().split())
-        return [(1, text)] if text else []
+        return list(prepare_reasoning_for_verifier(reasoning).steps)
 
 
 __all__ = ["Stage2Runner"]

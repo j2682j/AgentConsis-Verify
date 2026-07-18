@@ -281,7 +281,15 @@ class EvidenceConverter:
             "valid_for_next_hop": False,
             "round_index": round_index,
             "retrieval_query": query,
-            "selection_reason": "direct_evidence_contract",
+            "selection_reason": (
+                "grounded_answer_value_promotion"
+                if any(
+                    normalize_text(str(contract_item.get("contract_method") or ""))
+                    == "grounded_answer_value_promotion"
+                    for contract_item in direct_contracts
+                )
+                else "direct_evidence_contract"
+            ),
         }
         return _CandidateEvidence(
             item=item,

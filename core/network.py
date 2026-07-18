@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import asdict
 from threading import Lock
 import time
 from typing import Any
@@ -7,16 +8,20 @@ from typing import Any
 from core.config import (
     AgentConfig,
     AgentReasoningSummary,
+    AnswerCandidate,
+    CandidatePathEvaluation,
     VerifierScoreByReasoning,
     NetworkSummary,
 )
 from core.evidence_runner import EvidenceRunner
+from core.candidate_path_evaluator import CandidatePathEvaluator
 from core.slm_agent import SLM_Agent
 from core.stage1_runner import Stage1Runner
 from core.stage2_runner import Stage2Runner
 from score import (
     AnswerCandidateClusterer,
     AnswerValidator,
+    EvidenceSupportChecker,
     FinalWinnerSelector,
 )
 from score.versa_prm_scorer import (
@@ -170,6 +175,13 @@ class Network:
             versa_prm_dtype=self.versa_prm_dtype,
             versa_prm_local_files_only=self.versa_prm_local_files_only,
         )
+        self.evidence_support_checker = EvidenceSupportChecker(self.answer_validator)
+        self.candidate_path_evaluator = CandidatePathEvaluator(
+            question=self.question,
+            clusterer=self.answer_candidate_clusterer,
+            evidence_support_checker=self.evidence_support_checker,
+            stage2_runner=self.stage2_runner,
+        )
 
     def run(self) -> NetworkSummary:
         """
@@ -180,6 +192,7 @@ class Network:
             - NetworkSummary: ?祆活隞餃???蝯?獢??挾蝯????貉? metadata??        """
         response_started_at = time.perf_counter()
         self._reset_token_usage()
+        self.candidate_path_evaluator.clear_cache()
         evidence = self.evidence_runner.run() if self.enable_evidence_prepare else self._empty_evidence_bundle()
         if self.enable_evidence_prepare:
             evidence["_fact_store"] = self.evidence_runner.fact_store
@@ -207,11 +220,23 @@ class Network:
                 direct_consensus_supporting_agents,
             ) = self._confidence_one_answer_consensus(stage1_results)
             if direct_consensus_winner is not None:
-                direct_consensus_verifier = self.stage2_runner.score_candidate(
-                    direct_consensus_winner,
+                direct_consensus_results = self._evaluate_early_candidates(
+                    [direct_consensus_winner],
+                    stage1_results=stage1_results,
                     evidence=evidence,
+                    evidence_revision=stage1_attempts - 1,
                 )
-                early_stop_verifier_results = [direct_consensus_verifier]
+                direct_consensus_verifier = (
+                    direct_consensus_results[0]
+                    if direct_consensus_results
+                    else VerifierScoreByReasoning(
+                        verifier_id="versa_prm",
+                        target_agent_id=direct_consensus_winner.agent_id,
+                        verifier_score=0.0,
+                        metadata={"process_verification": {"versa_status": "unavailable"}},
+                    )
+                )
+                early_stop_verifier_results = direct_consensus_results
                 if (
                     self._verifier_critical_floor(direct_consensus_verifier)
                     > self.EARLY_STOP_VERIFIER_THRESHOLD
@@ -241,6 +266,7 @@ class Network:
                     self._stage1_early_stop_decision(
                         stage1_results,
                         evidence=evidence,
+                        evidence_revision=stage1_attempts - 1,
                     )
                 )
             if early_stop_verifier_results:
@@ -261,25 +287,37 @@ class Network:
         active_results = [result for result in stage1_results if result.active]
         stage1_early_stop_used = early_stop_winner is not None
         stage2_skipped = stage1_early_stop_used or not self.enable_stage2_score
+        candidates = self.answer_candidate_clusterer.cluster(active_results)
         if stage1_early_stop_used:
             verifier_results = early_stop_verifier_results
             stage2_skip_reason = "stage1_early_stop"
-        elif not self.enable_stage2_score:
-            verifier_results = []
-            stage2_skip_reason = "stage2_score_disabled"
         else:
-            verifier_results = self.stage2_runner.run_candidate_paths(
-                active_results,
-                candidate_key_builder=self.answer_candidate_clusterer.candidate_key,
+            evaluation_bundle = self.candidate_path_evaluator.evaluate_candidates(
+                candidates=candidates,
+                stage1_results=stage1_results,
                 evidence=evidence,
+                enable_versa=self.enable_stage2_score,
+                evidence_revision=stage1_attempts - 1,
             )
-            versa_unload_records.append(
-                self._unload_versa_scorer(
-                    phase="stage2_scoring",
-                    stage1_attempt=stage1_attempts,
+            verifier_results = evaluation_bundle.verifier_results
+            if self.enable_stage2_score:
+                versa_unload_records.append(
+                    self._unload_versa_scorer(
+                        phase="stage2_scoring",
+                        stage1_attempt=stage1_attempts,
+                    )
                 )
+                stage2_skip_reason = ""
+            else:
+                stage2_skip_reason = "stage2_score_disabled"
+        if stage1_early_stop_used:
+            evaluation_bundle = self.candidate_path_evaluator.evaluate_candidates(
+                candidates=candidates,
+                stage1_results=stage1_results,
+                evidence=evidence,
+                enable_versa=False,
+                evidence_revision=stage1_attempts - 1,
             )
-            stage2_skip_reason = ""
         direct_consensus_used = (
             stage1_early_stop_used
             and direct_consensus_winner is not None
@@ -289,11 +327,23 @@ class Network:
             self._write_direct_consensus_scores(stage1_results)
         else:
             self._write_agent_scores(stage1_results, verifier_results)
-        winner = self._select_winner(
-            stage1_results,
-            verifier_results=verifier_results,
-            evidence=evidence,
-        )
+        if stage1_early_stop_used:
+            winner = early_stop_winner
+            self._last_winner_selection_trace = {
+                "strategy": "verified_stage1_early_stop",
+                "status": "answerable",
+                "selection_reason": early_stop_reason,
+                "selected_agent_id": winner.agent_id if winner else "",
+                "selected_answer": winner.compressed_answer if winner else "",
+            }
+        else:
+            winner = self._select_winner(
+                stage1_results,
+                candidates=candidates,
+                path_evaluations=evaluation_bundle.path_evaluations,
+                verifier_results=verifier_results,
+                evidence=evidence,
+            )
         response_time_seconds = time.perf_counter() - response_started_at
 
         return NetworkSummary(
@@ -345,6 +395,17 @@ class Network:
                 "stage1_early_stop_last_reason": early_stop_reason,
                 "stage2_skipped": stage2_skipped,
                 "stage2_skip_reason": stage2_skip_reason,
+                "candidate_evaluation": {
+                    "evidence_revision": evaluation_bundle.evidence_revision,
+                    "cache_hits": evaluation_bundle.cache_hits,
+                    "cache_misses": evaluation_bundle.cache_misses,
+                    "support_context": dict(
+                        evaluation_bundle.support_context_metadata
+                    ),
+                    "paths": [
+                        asdict(item) for item in evaluation_bundle.path_evaluations
+                    ],
+                },
                 "cross_agent_consensus_used": direct_consensus_used,
                 "cross_agent_consensus_supporting_agents": (
                     direct_consensus_supporting_agents if direct_consensus_used else []
@@ -577,6 +638,7 @@ class Network:
         stage1_results: list[AgentReasoningSummary],
         *,
         evidence: dict[str, Any] | None = None,
+        evidence_revision: int = 0,
     ) -> tuple[AgentReasoningSummary | None, list[VerifierScoreByReasoning], str]:
         """
         ?寞? Stage1 confidence ??previous-best judge 蝯??斗?臬???迫??
@@ -605,10 +667,12 @@ class Network:
             if result.confidence_score >= 1.0
         ]
         if confident_results:
-            verifier_results = [
-                self.stage2_runner.score_candidate(candidate, evidence=evidence)
-                for candidate in confident_results
-            ]
+            verifier_results = self._evaluate_early_candidates(
+                confident_results,
+                stage1_results=stage1_results,
+                evidence=evidence or {},
+                evidence_revision=evidence_revision,
+            )
             verified_results = [
                 result
                 for result in verifier_results
@@ -648,10 +712,12 @@ class Network:
             for result in active_results
             if result.confidence_score == max_confidence
         ]
-        verifier_results = [
-            self.stage2_runner.score_candidate(candidate, evidence=evidence)
-            for candidate in candidates
-        ]
+        verifier_results = self._evaluate_early_candidates(
+            candidates,
+            stage1_results=stage1_results,
+            evidence=evidence or {},
+            evidence_revision=evidence_revision,
+        )
         verified_results = [
             result
             for result in verifier_results
@@ -686,6 +752,8 @@ class Network:
         self,
         stage1_results: list[AgentReasoningSummary],
         *,
+        candidates: list[AnswerCandidate] | None = None,
+        path_evaluations: list[CandidatePathEvaluation] | None = None,
         verifier_results: list[VerifierScoreByReasoning] | None = None,
         evidence: dict[str, Any] | None = None,
     ) -> AgentReasoningSummary | None:
@@ -695,15 +763,64 @@ class Network:
             - stage1_results: Stage1Runner ?Ｙ??? Agent ?蝯???
         Returns:
             - AgentReasoningSummary | None: ?蝯??箇??蝯?嚗瘝? active agent ????None??        """
-        candidates = self.answer_candidate_clusterer.cluster(stage1_results)
+        candidates = candidates or self.answer_candidate_clusterer.cluster(stage1_results)
         selection = self.final_winner_selector.select(
             stage1_results=stage1_results,
             candidates=candidates,
+            path_evaluations=path_evaluations or [],
             verifier_results=verifier_results or [],
             evidence=evidence or {},
         )
         self._last_winner_selection_trace = selection.to_dict()
         return selection.winner
+
+    def _evaluate_early_candidates(
+        self,
+        summaries: list[AgentReasoningSummary],
+        *,
+        stage1_results: list[AgentReasoningSummary],
+        evidence: dict[str, Any],
+        evidence_revision: int,
+    ) -> list[VerifierScoreByReasoning]:
+        """Evaluate the representative path for each early-stop candidate."""
+
+        clustered = self.answer_candidate_clusterer.cluster(stage1_results)
+        requested = {
+            (
+                summary.agent_id,
+                self.answer_candidate_clusterer.candidate_key(summary.compressed_answer),
+            )
+            for summary in summaries
+        }
+        paths = [
+            member
+            for candidate in clustered
+            for member in candidate.members
+            if (member.agent_id, candidate.candidate_key) in requested
+        ]
+        evaluations = self.candidate_path_evaluator.evaluate_paths(
+            paths=paths,
+            stage1_results=stage1_results,
+            evidence=evidence,
+            enable_versa=True,
+            evidence_revision=evidence_revision,
+        )
+        best_by_agent: dict[str, Any] = {}
+        for item in evaluations:
+            current = best_by_agent.get(item.identity.agent_id)
+            key = (
+                int(item.direct_support),
+                float(item.critical_step_floor or 0.0),
+                float(item.critical_step_geometric_mean or 0.0),
+                -item.identity.run_index,
+            )
+            if current is None or key > current[0]:
+                best_by_agent[item.identity.agent_id] = (key, item)
+        return [
+            self.candidate_path_evaluator.to_verifier_result(value[1])
+            for value in best_by_agent.values()
+            if value[1].versa_available
+        ]
 
     def _support_metadata_by_agent(
         self,

@@ -10,6 +10,7 @@ from core.config import (
 )
 from core.network import Network
 from core.stage2_runner import Stage2Runner
+from parsers.reasoning_parser import extract_reasoning_steps
 from score.evidence_support_checker import EvidenceSupportChecker
 from score.versa_prm_scorer import VersaPRMScoreResult, VersaPRMStepScore
 
@@ -386,9 +387,21 @@ def case_stage2_combines_support_status_with_versa_probability() -> None:
         versa_scorer=FakeVersaScorer(),
     )
 
-    result = runner.score_candidate(
-        summary,
+    steps = extract_reasoning_steps(summary.compressed_reasoning)
+    support = EvidenceSupportChecker().check_agent(
+        target=summary,
+        reasoning_steps=steps,
         evidence=trusted_final_evidence("42"),
+        question="What is the result?",
+    )
+    result = runner.score_reasoning_path(
+        target_agent_id="a1",
+        candidate_key="42",
+        target_run_index=1,
+        final_answer="42",
+        reasoning_steps=steps,
+        step_support_results=support.step_results,
+        support_summary=support,
     )
 
     assert result.verifier_score == 0.97
@@ -410,7 +423,22 @@ def case_stage2_exports_numerical_derivation_trace() -> None:
         versa_scorer=FakeVersaScorer(),
     )
 
-    result = runner.score_candidate(summary, evidence=two_source_numeric_evidence())
+    steps = extract_reasoning_steps(reasoning)
+    support_summary = EvidenceSupportChecker().check_agent(
+        target=summary,
+        reasoning_steps=steps,
+        evidence=two_source_numeric_evidence(),
+        question="How many hours are required?",
+    )
+    result = runner.score_reasoning_path(
+        target_agent_id="a1",
+        candidate_key="20 hours",
+        target_run_index=1,
+        final_answer="20 hours",
+        reasoning_steps=steps,
+        step_support_results=support_summary.step_results,
+        support_summary=support_summary,
+    )
 
     support = result.metadata["evidence_support"]
     assert support["status"] == "derived_evidence_supported"

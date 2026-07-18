@@ -733,6 +733,7 @@ class Stage1Runner:
         repair_actions: list[str] = []
         eligible_for_winner = False
         validity_labels: list[str] = []
+        reasoning_parse: dict[str, Any] = {}
         prompt_tokens = 0
         completion_tokens = 0
         try:
@@ -756,6 +757,7 @@ class Stage1Runner:
             repair_actions = list(parsed.get("repair_actions") or [])
             eligible_for_winner = bool(parsed.get("eligible_for_winner"))
             validity_labels = list(parsed.get("validity_labels") or [])
+            reasoning_parse = dict(parsed.get("reasoning_parse") or {})
         except Exception as exc:
             raw_reply = raw_reply or f"[stage1_error] {type(exc).__name__}: {exc}"
             schema_errors = [type(exc).__name__]
@@ -781,6 +783,18 @@ class Stage1Runner:
             eligible_for_winner=eligible_for_winner,
             validity_labels=validity_labels,
             context_budget=context_budget,
+            reasoning_parse_quality=str(
+                reasoning_parse.get("quality_status") or "unreliable"
+            ),
+            reasoning_versa_eligible=bool(reasoning_parse.get("versa_eligible")),
+            reasoning_parse_diagnostics=dict(
+                reasoning_parse.get("diagnostics") or {}
+            ),
+            reasoning_steps=[
+                (int(item[0]), str(item[1]))
+                for item in list(reasoning_parse.get("steps") or [])
+                if isinstance(item, (list, tuple)) and len(item) >= 2
+            ],
         )
 
     def search_gate_metadata(self) -> dict[str, Any]:

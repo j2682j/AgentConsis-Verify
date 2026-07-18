@@ -1708,9 +1708,16 @@ class IterativeRetrievalControl:
                     "id": role_result.id,
                     "text": span_text,
                     "role": role_result.role,
+                    "model_role": role_result.model_role,
                     "goal_id": role_result.goal_id,
                     "semantic_facts": [
                         fact.to_dict() for fact in role_result.semantic_facts
+                    ],
+                    "grounded_answer_values": [
+                        item.to_dict() for item in role_result.grounded_answer_values
+                    ],
+                    "promotion_diagnostics": [
+                        item.to_dict() for item in role_result.promotion_diagnostics
                     ],
                 }
             )
@@ -1743,6 +1750,15 @@ class IterativeRetrievalControl:
             for index, finalized_item in enumerate(finalized_items):
                 finalized_item["semantic_facts"] = list(
                     role_items[index].get("semantic_facts") or []
+                )
+                finalized_item["model_role"] = str(
+                    role_items[index].get("model_role") or ""
+                )
+                finalized_item["grounded_answer_values"] = list(
+                    role_items[index].get("grounded_answer_values") or []
+                )
+                finalized_item["promotion_diagnostics"] = list(
+                    role_items[index].get("promotion_diagnostics") or []
                 )
             answer_support = self._dedupe_tokens(
                 item.finalized_text

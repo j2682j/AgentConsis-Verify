@@ -2,8 +2,11 @@ from __future__ import annotations
 
 import re
 from collections import Counter
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from enum import Enum
 from typing import Any, Pattern
+
+from .reasoning_step_atomizer import ReasoningStepAtomizer
 
 
 _EXPLICIT_STEP_PATTERN = re.compile(
@@ -39,6 +42,64 @@ class _StepMarker:
     content_start: int
 
 
+class ReasoningParseQuality(str, Enum):
+    VALID = "valid"
+    REPAIRED = "repaired"
+    UNRELIABLE = "unreliable"
+
+
+@dataclass
+class ReasoningParseDiagnostics:
+    source_format: str = ""
+    explicit_marker_count: int = 0
+    original_step_count: int = 0
+    canonical_step_count: int = 0
+    final_answer_marker_found: bool = False
+    final_answer_removed: bool = False
+    final_answer_leak_step_indices: list[int] = field(default_factory=list)
+    compound_step_indices: list[int] = field(default_factory=list)
+    atomized_step_indices: list[int] = field(default_factory=list)
+    renumbered: bool = False
+    repair_actions: list[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "source_format": self.source_format,
+            "explicit_marker_count": self.explicit_marker_count,
+            "original_step_count": self.original_step_count,
+            "canonical_step_count": self.canonical_step_count,
+            "final_answer_marker_found": self.final_answer_marker_found,
+            "final_answer_removed": self.final_answer_removed,
+            "final_answer_leak_step_indices": list(self.final_answer_leak_step_indices),
+            "compound_step_indices": list(self.compound_step_indices),
+            "atomized_step_indices": list(self.atomized_step_indices),
+            "renumbered": self.renumbered,
+            "repair_actions": list(self.repair_actions),
+            "warnings": list(self.warnings),
+        }
+
+
+@dataclass
+class ReasoningParseResult:
+    steps: list[tuple[int, str]]
+    reasoning_text: str
+    extracted_final_answer: str
+    quality_status: ReasoningParseQuality
+    versa_eligible: bool
+    diagnostics: ReasoningParseDiagnostics
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "steps": [[index, text] for index, text in self.steps],
+            "reasoning_text": self.reasoning_text,
+            "extracted_final_answer": self.extracted_final_answer,
+            "quality_status": self.quality_status.value,
+            "versa_eligible": self.versa_eligible,
+            "diagnostics": self.diagnostics.to_dict(),
+        }
+
+
 def extract_reasoning_steps(reasoning: str) -> list[tuple[int, str]]:
     """
     將模型輸出的 reasoning 切成 VersaPRM 可逐步評分的 step list。
@@ -50,6 +111,105 @@ def extract_reasoning_steps(reasoning: str) -> list[tuple[int, str]]:
      - list[tuple[int, str]]: 每個 reasoning step 的編號與文字。
      - []: 沒有可解析內容時回傳空清單。
     """
+    return _extract_reasoning_steps_raw(reasoning, allow_paragraph_fallback=False)
+
+
+def prepare_reasoning_for_verifier(
+    reasoning: str,
+    *,
+    final_answer: str = "",
+    structured_steps: list[str] | None = None,
+) -> ReasoningParseResult:
+    diagnostics = ReasoningParseDiagnostics()
+    extracted_answer = ""
+    if structured_steps:
+        diagnostics.source_format = "structured_list"
+        raw_steps: list[tuple[int, str]] = []
+        answer_boundary_seen = False
+        for index, item in enumerate(structured_steps, start=1):
+            before, extracted, found = split_reasoning_and_final_answer(str(item or ""))
+            if found:
+                diagnostics.final_answer_marker_found = True
+                diagnostics.final_answer_removed = True
+                diagnostics.final_answer_leak_step_indices.append(index)
+                diagnostics.repair_actions.append("strip_final_answer_tail")
+                extracted_answer = extracted_answer or extracted
+                answer_boundary_seen = True
+            if answer_boundary_seen and not before:
+                continue
+            parsed = _extract_reasoning_steps_raw(before, allow_paragraph_fallback=False)
+            if parsed:
+                raw_steps.extend(parsed)
+            elif normalized_text := " ".join(before.strip().split()):
+                raw_steps.append((index, normalized_text))
+    else:
+        text, extracted_answer, found = split_reasoning_and_final_answer(str(reasoning or ""))
+        diagnostics.final_answer_marker_found = found
+        diagnostics.final_answer_removed = found
+        if found:
+            diagnostics.repair_actions.append("strip_final_answer_tail")
+        diagnostics.source_format = _source_format(text)
+        raw_steps = _extract_reasoning_steps_raw(text, allow_paragraph_fallback=True)
+
+    diagnostics.original_step_count = len(raw_steps)
+    diagnostics.explicit_marker_count = len(raw_steps) if diagnostics.source_format in {
+        "structured_list", "numbered_text"
+    } else 0
+    atomized = ReasoningStepAtomizer().atomize(raw_steps)
+    canonical = _dedupe_adjacent_steps(atomized.steps)
+    diagnostics.compound_step_indices = list(atomized.compound_step_indices)
+    diagnostics.atomized_step_indices = list(atomized.atomized_step_indices)
+    if atomized.atomized_step_indices:
+        diagnostics.repair_actions.append("atomize_compound_step")
+    original_indexes = [index for index, _ in raw_steps]
+    diagnostics.renumbered = original_indexes != list(range(1, len(raw_steps) + 1))
+    if diagnostics.renumbered:
+        diagnostics.repair_actions.append("renumber_steps")
+    diagnostics.canonical_step_count = len(canonical)
+
+    if final_answer and extracted_answer and _normalized_answer(final_answer) != _normalized_answer(extracted_answer):
+        diagnostics.warnings.append("final_answer_conflict")
+    if not canonical:
+        quality = ReasoningParseQuality.UNRELIABLE
+        diagnostics.warnings.append("no_reasoning_steps")
+    elif atomized.compound_step_indices:
+        quality = ReasoningParseQuality.UNRELIABLE
+        diagnostics.warnings.append("unresolved_compound_steps")
+    elif diagnostics.repair_actions:
+        quality = ReasoningParseQuality.REPAIRED
+    else:
+        quality = ReasoningParseQuality.VALID
+    reasoning_text = "\n".join(f"step {index}. {text}" for index, text in canonical)
+    return ReasoningParseResult(
+        steps=canonical,
+        reasoning_text=reasoning_text,
+        extracted_final_answer=extracted_answer,
+        quality_status=quality,
+        versa_eligible=quality != ReasoningParseQuality.UNRELIABLE,
+        diagnostics=diagnostics,
+    )
+
+
+def split_reasoning_and_final_answer(text: str) -> tuple[str, str, bool]:
+    source = str(text or "").strip()
+    match = _FINAL_ANSWER_TAIL_PATTERN.search(source)
+    boxed = re.search(r"(?is)\\boxed\{([^{}]+)\}\s*$", source)
+    if boxed and (match is None or boxed.start() < match.start()):
+        return source[: boxed.start()].strip(), boxed.group(1).strip(), True
+    if not match:
+        return source, "", False
+    before = _strip_trailing_marker_noise(source[: match.start()].strip())
+    after = source[match.end() :].strip()
+    after = re.sub(r"^[\s:=\-*`#>]+", "", after).strip()
+    after = re.split(r"\n\s*(?:#{1,6}\s+|step\s*\d+[.:])", after, maxsplit=1, flags=re.IGNORECASE)[0]
+    return before, after.strip(" \"'`"), True
+
+
+def _extract_reasoning_steps_raw(
+    reasoning: str,
+    *,
+    allow_paragraph_fallback: bool,
+) -> list[tuple[int, str]]:
     text = str(reasoning or "").strip()
     if not text:
         return []
@@ -67,7 +227,32 @@ def extract_reasoning_steps(reasoning: str) -> list[tuple[int, str]]:
     if steps:
         return steps
 
-    return _extract_paragraph_steps(text)
+    return _extract_paragraph_steps(text) if allow_paragraph_fallback else []
+
+
+def _source_format(text: str) -> str:
+    if _EXPLICIT_STEP_PATTERN.search(text) or _NUMBERED_STEP_PATTERN.search(text):
+        return "numbered_text"
+    if _MARKDOWN_HEADING_PATTERN.search(text):
+        return "markdown_heading"
+    return "paragraph_fallback"
+
+
+def _dedupe_adjacent_steps(steps: list[tuple[int, str]]) -> list[tuple[int, str]]:
+    result: list[tuple[int, str]] = []
+    previous = ""
+    for _, text in steps:
+        cleaned = " ".join(str(text or "").split()).strip()
+        key = cleaned.casefold()
+        if not cleaned or key == previous:
+            continue
+        result.append((len(result) + 1, cleaned))
+        previous = key
+    return result
+
+
+def _normalized_answer(value: str) -> str:
+    return " ".join(str(value or "").casefold().split()).strip(" .")
 
 
 def format_reasoning_steps(reasoning: str) -> str:
@@ -80,10 +265,10 @@ def format_reasoning_steps(reasoning: str) -> str:
     Returns:
      - str: 正規化後的 reasoning；若解析不到 step，回傳原文。
     """
-    steps = extract_reasoning_steps(reasoning)
-    if not steps:
+    result = prepare_reasoning_for_verifier(reasoning)
+    if not result.steps:
         return str(reasoning or "").strip()
-    return "\n".join(f"step {index}. {text}" for index, text in steps)
+    return result.reasoning_text
 
 
 def compress_reasoning(runs: list[Any]) -> str:
@@ -100,7 +285,7 @@ def compress_reasoning(runs: list[Any]) -> str:
     if not reasonings:
         return ""
 
-    first_steps = extract_reasoning_steps(reasonings[0])
+    first_steps = prepare_reasoning_for_verifier(reasonings[0]).steps
     if first_steps:
         return "\n".join(f"step {index}. {text}" for index, text in first_steps)
 
@@ -285,4 +470,13 @@ def _strip_trailing_marker_noise(text: str) -> str:
     return text.strip()
 
 
-__all__ = ["compress_reasoning", "extract_reasoning_steps", "format_reasoning_steps"]
+__all__ = [
+    "ReasoningParseDiagnostics",
+    "ReasoningParseQuality",
+    "ReasoningParseResult",
+    "compress_reasoning",
+    "extract_reasoning_steps",
+    "format_reasoning_steps",
+    "prepare_reasoning_for_verifier",
+    "split_reasoning_and_final_answer",
+]

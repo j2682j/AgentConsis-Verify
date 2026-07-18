@@ -10,6 +10,13 @@ from .completeness_contract import (
     SetDifferenceDerivation,
 )
 from .derivation_models import FactDerivation, FactDerivationResult
+from .direct_evidence_promoter import (
+    AnswerValueCanonicalizer,
+    DirectEvidencePromoter,
+    DirectEvidencePromotionResult,
+    GroundedAnswerValue,
+    PromotionDiagnostic,
+)
 from .fact_adapters import (
     DeterministicHandlerFactAdapter,
     FactAdapter,
@@ -49,6 +56,11 @@ __all__ = [
     "FactDerivationEngine",
     "FactDerivationResult",
     "DeterministicHandlerFactAdapter",
+    "AnswerValueCanonicalizer",
+    "DirectEvidencePromoter",
+    "DirectEvidencePromotionResult",
+    "GroundedAnswerValue",
+    "PromotionDiagnostic",
     "SemanticExtractionResult",
     "SemanticFactAdapter",
     "SearchContractFactAdapter",

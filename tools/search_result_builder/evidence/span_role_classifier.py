@@ -9,8 +9,11 @@ from typing import Any
 from core.llm_client import LLMClient
 from tools.evidence.fact_extraction import (
     AnswerBoundFactValidator,
+    DirectEvidencePromoter,
     EvidenceFact,
     FactGroundingValidator,
+    GroundedAnswerValue,
+    PromotionDiagnostic,
 )
 from utils.network_utils import normalize_text
 
@@ -65,6 +68,9 @@ class SpanRoleResult:
     role: str
     goal_id: str = ""
     semantic_facts: list[EvidenceFact] = field(default_factory=list)
+    model_role: str = ""
+    grounded_answer_values: list[GroundedAnswerValue] = field(default_factory=list)
+    promotion_diagnostics: list[PromotionDiagnostic] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -120,6 +126,7 @@ class SpanRoleClassifier:
         max_tokens: int = 768,
         grounding_validator: FactGroundingValidator | None = None,
         answer_bound_validator: AnswerBoundFactValidator | None = None,
+        direct_evidence_promoter: DirectEvidencePromoter | None = None,
     ) -> None:
         self.model_name = (
             model_name
@@ -133,6 +140,12 @@ class SpanRoleClassifier:
         self.grounding_validator = grounding_validator or FactGroundingValidator()
         self.answer_bound_validator = (
             answer_bound_validator or AnswerBoundFactValidator()
+        )
+        self.direct_evidence_promoter = (
+            direct_evidence_promoter
+            or DirectEvidencePromoter(
+                answer_bound_validator=self.answer_bound_validator,
+            )
         )
 
     def classify_batch(
@@ -265,6 +278,17 @@ class SpanRoleClassifier:
                         fact.qualifiers.get("original_role") == ANSWER_SUPPORT
                         for result in results
                         for fact in result.semantic_facts
+                    ),
+                    "promotion_attempted_count": sum(
+                        bool(result.promotion_diagnostics) for result in results
+                    ),
+                    "promotion_accepted_count": sum(
+                        len(result.grounded_answer_values) for result in results
+                    ),
+                    "promotion_rejected_count": sum(
+                        not item.accepted
+                        for result in results
+                        for item in result.promotion_diagnostics
                     ),
                     "goal_assignment_counts": self._goal_assignment_counts(results),
                     "invalid_goal_assignment_count": self._invalid_goal_assignment_count(
@@ -487,6 +511,7 @@ class SpanRoleClassifier:
             role = normalize_text(str(item.get("role", "") or "")).upper()
             if role not in VALID_ROLES:
                 role = NOISE
+            model_role = role
             goal_id = normalize_text(str(item.get("goal_id", "") or ""))
             if role == NOISE:
                 goal_id = ""
@@ -505,13 +530,33 @@ class SpanRoleClassifier:
                 answer_requirement=answer_requirement,
                 answer_target=answer_target,
             )
+            grounded_answer_values: list[GroundedAnswerValue] = []
+            promotion_diagnostics: list[PromotionDiagnostic] = []
             if role == ANSWER_SUPPORT and not any(
                 self.answer_bound_validator.is_direct(fact)
                 for fact in semantic_facts
             ):
-                role = BRIDGE if semantic_facts else NOISE
-                if role == NOISE:
-                    goal_id = ""
+                promotion = self.direct_evidence_promoter.promote(
+                    model_role=model_role,
+                    candidate_span=candidate.text,
+                    context=candidate.local_context,
+                    question=question,
+                    answer_requirement=answer_requirement,
+                    answer_target=answer_target,
+                    source_id=candidate.source_id or f"span:{candidate.id}",
+                    source_title=candidate.source_title,
+                    document_id=candidate.source_id,
+                    goal_id=goal_id,
+                    semantic_facts=semantic_facts,
+                )
+                grounded_answer_values = list(promotion.promoted_values)
+                promotion_diagnostics = list(promotion.diagnostics)
+                if grounded_answer_values:
+                    semantic_facts = [*semantic_facts, *promotion.promoted_facts]
+                else:
+                    role = BRIDGE if semantic_facts else NOISE
+                    if role == NOISE:
+                        goal_id = ""
             results.append(
                 SpanRoleResult(
                     id=span_id,
@@ -519,6 +564,9 @@ class SpanRoleClassifier:
                     role=role,
                     goal_id=goal_id,
                     semantic_facts=semantic_facts,
+                    model_role=model_role,
+                    grounded_answer_values=grounded_answer_values,
+                    promotion_diagnostics=promotion_diagnostics,
                 )
             )
             seen.add(span_id)

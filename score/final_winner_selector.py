@@ -7,14 +7,14 @@ from core.config import (
     AgentReasoningSummary,
     AnswerCandidate,
     CandidateEvaluation,
+    CandidatePathEvaluation,
     CandidateRun,
     VerifierScoreByReasoning,
 )
-from parsers.reasoning_parser import extract_reasoning_steps
 from score.answer_candidate_clusterer import AnswerCandidateClusterer
 from score.answer_requirement_gate import AnswerRequirementGate
 from score.answer_validator import AnswerValidator
-from score.evidence_support_checker import EvidenceSupportChecker
+from score.evidence_support_level import EvidenceSupportLevel, support_level_for_status
 from score.gate_result import CandidateGateDecision, GateResult
 
 
@@ -57,46 +57,27 @@ class FinalWinnerSelector:
     checks therefore dominate consensus, consistency, and Versa probabilities.
     """
 
-    SUPPORT_BUCKETS = {
-        "tool_final_supported": "trusted_tool_final",
-        "derived_evidence_supported": "verified_derived",
-        "search_evidence_supported": "direct_evidence",
-        "attachment_evidence_supported": "direct_evidence",
-        "tool_intermediate_supported": "bridge_evidence",
-        "tool_failed_model_only": "unsupported",
-        "no_support": "unsupported",
-        "invalid": "unsupported",
-        "contradicted": "contradicted",
-    }
     SUPPORT_BUCKET_ORDER = (
-        "contradicted",
-        "unsupported",
-        "bridge_evidence",
-        "direct_evidence",
-        "verified_derived",
-        "trusted_tool_final",
+        EvidenceSupportLevel.CONTRADICTED.value,
+        EvidenceSupportLevel.UNSUPPORTED.value,
+        EvidenceSupportLevel.BRIDGE_EVIDENCE.value,
+        EvidenceSupportLevel.DIRECT_EVIDENCE.value,
+        EvidenceSupportLevel.VERIFIED_DERIVED.value,
+        EvidenceSupportLevel.TRUSTED_TOOL_FINAL.value,
     )
-    DIRECT_SUPPORT_STATUSES = {
-        "search_evidence_supported",
-        "attachment_evidence_supported",
-        "tool_final_supported",
-    }
 
     def __init__(
         self,
         *,
         clusterer: AnswerCandidateClusterer | None = None,
         answer_validator: AnswerValidator | None = None,
-        evidence_support_checker: EvidenceSupportChecker | None = None,
+        evidence_support_checker: Any | None = None,
         answer_requirement_gate: AnswerRequirementGate | None = None,
         question: str = "",
     ) -> None:
         self.question = str(question or "").strip()
         self.answer_validator = answer_validator or AnswerValidator()
         self.clusterer = clusterer or AnswerCandidateClusterer(self.answer_validator)
-        self.evidence_support_checker = (
-            evidence_support_checker or EvidenceSupportChecker(self.answer_validator)
-        )
         self.answer_requirement_gate = (
             answer_requirement_gate or AnswerRequirementGate()
         )
@@ -106,16 +87,25 @@ class FinalWinnerSelector:
         *,
         stage1_results: list[AgentReasoningSummary],
         candidates: list[AnswerCandidate],
-        verifier_results: list[VerifierScoreByReasoning],
-        evidence: dict[str, Any],
+        path_evaluations: list[CandidatePathEvaluation] | None = None,
+        verifier_results: list[VerifierScoreByReasoning] | None = None,
+        evidence: dict[str, Any] | None = None,
     ) -> FinalWinnerSelection:
         """Run every candidate through the fixed ordered-gate pipeline."""
+        evidence = evidence or {}
+        path_index = {
+            (
+                item.identity.candidate_key,
+                item.identity.agent_id,
+                item.identity.run_index,
+            ): item
+            for item in list(path_evaluations or [])
+        }
         evaluations = [
             self._evaluate_candidate(
                 candidate=candidate,
-                stage1_results=stage1_results,
-                verifier_results=verifier_results,
-                evidence=evidence,
+                path_index=path_index,
+                verifier_results=list(verifier_results or []),
             )
             for candidate in candidates
         ]
@@ -548,16 +538,14 @@ class FinalWinnerSelector:
         self,
         *,
         candidate: AnswerCandidate,
-        stage1_results: list[AgentReasoningSummary],
+        path_index: dict[tuple[str, str, int], CandidatePathEvaluation],
         verifier_results: list[VerifierScoreByReasoning],
-        evidence: dict[str, Any],
     ) -> CandidateEvaluation:
         member_evaluations = [
             self._evaluate_member(
                 member=member,
-                stage1_results=stage1_results,
+                path_index=path_index,
                 verifier_results=verifier_results,
-                evidence=evidence,
             )
             for member in candidate.members
         ]
@@ -590,34 +578,52 @@ class FinalWinnerSelector:
         self,
         *,
         member: CandidateRun,
-        stage1_results: list[AgentReasoningSummary],
+        path_index: dict[tuple[str, str, int], CandidatePathEvaluation],
         verifier_results: list[VerifierScoreByReasoning],
-        evidence: dict[str, Any],
     ) -> dict[str, Any]:
-        summary = self.clusterer.summary_for_member(stage1_results, member)
-        reasoning_steps = extract_reasoning_steps(member.reasoning)
-        if not reasoning_steps and member.reasoning.strip():
-            reasoning_steps = [(1, member.reasoning.strip())]
-        support = self.evidence_support_checker.check_agent(
-            target=summary,
-            reasoning_steps=reasoning_steps,
-            evidence=evidence,
-            question=self.question,
+        path = path_index.get(
+            (member.normalized_answer, member.agent_id, int(member.run_index))
         )
+        if path is not None:
+            return {
+                "agent_id": member.agent_id,
+                "run_index": member.run_index,
+                "answer": path.answer,
+                "answer_type": path.answer_type,
+                "reasoning": path.reasoning,
+                "valid": path.valid,
+                "contradicted": path.contradicted,
+                "support_status": path.evidence_support_status,
+                "support_bucket": path.evidence_support_level,
+                "direct_support": path.direct_support,
+                "agent_confidence": path.agent_confidence,
+                "agent_answer_frequency": path.agent_answer_frequency,
+                "eligible_run_count": path.eligible_run_count,
+                "versa_available": path.versa_available,
+                "versa_status": path.versa_status,
+                "critical_step_floor": path.critical_step_floor,
+                "critical_step_geometric_mean": path.critical_step_geometric_mean,
+                "average_verifier_probability": path.average_verifier_probability,
+                "critical_step_indices": [],
+                "evidence_support": dict(path.evidence_support_metadata),
+                "reasoning_parse_quality": path.reasoning_parse_quality,
+                "reasoning_versa_eligible": path.reasoning_versa_eligible,
+            }
+
+        # Compatibility for saved logs that only contain legacy verifier rows.
         verifier = self._find_verifier_result(member, verifier_results)
         process = self._process_metadata(verifier)
-        support_status = support.status
         verifier_support = self._verifier_support_metadata(verifier)
-        if verifier_support:
-            support_status = str(verifier_support.get("status") or support_status)
+        support_status = str(verifier_support.get("status") or "no_support")
+        support_level = str(
+            verifier_support.get("support_level")
+            or support_level_for_status(support_status).value
+        )
         contradicted = support_status == "contradicted"
         valid = bool(
             member.parse_completed
             and member.schema_valid
-            and self.answer_validator.is_valid(
-                member.answer,
-                answer_type=member.answer_type,
-            )
+            and member.eligible_for_winner
         )
         return {
             "agent_id": member.agent_id,
@@ -628,8 +634,12 @@ class FinalWinnerSelector:
             "valid": valid,
             "contradicted": contradicted,
             "support_status": support_status,
-            "support_bucket": self._support_bucket(support_status),
-            "direct_support": support_status in self.DIRECT_SUPPORT_STATUSES,
+            "support_bucket": support_level,
+            "direct_support": support_level in {
+                EvidenceSupportLevel.DIRECT_EVIDENCE.value,
+                EvidenceSupportLevel.VERIFIED_DERIVED.value,
+                EvidenceSupportLevel.TRUSTED_TOOL_FINAL.value,
+            },
             "agent_confidence": member.agent_confidence,
             "agent_answer_frequency": member.agent_answer_frequency,
             "eligible_run_count": member.eligible_run_count,
@@ -645,8 +655,6 @@ class FinalWinnerSelector:
             "critical_step_indices": list(process.get("critical_step_indices") or []),
             "evidence_support": (
                 dict(verifier_support)
-                if verifier_support
-                else self.evidence_support_checker.summary_to_dict(support)
             ),
         }
 
@@ -850,7 +858,7 @@ class FinalWinnerSelector:
         return [item for item in values if isinstance(item, dict)]
 
     def _support_bucket(self, support_status: str) -> str:
-        return self.SUPPORT_BUCKETS.get(str(support_status or ""), "unsupported")
+        return support_level_for_status(support_status).value
 
     def _find_verifier_result(
         self,

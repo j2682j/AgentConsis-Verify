@@ -26,6 +26,9 @@ class DirectEvidenceContract:
     qualifiers: dict[str, str] = field(default_factory=dict)
     polarity: str = "positive"
     grounding_status: str = ""
+    contract_method: str = "semantic_fact"
+    origin_fact_id: str = ""
+    scope_status: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -49,6 +52,9 @@ class BridgeEvidenceContract:
     qualifiers: dict[str, str] = field(default_factory=dict)
     polarity: str = "positive"
     grounding_status: str = ""
+    contract_method: str = "semantic_fact"
+    origin_fact_id: str = ""
+    scope_status: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -415,18 +421,28 @@ class EvidenceRoleContractBuilder:
     def _fact_contract_fields(fact: dict[str, Any]) -> dict[str, Any]:
         if not fact:
             return {}
+        qualifiers = {
+            str(key): str(value)
+            for key, value in dict(fact.get("qualifiers") or {}).items()
+        }
         return {
             "fact_id": normalize_text(str(fact.get("fact_id") or "")),
             "subject": normalize_text(str(fact.get("subject") or "")),
             "relation": normalize_text(str(fact.get("relation") or "")),
             "object": normalize_text(str(fact.get("object") or "")),
-            "qualifiers": {
-                str(key): str(value)
-                for key, value in dict(fact.get("qualifiers") or {}).items()
-            },
+            "qualifiers": qualifiers,
             "polarity": normalize_text(str(fact.get("polarity") or "positive")),
             "grounding_status": normalize_text(
                 str(fact.get("grounding_status") or "")
+            ),
+            "contract_method": normalize_text(
+                qualifiers.get("contract_method") or "semantic_fact"
+            ),
+            "origin_fact_id": normalize_text(
+                qualifiers.get("origin_fact_id") or ""
+            ),
+            "scope_status": normalize_text(
+                qualifiers.get("scope_status") or ""
             ),
         }
 

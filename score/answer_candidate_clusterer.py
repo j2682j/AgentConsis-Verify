@@ -9,6 +9,7 @@ from core.config import (
     AnswerCandidate,
     CandidateRun,
 )
+from parsers.reasoning_parser import prepare_reasoning_for_verifier
 from score.answer_validator import AnswerValidator
 from utils.network_utils import normalize_for_exact
 
@@ -62,6 +63,20 @@ class AnswerCandidateClusterer:
                 key = self.candidate_key(answer, answer_type=answer_type)
                 if not key:
                     continue
+                saved_steps = list(getattr(run, "reasoning_steps", []) or [])
+                reasoning_parse = None
+                if not saved_steps:
+                    structured_steps = (
+                        run.structured_output.get("reasoning_steps")
+                        if isinstance(run.structured_output, dict)
+                        else None
+                    )
+                    reasoning_parse = prepare_reasoning_for_verifier(
+                        str(run.reasoning or ""),
+                        final_answer=answer,
+                        structured_steps=structured_steps,
+                    )
+                    saved_steps = list(reasoning_parse.steps)
                 raw_members.append(
                     CandidateRun(
                         agent_id=summary.agent_id,
@@ -74,6 +89,25 @@ class AnswerCandidateClusterer:
                         answer_type=answer_type,
                         schema_valid=bool(run.schema_valid),
                         parse_completed=bool(run.parse_completed),
+                        eligible_for_winner=bool(run.eligible_for_winner),
+                        validity_labels=list(run.validity_labels),
+                        reasoning_steps=saved_steps,
+                        reasoning_parse_quality=str(
+                            run.reasoning_parse_quality
+                            or (
+                                reasoning_parse.quality.value
+                                if reasoning_parse is not None
+                                else "unreliable"
+                            )
+                        ),
+                        reasoning_versa_eligible=bool(
+                            run.reasoning_versa_eligible
+                            and (
+                                reasoning_parse.versa_eligible
+                                if reasoning_parse is not None
+                                else bool(saved_steps)
+                            )
+                        ),
                     )
                 )
 
@@ -180,12 +214,11 @@ class AnswerCandidateClusterer:
 
     def _valid_run(self, run: object) -> bool:
         answer = self.answer_validator.clean(getattr(run, "final_answer", ""))
-        answer_type = self._answer_type(run)
         return bool(
             answer
             and getattr(run, "parse_completed", False)
+            and getattr(run, "schema_valid", False)
             and getattr(run, "eligible_for_winner", True)
-            and self.answer_validator.is_valid(answer, answer_type=answer_type)
         )
 
     def _answer_type(self, run: object) -> str:

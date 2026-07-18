@@ -23,6 +23,13 @@ from .evidence_role_contract import (
 )
 from .evidence_converter import EvidenceConversionDiagnostics, EvidenceConverter
 from .evidence_utility_gate import EvidenceUtilityGate, EvidenceUtilityResult
+from tools.evidence.fact_extraction import (
+    AnswerValueCanonicalizer,
+    DirectEvidencePromoter,
+    DirectEvidencePromotionResult,
+    GroundedAnswerValue,
+    PromotionDiagnostic,
+)
 from .role_aware_span_finalizer import (
     FinalizedSpan,
     RoleAwareSpanFinalizationResult,
@@ -60,6 +67,11 @@ __all__ = [
     "EvidenceAnswerExtractor",
     "EvidenceUtilityGate",
     "EvidenceUtilityResult",
+    "AnswerValueCanonicalizer",
+    "DirectEvidencePromoter",
+    "DirectEvidencePromotionResult",
+    "GroundedAnswerValue",
+    "PromotionDiagnostic",
     "EvidenceSpan",
     "FinalizedSpan",
     "ANSWER_SUPPORT",

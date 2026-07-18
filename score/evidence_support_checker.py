@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from decimal import Decimal, InvalidOperation
 import hashlib
 import re
@@ -13,6 +13,8 @@ from core.config import (
     ToolEvidenceRecord,
 )
 from score.answer_validator import AnswerValidator
+from score.evidence_support_context import EvidenceSupportContext
+from score.evidence_support_level import support_level_for_status
 from score.candidate_fact_verifier import (
     CandidateFactVerification,
     CandidateFactVerifier,
@@ -196,6 +198,7 @@ class EvidenceSupportChecker:
             agent_id=target.agent_id,
             status=status,
             priority=self.SUPPORT_PRIORITY[status],
+            support_level=support_level_for_status(status).value,
             step_results=step_results,
             evidence_records=records,
             matched_final_values=matched_final_values,
@@ -215,6 +218,76 @@ class EvidenceSupportChecker:
                 "fact_derivation": fact_derivation.to_dict(),
                 "fact_store": fact_store.to_dict(),
             },
+        )
+
+    def prepare_context(
+        self,
+        *,
+        evidence: dict[str, Any] | None,
+        question: str = "",
+        evidence_revision: int = 0,
+    ) -> EvidenceSupportContext:
+        """Prepare immutable task evidence before evaluating candidate paths."""
+
+        payload = dict(evidence or {})
+        source_store = payload.get("_fact_store")
+        if isinstance(source_store, TaskFactStore):
+            store = TaskFactStore.from_dict(source_store.to_dict())
+        else:
+            store = TaskFactStore.from_dict(payload.get("fact_store"))
+        self.fact_collector.collect_many(
+            store,
+            list(payload.get("tool_usage") or []),
+            question=question,
+            source_scope="evidence_prepare",
+        )
+        payload.pop("_fact_store", None)
+        payload["fact_store"] = store.to_dict()
+        routing = payload.get("routing") if isinstance(payload.get("routing"), dict) else {}
+        return EvidenceSupportContext(
+            base_fact_store=store,
+            answer_requirement=str(payload.get("answer_requirement") or question).strip(),
+            answer_role=str(payload.get("answer_role") or "").strip(),
+            task_route=str(routing.get("primary_route") or "").strip(),
+            evidence_revision=int(evidence_revision or 0),
+            evidence_payload=payload,
+            metadata={
+                "base_fact_count": len(store.all()),
+                "evidence_revision": int(evidence_revision or 0),
+            },
+        )
+
+    def check_path(
+        self,
+        *,
+        context: EvidenceSupportContext,
+        target: AgentReasoningSummary,
+        candidate_answer: str,
+        reasoning_steps: list[tuple[int, str]],
+        tool_results: list[dict[str, Any]] | None = None,
+        question: str = "",
+    ) -> AgentEvidenceSupportSummary:
+        """Evaluate one path against an isolated clone of the task evidence."""
+
+        selected_runs = list(target.runs)
+        if selected_runs and tool_results is not None:
+            selected_runs[0] = replace(
+                selected_runs[0],
+                tool_results=list(tool_results),
+            )
+        candidate_target = replace(
+            target,
+            runs=selected_runs,
+            compressed_answer=str(candidate_answer or "").strip(),
+            run_validity_labels=list(target.run_validity_labels),
+            aggregation_metadata=dict(target.aggregation_metadata),
+            self_review_metadata=dict(target.self_review_metadata),
+        )
+        return self.check_agent(
+            target=candidate_target,
+            reasoning_steps=list(reasoning_steps),
+            evidence=context.candidate_evidence(),
+            question=question,
         )
 
     def collect_fact_store(
@@ -1132,6 +1205,7 @@ class EvidenceSupportChecker:
             "agent_id": summary.agent_id,
             "status": summary.status,
             "priority": summary.priority,
+            "support_level": summary.support_level,
             "step_results": [asdict(item) for item in summary.step_results],
             "evidence_records": [
                 {

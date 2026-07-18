@@ -4,7 +4,10 @@ import re
 from typing import Any
 
 from .json_parse import try_parse_json
-from .reasoning_parser import extract_reasoning_steps
+from .reasoning_parser import (
+    ReasoningParseResult,
+    prepare_reasoning_for_verifier,
+)
 from .stage1_output_repair import Stage1OutputRepairer
 from .stage1_output_schema import Stage1StructuredOutput, ToolRequestPayload
 from .stage1_output_validator import Stage1OutputValidator
@@ -41,7 +44,7 @@ class Stage1OutputParser:
         else:
             parsed = dict(parsed)
 
-        output = self._coerce_structured_output(
+        output, reasoning_parse = self._coerce_structured_output(
             parsed,
             raw_reply=reply,
             expected_weight_count=expected_weight_count,
@@ -62,6 +65,7 @@ class Stage1OutputParser:
                 "repair_actions": repair_actions,
                 "eligible_for_winner": validation.eligible_for_winner,
                 "validity_labels": validation.validity_labels,
+                "reasoning_parse": reasoning_parse.to_dict(),
             }
         )
         return payload
@@ -72,19 +76,28 @@ class Stage1OutputParser:
         *,
         raw_reply: str,
         expected_weight_count: int,
-    ) -> Stage1StructuredOutput:
+    ) -> tuple[Stage1StructuredOutput, ReasoningParseResult]:
         reply_type = str(parsed.get("type", "") or "").strip().lower()
         tool_request = self._coerce_tool_request(parsed)
         final_answer = "" if tool_request else self._first_present(
             parsed,
             ["final_answer", "correct_answer", "answer", "final", "result", "output"],
         )
-        reasoning_steps = self._coerce_reasoning_steps(parsed, raw_reply=raw_reply)
+        reasoning_parse = self._coerce_reasoning_steps(
+            parsed,
+            raw_reply=raw_reply,
+            final_answer=str(final_answer or ""),
+        )
         used_evidence_ids = self._coerce_evidence_ids(parsed, raw_reply=raw_reply)
 
         output = Stage1StructuredOutput(
-            reasoning_steps=reasoning_steps,
-            final_answer=self.answer_validator.clean(final_answer),
+            reasoning_steps=[
+                f"step {number}. {body}"
+                for number, body in reasoning_parse.steps
+            ],
+            final_answer=self.answer_validator.clean(
+                final_answer or reasoning_parse.extracted_final_answer
+            ),
             confidence=self._coerce_confidence(parsed.get("confidence")),
             used_evidence_ids=used_evidence_ids,
             answer_type=self._coerce_answer_type(parsed.get("answer_type")),
@@ -99,7 +112,7 @@ class Stage1OutputParser:
                 reasoning_step=str(parsed.get("reasoning_step", "") or "").strip(),
             )
             output.final_answer = ""
-        return output
+        return output, reasoning_parse
 
     def _coerce_tool_request(self, parsed: dict[str, Any]) -> ToolRequestPayload | None:
         tool_payload = parsed.get("tool_request")
@@ -123,41 +136,49 @@ class Stage1OutputParser:
             )
         return None
 
-    def _coerce_reasoning_steps(self, parsed: dict[str, Any], *, raw_reply: str) -> list[str]:
+    def _coerce_reasoning_steps(
+        self,
+        parsed: dict[str, Any],
+        *,
+        raw_reply: str,
+        final_answer: str,
+    ) -> ReasoningParseResult:
         source = parsed.get("reasoning_steps")
         if isinstance(source, list):
             steps = [normalize_text(item) for item in source if normalize_text(item)]
             if steps:
-                return self._normalize_reasoning_steps(steps)
+                return prepare_reasoning_for_verifier(
+                    "",
+                    final_answer=final_answer,
+                    structured_steps=steps,
+                )
 
         reasoning = parsed.get("reasoning")
         if isinstance(reasoning, list):
             steps = [normalize_text(item) for item in reasoning if normalize_text(item)]
             if steps:
-                return self._normalize_reasoning_steps(steps)
+                return prepare_reasoning_for_verifier(
+                    "",
+                    final_answer=final_answer,
+                    structured_steps=steps,
+                )
         if reasoning:
-            steps = extract_reasoning_steps(str(reasoning))
-            if steps:
-                return [f"step {number}. {normalize_text(body)}" for number, body in steps]
+            return prepare_reasoning_for_verifier(
+                str(reasoning),
+                final_answer=final_answer,
+            )
 
         if parsed.get("reasoning_step"):
-            return self._normalize_reasoning_steps([str(parsed.get("reasoning_step"))])
+            return prepare_reasoning_for_verifier(
+                "",
+                final_answer=final_answer,
+                structured_steps=[str(parsed.get("reasoning_step"))],
+            )
 
-        steps = extract_reasoning_steps(raw_reply)
-        if steps:
-            return [f"step {number}. {normalize_text(body)}" for number, body in steps]
-        return []
-
-    def _normalize_reasoning_steps(self, steps: list[str]) -> list[str]:
-        normalized: list[str] = []
-        for index, step in enumerate(steps, start=1):
-            text = normalize_text(step)
-            match = re.match(r"step\s*(\d+)\s*[.:]\s*(.*)", text, re.IGNORECASE | re.DOTALL)
-            if match:
-                normalized.append(f"step {match.group(1)}. {normalize_text(match.group(2))}")
-            else:
-                normalized.append(f"step {index}. {text}")
-        return normalized
+        return prepare_reasoning_for_verifier(
+            raw_reply,
+            final_answer=final_answer,
+        )
 
     def _coerce_evidence_ids(self, parsed: dict[str, Any], *, raw_reply: str) -> list[str]:
         raw_ids = parsed.get("used_evidence_ids") or parsed.get("evidence_ids") or []

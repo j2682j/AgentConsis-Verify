@@ -3,6 +3,13 @@ from .answer_candidate_clusterer import AnswerCandidateClusterer
 from .answer_requirement_gate import AnswerRequirementGate, AnswerRequirementResult
 from .agent_answer_aggregator import AgentAnswerAggregation, AgentAnswerAggregator
 from .evidence_support_checker import EvidenceSupportChecker
+from .evidence_support_context import EvidenceSupportContext
+from .evidence_support_level import (
+    EvidenceSupportLevel,
+    compare_support_levels,
+    support_level_for_status,
+    support_level_rank,
+)
 from .candidate_fact_verifier import CandidateFactVerification, CandidateFactVerifier
 from .final_winner_selector import FinalWinnerSelection, FinalWinnerSelector
 from .gate_result import CandidateGateDecision, GateResult
@@ -22,6 +29,11 @@ __all__ = [
     "AgentAnswerAggregation",
     "AgentAnswerAggregator",
     "EvidenceSupportChecker",
+    "EvidenceSupportContext",
+    "EvidenceSupportLevel",
+    "compare_support_levels",
+    "support_level_for_status",
+    "support_level_rank",
     "CandidateFactVerification",
     "CandidateFactVerifier",
     "FinalWinnerSelection",

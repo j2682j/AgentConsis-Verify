@@ -138,6 +138,26 @@ class AnswerBoundFactValidator:
             and fact.qualifiers.get("answer_binding") == "direct"
         )
 
+    def value_compatible(self, *, requirement: str, value: str) -> tuple[bool, str]:
+        """Expose answer-value compatibility without changing fact roles."""
+
+        return self._value_compatible(requirement=requirement, value=value)
+
+    def target_bound(
+        self,
+        *,
+        answer_target: str,
+        requirement: str,
+        fact: EvidenceFact,
+    ) -> bool:
+        """Expose target binding for value-centric evidence promotion."""
+
+        return self._target_bound(
+            answer_target=answer_target,
+            requirement=requirement,
+            fact=fact,
+        )
+
     def _value_compatible(self, *, requirement: str, value: str) -> tuple[bool, str]:
         requirement_text = normalize_text(requirement)
         value_text = normalize_text(value).strip(" .,:;!?()[]{}'\"")
