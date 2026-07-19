@@ -23,6 +23,11 @@ from .evidence_role_contract import (
 )
 from .evidence_converter import EvidenceConversionDiagnostics, EvidenceConverter
 from .evidence_utility_gate import EvidenceUtilityGate, EvidenceUtilityResult
+from .passage_evidence_unit_builder import (
+    PassageEvidenceUnit,
+    PassageEvidenceUnitBuilder,
+    PassageEvidenceUnitResult,
+)
 from tools.evidence.fact_extraction import (
     AnswerValueCanonicalizer,
     DirectEvidencePromoter,
@@ -67,6 +72,9 @@ __all__ = [
     "EvidenceAnswerExtractor",
     "EvidenceUtilityGate",
     "EvidenceUtilityResult",
+    "PassageEvidenceUnit",
+    "PassageEvidenceUnitBuilder",
+    "PassageEvidenceUnitResult",
     "AnswerValueCanonicalizer",
     "DirectEvidencePromoter",
     "DirectEvidencePromotionResult",

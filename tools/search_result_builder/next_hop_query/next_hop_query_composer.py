@@ -132,13 +132,14 @@ class NextHopQueryComposer:
         output: list[RelationHopRequest] = []
         seen: set[str] = set()
         for subject in subjects:
+            searchable_target = self._searchable_relation_target(goal.target)
             query = self._clean_query(
                 " ".join(
                     self._dedupe(
                         [
                             subject,
                             goal.relation,
-                            goal.target,
+                            searchable_target,
                             *retained_constraints,
                         ]
                     )
@@ -164,6 +165,24 @@ class NextHopQueryComposer:
             if len(output) >= max(1, max_requests):
                 break
         return output
+
+    def _searchable_relation_target(self, target: str) -> str:
+        """移除只描述答案型態、不能增加檢索資訊的 relation target。"""
+
+        cleaned = normalize_text(target)
+        if cleaned.casefold() in {
+            "answer",
+            "person",
+            "human",
+            "name",
+            "number",
+            "count",
+            "boolean",
+            "text",
+            "unknown",
+        }:
+            return ""
+        return cleaned
 
     def build_query(
         self,

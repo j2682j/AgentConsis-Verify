@@ -13,8 +13,10 @@ from core.config import (
 )
 from score.answer_candidate_clusterer import AnswerCandidateClusterer
 from score.answer_requirement_gate import AnswerRequirementGate
+from score.answer_requirement_contract import TaskAnswerRequirementContract
 from score.answer_validator import AnswerValidator
 from score.evidence_support_level import EvidenceSupportLevel, support_level_for_status
+from score.evidence_answer_resolver import EvidenceAnswerResolver
 from score.gate_result import CandidateGateDecision, GateResult
 
 
@@ -28,13 +30,21 @@ class FinalWinnerSelection:
     status: str
     reason: str
     gate_trace: list[GateResult] = field(default_factory=list)
+    resolved_answer: str = ""
+    selection_origin: str = "agent_candidate"
+    resolution_metadata: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
+        active = [item.candidate_key for item in self.evaluations if item.selection_state == "active"]
+        reserve = [item.candidate_key for item in self.evaluations if item.selection_state == "reserve"]
+        rejected = [item.candidate_key for item in self.evaluations if item.selection_state == "rejected"]
         return {
             "strategy": "candidate_ordered_gates",
             "status": self.status,
             "selection_reason": self.reason,
-            "selected_answer": self.evaluation.answer if self.evaluation else "",
+            "selected_answer": (
+                self.evaluation.answer if self.evaluation else self.resolved_answer
+            ),
             "selected_candidate_key": (
                 self.evaluation.candidate_key if self.evaluation else ""
             ),
@@ -45,7 +55,22 @@ class FinalWinnerSelection:
                 self.evaluation.selected_run_index if self.evaluation else 0
             ),
             "gate_trace": [item.to_dict() for item in self.gate_trace],
+            "selection_origin": self.selection_origin,
+            "evidence_only_resolution": dict(self.resolution_metadata),
             "candidates": [asdict(item) for item in self.evaluations],
+            "active_candidate_keys": active,
+            "reserve_candidate_keys": reserve,
+            "rejected_candidate_keys": rejected,
+            "evidence_resolution_status": (
+                "resolved"
+                if self.resolved_answer or any(
+                    item.selection_state != "rejected"
+                    and support_level_for_status(item.support_status).value
+                    != EvidenceSupportLevel.UNSUPPORTED.value
+                    for item in self.evaluations
+                )
+                else "unresolved"
+            ),
         }
 
 
@@ -73,6 +98,7 @@ class FinalWinnerSelector:
         answer_validator: AnswerValidator | None = None,
         evidence_support_checker: Any | None = None,
         answer_requirement_gate: AnswerRequirementGate | None = None,
+        evidence_answer_resolver: EvidenceAnswerResolver | None = None,
         question: str = "",
     ) -> None:
         self.question = str(question or "").strip()
@@ -80,6 +106,9 @@ class FinalWinnerSelector:
         self.clusterer = clusterer or AnswerCandidateClusterer(self.answer_validator)
         self.answer_requirement_gate = (
             answer_requirement_gate or AnswerRequirementGate()
+        )
+        self.evidence_answer_resolver = (
+            evidence_answer_resolver or EvidenceAnswerResolver()
         )
 
     def select(
@@ -109,6 +138,10 @@ class FinalWinnerSelector:
             )
             for candidate in candidates
         ]
+        for evaluation in evaluations:
+            evaluation.selection_state = "active"
+            evaluation.hard_rejection_reason = ""
+            evaluation.soft_deferred_by = []
         survivors = list(evaluations)
         gate_trace: list[GateResult] = []
         gates: tuple[Callable[..., GateResult], ...] = (
@@ -134,6 +167,50 @@ class FinalWinnerSelector:
                     reason=result.terminal_reason,
                     gate_trace=gate_trace,
                 )
+            if (
+                result.gate_name == "evidence_support"
+                and bool(result.metadata.get("all_candidates_unsupported"))
+            ):
+                resolution = self.evidence_answer_resolver.resolve(evidence)
+                if resolution.resolved:
+                    gate_trace.append(
+                        GateResult(
+                            gate_name="evidence_only_resolution",
+                            survivors=[],
+                            metadata=resolution.to_dict(),
+                        )
+                    )
+                    return FinalWinnerSelection(
+                        winner=None,
+                        evaluation=None,
+                        evaluations=evaluations,
+                        status="answerable",
+                        reason="unique_relation_bound_evidence_answer",
+                        gate_trace=gate_trace,
+                        resolved_answer=resolution.answer,
+                        selection_origin="evidence_only_resolution",
+                        resolution_metadata=resolution.to_dict(),
+                    )
+                if resolution.status == "conflict":
+                    gate_trace.append(
+                        GateResult(
+                            gate_name="evidence_only_resolution",
+                            survivors=[],
+                            terminal_status="unresolved_evidence_conflict",
+                            terminal_reason=resolution.reason,
+                            metadata=resolution.to_dict(),
+                        )
+                    )
+                    return FinalWinnerSelection(
+                        winner=None,
+                        evaluation=None,
+                        evaluations=evaluations,
+                        status="unresolved_evidence_conflict",
+                        reason=resolution.reason,
+                        gate_trace=gate_trace,
+                        selection_origin="evidence_only_resolution",
+                        resolution_metadata=resolution.to_dict(),
+                    )
 
         if not survivors:
             return FinalWinnerSelection(
@@ -155,6 +232,20 @@ class FinalWinnerSelector:
             )
 
         selected = survivors[0]
+        if (
+            self._is_factual_search(evidence)
+            and self._support_bucket(selected.support_status)
+            == EvidenceSupportLevel.UNSUPPORTED.value
+            and not bool(selected.metadata.get("versa_available"))
+        ):
+            return FinalWinnerSelection(
+                winner=None,
+                evaluation=selected,
+                evaluations=evaluations,
+                status="unresolved_factual_without_support",
+                reason="factual_candidate_lacks_evidence_and_verification",
+                gate_trace=gate_trace,
+            )
         selected_member = self._member_by_identity(
             candidates,
             candidate_key=selected.candidate_key,
@@ -196,6 +287,8 @@ class FinalWinnerSelector:
                 survivors.append(candidate)
             else:
                 reason = candidate.rejection_reason or "candidate_has_no_valid_run"
+                candidate.selection_state = "rejected"
+                candidate.hard_rejection_reason = reason
                 decision = self._decision(candidate, "reject", reason)
                 eliminated.append(decision)
             decisions.append(decision)
@@ -257,6 +350,8 @@ class FinalWinnerSelector:
             if outcome == "reject":
                 candidate.eligible = False
                 candidate.rejection_reason = reason
+                candidate.selection_state = "rejected"
+                candidate.hard_rejection_reason = reason
                 eliminated.append(decision)
             else:
                 survivors.append(candidate)
@@ -295,6 +390,8 @@ class FinalWinnerSelector:
                 candidate.contradicted = True
                 candidate.support_status = "contradicted"
                 candidate.rejection_reason = "all_candidate_paths_contradicted"
+                candidate.selection_state = "rejected"
+                candidate.hard_rejection_reason = "all_candidate_paths_contradicted"
                 decision = self._decision(
                     candidate,
                     "reject",
@@ -359,18 +456,10 @@ class FinalWinnerSelector:
                 gate_name="evidence_support",
                 survivors=survivors,
                 decisions=decisions,
-                terminal_status=(
-                    "unresolved_unsupported_factual_conflict"
-                    if factual and len(candidates) > 1
-                    else "unresolved_factual_without_support"
-                    if factual
-                    else ""
-                ),
-                terminal_reason=(
-                    "factual_candidates_have_no_verified_evidence_support"
-                    if factual
-                    else ""
-                ),
+                metadata={
+                    "factual_search": factual,
+                    "all_candidates_unsupported": True,
+                },
             )
 
         survivors = [
@@ -378,10 +467,10 @@ class FinalWinnerSelector:
             for item in candidates
             if buckets[item.candidate_key] == best_bucket
         ]
-        eliminated = [
+        deferred = [
             self._decision(
                 item,
-                "reject",
+                "reserve",
                 "lower_evidence_support_bucket",
                 {
                     "support_bucket": buckets[item.candidate_key],
@@ -394,7 +483,7 @@ class FinalWinnerSelector:
         decisions = [
             self._decision(
                 item,
-                "pass" if item in survivors else "reject",
+                "pass" if item in survivors else "reserve",
                 (
                     "highest_evidence_support_bucket"
                     if item in survivors
@@ -409,13 +498,18 @@ class FinalWinnerSelector:
         ]
         for item in candidates:
             if item not in survivors:
-                item.eligible = False
-                item.rejection_reason = "lower_evidence_support_bucket"
+                item.selection_state = "reserve"
+                if "evidence_support" not in item.soft_deferred_by:
+                    item.soft_deferred_by.append("evidence_support")
         return GateResult(
             gate_name="evidence_support",
             survivors=survivors,
-            eliminated=eliminated,
             decisions=decisions,
+            metadata={
+                "gate_strength": "soft",
+                "reserve_candidate_keys": [item.candidate_key for item in candidates if item not in survivors],
+                "deferred": [item.to_dict() for item in deferred],
+            },
         )
 
     def _apply_cross_agent_gate(
@@ -431,6 +525,7 @@ class FinalWinnerSelector:
             pass_reason="maximum_distinct_agent_support",
             reject_reason="fewer_distinct_supporting_agents",
             detail_name="distinct_agent_count",
+            hard=False,
         )
 
     def _apply_self_consistency_gate(
@@ -470,6 +565,7 @@ class FinalWinnerSelector:
             pass_reason="maximum_agent_internal_consistency",
             reject_reason="lower_agent_internal_consistency",
             details=metrics,
+            hard=False,
         )
 
     def _apply_versa_gate(
@@ -488,12 +584,15 @@ class FinalWinnerSelector:
             item.candidate_key: bool(item.metadata.get("versa_available"))
             for item in candidates
         }
-        if not all(availability.values()):
+        available_candidates = [
+            item for item in candidates if availability[item.candidate_key]
+        ]
+        if not available_candidates:
             decisions = [
                 self._decision(
                     item,
                     "unknown",
-                    "versa_result_missing_for_one_or_more_candidates",
+                    "versa_not_available_for_any_candidate",
                     {"versa_available": availability[item.candidate_key]},
                 )
                 for item in candidates
@@ -502,8 +601,39 @@ class FinalWinnerSelector:
                 gate_name="versa_verification",
                 survivors=list(candidates),
                 decisions=decisions,
-                terminal_status="unresolved_missing_verification",
-                terminal_reason="not_all_surviving_candidates_have_versa_results",
+                metadata={"coverage": "none", "available_count": 0},
+            )
+
+        if len(available_candidates) != len(candidates):
+            best_available = self._filter_max(
+                available_candidates,
+                lambda item: item.critical_step_floor,
+            )
+            if len(best_available) > 1:
+                best_available = self._filter_max(
+                    best_available,
+                    lambda item: item.critical_step_geometric_mean,
+                )
+            unavailable = [
+                item for item in candidates if not availability[item.candidate_key]
+            ]
+            survivors = [*best_available, *unavailable]
+            return self._gate_from_survivors(
+                gate_name="versa_verification",
+                candidates=candidates,
+                survivors=survivors,
+                pass_reason="best_available_or_unscored_candidate",
+                reject_reason="lower_available_versa_verification",
+                details={
+                    item.candidate_key: {
+                        "versa_available": availability[item.candidate_key],
+                        "critical_step_floor": item.critical_step_floor,
+                        "critical_step_geometric_mean": item.critical_step_geometric_mean,
+                        "coverage": "partial",
+                    }
+                    for item in candidates
+                },
+                hard=False,
             )
 
         survivors = self._filter_max(
@@ -528,6 +658,7 @@ class FinalWinnerSelector:
                 }
                 for item in candidates
             },
+            hard=False,
         )
         if len(survivors) > 1:
             result.terminal_status = "unresolved_exact_tie"
@@ -731,6 +862,7 @@ class FinalWinnerSelector:
         pass_reason: str,
         reject_reason: str,
         detail_name: str,
+        hard: bool = True,
     ) -> GateResult:
         if len(candidates) <= 1:
             return self._pass_through(
@@ -749,6 +881,7 @@ class FinalWinnerSelector:
             pass_reason=pass_reason,
             reject_reason=reject_reason,
             details=details,
+            hard=hard,
         )
 
     def _gate_from_survivors(
@@ -760,27 +893,46 @@ class FinalWinnerSelector:
         pass_reason: str,
         reject_reason: str,
         details: dict[str, dict[str, Any]],
+        hard: bool = True,
     ) -> GateResult:
         eliminated: list[CandidateGateDecision] = []
         decisions: list[CandidateGateDecision] = []
         for item in candidates:
             passed = item in survivors
+            outcome = "pass" if passed else ("reject" if hard else "reserve")
             decision = self._decision(
                 item,
-                "pass" if passed else "reject",
+                outcome,
                 pass_reason if passed else reject_reason,
                 details.get(item.candidate_key, {}),
             )
             decisions.append(decision)
             if not passed:
-                item.eligible = False
-                item.rejection_reason = reject_reason
-                eliminated.append(decision)
+                if hard:
+                    item.eligible = False
+                    item.rejection_reason = reject_reason
+                    item.selection_state = "rejected"
+                    item.hard_rejection_reason = reject_reason
+                    eliminated.append(decision)
+                else:
+                    item.selection_state = "reserve"
+                    if gate_name not in item.soft_deferred_by:
+                        item.soft_deferred_by.append(gate_name)
+            elif item.selection_state != "rejected":
+                item.selection_state = "active"
         return GateResult(
             gate_name=gate_name,
             survivors=survivors,
             eliminated=eliminated,
             decisions=decisions,
+            metadata={
+                "gate_strength": "hard" if hard else "soft",
+                "reserve_candidate_keys": [
+                    item.candidate_key
+                    for item in candidates
+                    if item.selection_state == "reserve"
+                ],
+            },
         )
 
     def _pass_through(
@@ -920,6 +1072,14 @@ class FinalWinnerSelector:
         return str(routing.get("primary_route") or "").strip().lower() == "factual_search"
 
     def _answer_contract(self, evidence: dict[str, Any]) -> tuple[str, str]:
+        raw_contract = evidence.get("task_answer_requirement_contract")
+        if isinstance(raw_contract, dict):
+            contract = TaskAnswerRequirementContract.from_mapping(
+                raw_contract,
+                question=self.question,
+            )
+            if contract.resolved:
+                return contract.requirement_text, contract.answer_role
         requirement = str(evidence.get("answer_requirement") or "").strip()
         role = str(evidence.get("answer_role") or "").strip()
         for item in evidence.get("tool_usage", []) or []:
@@ -936,7 +1096,12 @@ class FinalWinnerSelector:
                     continue
                 requirement = requirement or str(evidence_item.get("answer_requirement") or "").strip()
                 role = role or str(evidence_item.get("answer_role") or "").strip()
-        return requirement, role
+        contract = TaskAnswerRequirementContract.build(
+            question=self.question,
+            answer_requirement=requirement,
+            answer_role=role,
+        )
+        return contract.requirement_text, contract.answer_role
 
     def _selection_reason(self, evaluation: CandidateEvaluation) -> str:
         bucket = self._support_bucket(evaluation.support_status)

@@ -12,6 +12,7 @@ from utils.network_utils import normalize_text
 
 from .question_role_extractor import QuestionRole, QuestionRoleExtractor
 from .relation_plan import RelationPlan
+from .relation_plan_validator import RelationPlanValidationResult, RelationPlanValidator
 from .span_classifier import ClassifiedSpan, SpanRoleClassifier
 from .semantic_impact import DEFAULT_HF_MODEL_NAME, SemanticImpactScorer, TokenSalient
 from .span_repair import SalientSpan, SpanRepairer
@@ -200,6 +201,10 @@ Rules:
 - Leave source_hint empty unless the question names or supplies a source.
 - Split the information need into at most 3 ordered relation goals.
 - A later goal that depends on the previous result must use an empty subject.
+- For "Who RELATION TARGET?", TARGET is the relation subject and person is the goal target.
+- Never use Who, What, Which, When, or Where as a relation subject or target entity.
+- If the target entity must first be identified from constraints, create an identification goal first.
+- Keep event roles distinct: nominated by is not promoted by, reviewed by, illustrated by, or supported by.
 - Use negative only when the task requires proving that an explicit term is absent.
 - Negative goals must put that explicit term in target.
 - Use full_document when absence cannot be verified from a passage.
@@ -246,12 +251,17 @@ Return exactly this JSON shape:
             min_token_chars=min_token_chars,
         )
         self.question_role_extractor = QuestionRoleExtractor(scorer=self.semantic_scorer)
+        self.relation_plan_validator = RelationPlanValidator()
         self.span_classifier = SpanRoleClassifier(scorer=self.semantic_scorer)
         self.last_token_salience: list[TokenSalient] = []
         self.last_salient_spans: list[SalientSpan] = []
         self.last_classified_spans: list[ClassifiedSpan] = []
         self.last_question_role: QuestionRole = QuestionRole()
         self.last_relation_plan: RelationPlan = RelationPlan()
+        self.last_relation_plan_validation = RelationPlanValidationResult(
+            valid=True,
+            plan=RelationPlan(),
+        )
 
     def generate(
         self,
@@ -289,6 +299,14 @@ Return exactly this JSON shape:
             classified_spans=classified_spans,
             num_candidates=num_candidates,
         )
+        relation_validation = self.relation_plan_validator.validate(
+            generation_output.relation_plan,
+            question_role=question_role,
+        )
+        generation_output = QueryGenerationOutput(
+            query_requests=generation_output.query_requests,
+            relation_plan=relation_validation.plan,
+        )
         candidates = self.build_candidates(generation_output.query_requests, spans)
 
         if not candidates:
@@ -299,6 +317,7 @@ Return exactly this JSON shape:
         self.last_classified_spans = classified_spans
         self.last_question_role = question_role
         self.last_relation_plan = generation_output.relation_plan
+        self.last_relation_plan_validation = relation_validation
         return candidates[: max(1, num_candidates)]
 
     def score_tokens(self, question: str) -> list[TokenSalient]:

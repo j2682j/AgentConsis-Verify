@@ -804,5 +804,13 @@ class Stage1Runner:
             return {}
         return self.search_access_state.snapshot()
 
+    def tool_cache_metadata(self) -> dict[str, int]:
+        """Return task-local Stage1 tool-cache counters."""
+
+        cache = getattr(self.trajectory_runner, "tool_cache", None)
+        if cache is None or not hasattr(cache, "snapshot"):
+            return {}
+        return dict(cache.snapshot())
+
 
 __all__ = ["Stage1Runner"]

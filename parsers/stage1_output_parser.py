@@ -175,6 +175,12 @@ class Stage1OutputParser:
                 structured_steps=[str(parsed.get("reasoning_step"))],
             )
 
+        if isinstance(try_parse_json(raw_reply), dict):
+            return prepare_reasoning_for_verifier(
+                "",
+                final_answer=final_answer,
+            )
+
         return prepare_reasoning_for_verifier(
             raw_reply,
             final_answer=final_answer,

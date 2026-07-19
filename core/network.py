@@ -28,6 +28,7 @@ from score.versa_prm_scorer import (
     DEFAULT_VERSA_PRM_BASE_MODEL_ID,
     DEFAULT_VERSA_PRM_MODEL_ID,
 )
+from score.answer_requirement_contract import TaskAnswerRequirementContract
 from tools.attachment_workspace import AttachmentWorkspace
 from tools.evidence.fact_extraction import TaskFactStore
 from utils.network_utils import normalize_for_exact
@@ -43,12 +44,9 @@ class Network:
 
     EARLY_STOP_VERIFIER_THRESHOLD = 0.95
     EARLY_STOP_RETRY_REASONS = {
-        "cross_agent_confidence_1.0_answer_consensus_versa_below_threshold",
-        "cross_agent_confidence_1.0_answer_consensus_evidence_unsupported",
-        "confidence_1.0_versa_reward_below_threshold",
-        "confidence_1.0_evidence_unsupported",
-        "confidence_0.67_versa_reward_below_threshold",
-        "confidence_0.67_evidence_unsupported",
+        "all_stage1_answers_invalid",
+        "all_candidates_contradicted",
+        "recoverable_tool_failure_without_answer",
     }
 
     def __init__(
@@ -73,8 +71,7 @@ class Network:
         enable_evidence_prepare: bool = True,
         enable_compact_search_evidence: bool = False,
         enable_evidence_driven_search: bool = True,
-        enable_deterministic_handler_router: bool = False,
-        enable_tool_planner: bool = False,
+        bypass_search_labeler: bool = False,
         max_parallel_next_hop_queries: int = 2,
         search_result: str = "",
         attachment_result: str = "",
@@ -108,8 +105,7 @@ class Network:
         self.enable_evidence_prepare = enable_evidence_prepare
         self.enable_compact_search_evidence = enable_compact_search_evidence
         self.enable_evidence_driven_search = enable_evidence_driven_search
-        self.enable_deterministic_handler_router = enable_deterministic_handler_router
-        self.enable_tool_planner = enable_tool_planner
+        self.bypass_search_labeler = bool(bypass_search_labeler)
         self.max_parallel_next_hop_queries = max(0, max_parallel_next_hop_queries)
         self.search_result = search_result
         self.attachment_result = attachment_result
@@ -145,8 +141,7 @@ class Network:
             attachment_result=self.attachment_result,
             compact_search_evidence=self.enable_compact_search_evidence,
             enable_evidence_driven_search=self.enable_evidence_driven_search,
-            enable_deterministic_handler_router=self.enable_deterministic_handler_router,
-            enable_tool_planner=self.enable_tool_planner,
+            bypass_search_labeler=self.bypass_search_labeler,
             max_parallel_next_hop_queries=self.max_parallel_next_hop_queries,
             attachment_workspace=self.attachment_workspace,
         )
@@ -193,12 +188,34 @@ class Network:
         response_started_at = time.perf_counter()
         self._reset_token_usage()
         self.candidate_path_evaluator.clear_cache()
+        evidence_started_at = time.perf_counter()
         evidence = self.evidence_runner.run() if self.enable_evidence_prepare else self._empty_evidence_bundle()
+        evidence_prepare_seconds = time.perf_counter() - evidence_started_at
         if self.enable_evidence_prepare:
             evidence["_fact_store"] = self.evidence_runner.fact_store
         if not isinstance(evidence.get("_fact_store"), TaskFactStore):
             evidence["_fact_store"] = TaskFactStore.from_dict(evidence.get("fact_store"))
         evidence["fact_store"] = evidence["_fact_store"].to_dict()
+        task_contract = TaskAnswerRequirementContract.build(
+            question=self.question,
+            answer_requirement=str(evidence.get("answer_requirement") or ""),
+            answer_role=str(evidence.get("answer_role") or ""),
+            answer_target=str(evidence.get("answer_target") or ""),
+            relation_plan=(
+                evidence.get("relation_plan")
+                if isinstance(evidence.get("relation_plan"), dict)
+                else None
+            ),
+            source=str(evidence.get("answer_requirement_source") or ""),
+        )
+        evidence["task_answer_requirement_contract"] = task_contract.to_dict()
+        evidence["answer_requirement"] = task_contract.requirement_text
+        evidence["answer_role"] = task_contract.answer_role
+        evidence["answer_target"] = task_contract.answer_target
+        evidence["required_relation"] = task_contract.required_relation
+        evidence["required_relation_goal_id"] = (
+            task_contract.required_relation_goal_id
+        )
 
         stage1_attempts = 0
         early_stop_reason = ""
@@ -208,24 +225,38 @@ class Network:
         stage1_slm_stop_records: list[dict[str, Any]] = []
         stage1_model_lifecycle_records: list[dict[str, Any]] = []
         versa_unload_records: list[dict[str, Any]] = []
+        early_stop_trace: list[dict[str, Any]] = []
+        stage1_retry_reasons: list[str] = []
+        stage1_seconds = 0.0
+        versa_scoring_seconds = 0.0
         while True:
             stage1_attempts += 1
+            stage1_started_at = time.perf_counter()
             stage1_results = self.stage1_runner.run(evidence)
+            stage1_seconds += time.perf_counter() - stage1_started_at
+            evidence["fact_store"] = evidence["_fact_store"].to_dict()
+            evidence_revision = int(evidence["_fact_store"].revision)
             for record in list(self.stage1_runner.model_lifecycle_records):
                 enriched = dict(record)
                 enriched["stage1_attempt"] = stage1_attempts
                 stage1_model_lifecycle_records.append(enriched)
-            (
-                direct_consensus_winner,
-                direct_consensus_supporting_agents,
-            ) = self._confidence_one_answer_consensus(stage1_results)
+            if self.enable_stage1_early_stop:
+                (
+                    direct_consensus_winner,
+                    direct_consensus_supporting_agents,
+                ) = self._confidence_one_answer_consensus(stage1_results)
+            else:
+                direct_consensus_winner = None
+                direct_consensus_supporting_agents = []
             if direct_consensus_winner is not None:
+                versa_started_at = time.perf_counter()
                 direct_consensus_results = self._evaluate_early_candidates(
                     [direct_consensus_winner],
                     stage1_results=stage1_results,
                     evidence=evidence,
-                    evidence_revision=stage1_attempts - 1,
+                    evidence_revision=evidence_revision,
                 )
+                versa_scoring_seconds += time.perf_counter() - versa_started_at
                 direct_consensus_verifier = (
                     direct_consensus_results[0]
                     if direct_consensus_results
@@ -262,13 +293,16 @@ class Network:
                         "cross_agent_confidence_1.0_answer_consensus_evidence_unsupported"
                     )
             else:
+                versa_started_at = time.perf_counter()
                 early_stop_winner, early_stop_verifier_results, early_stop_reason = (
                     self._stage1_early_stop_decision(
                         stage1_results,
                         evidence=evidence,
-                        evidence_revision=stage1_attempts - 1,
+                        evidence_revision=evidence_revision,
                     )
                 )
+                if self.enable_stage1_early_stop:
+                    versa_scoring_seconds += time.perf_counter() - versa_started_at
             if early_stop_verifier_results:
                 versa_unload_records.append(
                     self._unload_versa_scorer(
@@ -276,29 +310,65 @@ class Network:
                         stage1_attempt=stage1_attempts,
                     )
                 )
+            retry_reason = self._stage1_retry_reason(
+                stage1_results,
+                early_stop_verifier_results,
+            )
             should_retry_stage1 = (
+                self.enable_stage1_early_stop
+                and
                 early_stop_winner is None
-                and early_stop_reason in self.EARLY_STOP_RETRY_REASONS
+                and retry_reason in self.EARLY_STOP_RETRY_REASONS
                 and stage1_attempts <= self.stage1_early_stop_max_retries
             )
+            early_stop_trace.append(
+                {
+                    "attempt": stage1_attempts,
+                    "decision_reason": early_stop_reason,
+                    "retry_reason": retry_reason if should_retry_stage1 else "",
+                    "retry": should_retry_stage1,
+                    "winner_agent_id": (
+                        early_stop_winner.agent_id if early_stop_winner else ""
+                    ),
+                    "verifier_results": [
+                        {
+                            "agent_id": item.target_agent_id,
+                            "critical_step_floor": self._verifier_critical_floor(item),
+                            "evidence_supported": self._verifier_has_evidence_support(item),
+                        }
+                        for item in early_stop_verifier_results
+                    ],
+                }
+            )
+            if should_retry_stage1:
+                stage1_retry_reasons.append(retry_reason)
             if not should_retry_stage1:
                 break
 
         active_results = [result for result in stage1_results if result.active]
         stage1_early_stop_used = early_stop_winner is not None
         stage2_skipped = stage1_early_stop_used or not self.enable_stage2_score
-        candidates = self.answer_candidate_clusterer.cluster(active_results)
+        candidates = self.answer_candidate_clusterer.cluster(
+            active_results,
+            answer_requirement=str(evidence.get("answer_requirement") or ""),
+            answer_role=str(evidence.get("answer_role") or ""),
+        )
         if stage1_early_stop_used:
             verifier_results = early_stop_verifier_results
             stage2_skip_reason = "stage1_early_stop"
         else:
+            candidate_evaluation_started_at = time.perf_counter()
             evaluation_bundle = self.candidate_path_evaluator.evaluate_candidates(
                 candidates=candidates,
                 stage1_results=stage1_results,
                 evidence=evidence,
                 enable_versa=self.enable_stage2_score,
-                evidence_revision=stage1_attempts - 1,
+                evidence_revision=evidence_revision,
             )
+            if self.enable_stage2_score:
+                versa_scoring_seconds += (
+                    time.perf_counter() - candidate_evaluation_started_at
+                )
             verifier_results = evaluation_bundle.verifier_results
             if self.enable_stage2_score:
                 versa_unload_records.append(
@@ -316,7 +386,7 @@ class Network:
                 stage1_results=stage1_results,
                 evidence=evidence,
                 enable_versa=False,
-                evidence_revision=stage1_attempts - 1,
+                evidence_revision=evidence_revision,
             )
         direct_consensus_used = (
             stage1_early_stop_used
@@ -337,6 +407,7 @@ class Network:
                 "selected_answer": winner.compressed_answer if winner else "",
             }
         else:
+            winner_selection_started_at = time.perf_counter()
             winner = self._select_winner(
                 stage1_results,
                 candidates=candidates,
@@ -344,12 +415,31 @@ class Network:
                 verifier_results=verifier_results,
                 evidence=evidence,
             )
+            winner_selection_seconds = time.perf_counter() - winner_selection_started_at
+        if stage1_early_stop_used:
+            winner_selection_seconds = 0.0
+        selected_answer = (
+            winner.compressed_answer
+            if winner is not None
+            else str(self._last_winner_selection_trace.get("selected_answer") or "")
+        )
+        selected_agent_id = (
+            winner.agent_id
+            if winner is not None
+            else (
+                "evidence_resolver"
+                if self._last_winner_selection_trace.get("selection_origin")
+                == "evidence_only_resolution"
+                and selected_answer
+                else ""
+            )
+        )
         response_time_seconds = time.perf_counter() - response_started_at
 
         return NetworkSummary(
             question=self.question,
-            final_answer=winner.compressed_answer if winner else "",
-            winner_agent_id=winner.agent_id if winner else "",
+            final_answer=selected_answer,
+            winner_agent_id=selected_agent_id,
             stage1_results=stage1_results,
             verifier_results=verifier_results,
             agent_scores=self.agents,
@@ -373,19 +463,21 @@ class Network:
                 "enable_compact_search_evidence": self.enable_compact_search_evidence,
                 "query_planner": "signal",
                 "enable_evidence_driven_search": self.enable_evidence_driven_search,
-                "enable_deterministic_handler_router": self.enable_deterministic_handler_router,
-                "enable_tool_planner": self.enable_tool_planner,
+                "bypass_search_labeler": self.bypass_search_labeler,
                 "max_parallel_next_hop_queries": self.max_parallel_next_hop_queries,
                 "max_stage1_tool_turns": self.max_stage1_tool_turns,
                 "stage1_prepared_search_budget": self.stage1_prepared_search_budget,
                 "stage1_supplemental_evidence_max_items": self.stage1_supplemental_evidence_max_items,
                 "stage1_search_gate": self.stage1_runner.search_gate_metadata(),
+                "stage1_tool_cache": self.stage1_runner.tool_cache_metadata(),
                 "stage1_attachment_reuse": self.attachment_workspace.snapshot(),
                 "enable_stage1_early_stop": self.enable_stage1_early_stop,
                 "previous_best_agent_id": self.previous_best_agent_id or "",
                 "stage1_early_stop_max_retries": self.stage1_early_stop_max_retries,
                 "early_stop_verifier_threshold": self.EARLY_STOP_VERIFIER_THRESHOLD,
                 "stage1_attempts": stage1_attempts,
+                "stage1_retry_reasons": stage1_retry_reasons,
+                "early_stop_trace": early_stop_trace,
                 "stage1_model_switch_stop_records": [],
                 "stage1_model_lifecycle_records": stage1_model_lifecycle_records,
                 "stage1_slm_stop_records": stage1_slm_stop_records,
@@ -423,6 +515,15 @@ class Network:
                 "stage1_context_budget": self._stage1_context_budget_metadata(
                     stage1_results,
                 ),
+                "reasoning_tokens_by_agent": self._reasoning_tokens_by_agent(
+                    stage1_results,
+                ),
+                "stage_timings_seconds": {
+                    "evidence_prepare": evidence_prepare_seconds,
+                    "stage1": stage1_seconds,
+                    "versa_scoring": versa_scoring_seconds,
+                    "winner_selection": winner_selection_seconds,
+                },
                 "active_agent_count": len(active_results),
                 "search_used": bool(evidence["search_result"].strip()),
                 "attachment_used": bool(evidence["attachment_result"].strip()),
@@ -444,6 +545,8 @@ class Network:
             "attachment_profile": {},
             "solver_result": "",
             "answer_requirement": "",
+            "answer_role": "",
+            "answer_target": "",
             "routing": {
                 "evidence_prepare_enabled": False,
                 "use_search": False,
@@ -574,6 +677,24 @@ class Network:
                 int(item.get("dropped_evidence_count", 0) or 0) for item in budgets
             ),
             "truncated_sections": truncated_sections,
+        }
+
+    def _reasoning_tokens_by_agent(
+        self,
+        stage1_results: list[AgentReasoningSummary],
+    ) -> dict[str, dict[str, int]]:
+        """Aggregate Stage1 run token usage by Agent for cost diagnostics."""
+
+        return {
+            result.agent_id: {
+                "run_count": len(result.runs),
+                "prompt_tokens": sum(int(run.prompt_tokens or 0) for run in result.runs),
+                "completion_tokens": sum(
+                    int(run.completion_tokens or 0) for run in result.runs
+                ),
+                "total_tokens": sum(int(run.total_tokens or 0) for run in result.runs),
+            }
+            for result in stage1_results
         }
 
     def _write_direct_consensus_scores(
@@ -748,6 +869,59 @@ class Network:
         )
         return winner, verifier_results, "confidence_0.67_positive_versa_reward"
 
+    def _stage1_retry_reason(
+        self,
+        stage1_results: list[AgentReasoningSummary],
+        verifier_results: list[VerifierScoreByReasoning],
+    ) -> str:
+        """Return a retry reason only for failures that another attempt can repair."""
+
+        valid_results = [
+            result
+            for result in stage1_results
+            if (
+                result.active
+                and result.winner_selection_eligible
+                and self.answer_validator.is_valid(result.compressed_answer)
+            )
+        ]
+        if not valid_results:
+            retryable_tool_failure = any(
+                bool(tool_result.get("retryable"))
+                for summary in stage1_results
+                for run in summary.runs
+                for tool_result in list(run.tool_results or [])
+                if isinstance(tool_result, dict)
+            )
+            return (
+                "recoverable_tool_failure_without_answer"
+                if retryable_tool_failure
+                else "all_stage1_answers_invalid"
+            )
+
+        verification_statuses = [
+            str(
+                (
+                    result.metadata.get("evidence_support", {})
+                    if isinstance(result.metadata, dict)
+                    else {}
+                ).get("verification_status")
+                or (
+                    result.metadata.get("evidence_support", {})
+                    if isinstance(result.metadata, dict)
+                    else {}
+                ).get("status")
+                or ""
+            ).strip().casefold()
+            for result in verifier_results
+        ]
+        if verification_statuses and all(
+            status in {"contradicted", "evidence_contradicted"}
+            for status in verification_statuses
+        ):
+            return "all_candidates_contradicted"
+        return ""
+
     def _select_winner(
         self,
         stage1_results: list[AgentReasoningSummary],
@@ -763,7 +937,12 @@ class Network:
             - stage1_results: Stage1Runner ?Ｙ??? Agent ?蝯???
         Returns:
             - AgentReasoningSummary | None: ?蝯??箇??蝯?嚗瘝? active agent ????None??        """
-        candidates = candidates or self.answer_candidate_clusterer.cluster(stage1_results)
+        candidate_evidence = evidence or {}
+        candidates = candidates or self.answer_candidate_clusterer.cluster(
+            stage1_results,
+            answer_requirement=str(candidate_evidence.get("answer_requirement") or ""),
+            answer_role=str(candidate_evidence.get("answer_role") or ""),
+        )
         selection = self.final_winner_selector.select(
             stage1_results=stage1_results,
             candidates=candidates,
@@ -784,7 +963,11 @@ class Network:
     ) -> list[VerifierScoreByReasoning]:
         """Evaluate the representative path for each early-stop candidate."""
 
-        clustered = self.answer_candidate_clusterer.cluster(stage1_results)
+        clustered = self.answer_candidate_clusterer.cluster(
+            stage1_results,
+            answer_requirement=str(evidence.get("answer_requirement") or ""),
+            answer_role=str(evidence.get("answer_role") or ""),
+        )
         requested = {
             (
                 summary.agent_id,

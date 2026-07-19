@@ -8,6 +8,7 @@ from .fraction_document import FractionDocumentRouterHandler
 from .graph_shortest_path import GraphShortestPathRouterHandler
 from .list_operations import ListOperationsRouterHandler
 from .logic_equivalence import LogicEquivalenceRouterHandler
+from .color_grid_hamiltonian import ColorGridHamiltonianRouterHandler
 from .multi_step_counting import MultiStepCountingRouterHandler
 from .numeric_reasoning import NumericReasoningRouterHandler
 from .probability_simulation import ProbabilitySimulationRouterHandler
@@ -30,6 +31,7 @@ __all__ = [
     "GraphShortestPathRouterHandler",
     "ListOperationsRouterHandler",
     "LogicEquivalenceRouterHandler",
+    "ColorGridHamiltonianRouterHandler",
     "MultiStepCountingRouterHandler",
     "NumericReasoningRouterHandler",
     "ProbabilitySimulationRouterHandler",

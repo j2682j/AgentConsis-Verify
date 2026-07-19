@@ -96,6 +96,8 @@ class Stage1StructuredOutputTests(unittest.TestCase):
         self.assertEqual(parsed["type"], "final_answer")
         self.assertTrue(parsed["eligible_for_winner"])
         self.assertEqual(parsed["final_answer"], "no")
+        self.assertTrue(parsed["reasoning_parse"]["versa_eligible"])
+        self.assertEqual(parsed["reasoning_parse"]["steps"][0][0], 1)
 
     def test_answer_type_union_is_normalized(self):
         parser = Stage1OutputParser()
@@ -153,6 +155,19 @@ class Stage1StructuredOutputTests(unittest.TestCase):
         self.assertEqual(parsed["type"], "final_answer")
         self.assertEqual(parsed["final_answer"], "Tokyo")
         self.assertTrue(parsed["eligible_for_winner"])
+
+    def test_tool_parser_preserves_reasoning_parse_contract(self):
+        parser = ToolRequestParser()
+
+        parsed = parser.parse(
+            '{"type":"final_answer","reasoning_steps":'
+            '["step 1. Read E1.","step 2. Derive 42."],'
+            '"final_answer":"42"}'
+        )
+
+        self.assertEqual(parsed["type"], "final_answer")
+        self.assertTrue(parsed["reasoning_parse"]["versa_eligible"])
+        self.assertEqual(len(parsed["reasoning_parse"]["steps"]), 2)
 
 
 if __name__ == "__main__":

@@ -192,7 +192,6 @@ class DeterministicHandlerRouterTests(unittest.TestCase):
             search_result="provided search",
             attachment_result="provided attachment",
             deterministic_handler_router=FakeRouter(),
-            enable_deterministic_handler_router=True,
         )
 
         evidence = runner.run()

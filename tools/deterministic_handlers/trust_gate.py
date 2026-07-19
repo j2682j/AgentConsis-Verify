@@ -135,6 +135,38 @@ class HandlerTrustGate:
         inferred_required_role = self._infer_required_handler_role(question)
         if inferred_required_role and handler_role and handler_role != inferred_required_role:
             reasons.append("answer_role_binding_failed")
+        task_operation = str(
+            handler_plan.get("task_operation")
+            or handler_plan.get("operation")
+            or self._infer_task_operation(question)
+            or ""
+        ).strip()
+        handler_operation = str(
+            structured.get("operation")
+            or structured.get("task_type")
+            or handler_role
+            or ""
+        ).strip()
+        if task_operation and handler_operation and not self._operations_compatible(
+            task_operation,
+            handler_operation,
+        ):
+            reasons.append("operation_binding_failed")
+        contract_payload = handler_plan.get("answer_requirement_contract")
+        if not isinstance(contract_payload, dict):
+            contract_payload = {}
+        answer_role = str(
+            handler_plan.get("answer_role")
+            or contract_payload.get("answer_role")
+            or ""
+        ).strip()
+        supported_roles = {
+            str(item).strip()
+            for item in list(structured.get("supported_answer_roles") or [])
+            if str(item).strip()
+        }
+        if answer_role and supported_roles and answer_role not in supported_roles:
+            reasons.append("answer_role_binding_failed")
 
         source_binding = {
             "handler_name": result.handler_name,
@@ -188,6 +220,8 @@ class HandlerTrustGate:
             return "input_provenance_failed"
         if "handler_role_mismatch" in reasons or "answer_role_binding_failed" in reasons:
             return "handler_role_mismatch"
+        if "operation_binding_failed" in reasons:
+            return "operation_mismatch"
         if "missing_handler" in reasons:
             return "missing_handler"
         if "missing_inputs" in reasons:
@@ -215,6 +249,27 @@ class HandlerTrustGate:
         if re.search(r"\bfamily reunion\b|\badults?\b.*\bkids?\b.*\bbags?\b", lowered, flags=re.DOTALL):
             return "multi_step_counting"
         return ""
+
+    @staticmethod
+    def _infer_task_operation(question: str) -> str:
+        lowered = str(question or "").casefold()
+        if re.search(r"\b(?:translate|translation|in\s+\w+\s+(?:language|word order))\b", lowered):
+            return "translation"
+        if re.search(r"\b(?:logically equivalent|truth table|propositional logic)\b", lowered):
+            return "logic_equivalence"
+        if re.search(r"\b(?:shortest path|fewest stops|minimum distance)\b", lowered):
+            return "graph_shortest_path"
+        return ""
+
+    @staticmethod
+    def _operations_compatible(task_operation: str, handler_operation: str) -> bool:
+        task = normalize_operation(task_operation)
+        handler = normalize_operation(handler_operation)
+        return bool(task and handler and (task == handler or task in handler or handler in task))
+
+
+def normalize_operation(value: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "_", str(value or "").casefold()).strip("_")
 
 
 __all__ = ["HandlerTrustGate", "HandlerTrustResult"]

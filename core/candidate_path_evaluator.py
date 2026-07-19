@@ -174,6 +174,14 @@ class CandidatePathEvaluator:
                     metadata={
                         "support_checked_once": True,
                         "evidence_revision": int(evidence_revision or 0),
+                        "candidate_verification_status": support.verification_status,
+                        "supporting_fact_ids": list(support.supporting_fact_ids),
+                        "contradicting_fact_ids": list(support.contradicting_fact_ids),
+                        "derivation_chain_ids": list(support.derivation_chain_ids),
+                        "support_unknown_reason": support.unknown_reason,
+                        "reasoning_parse_diagnostics": dict(
+                            member.reasoning_parse_diagnostics or {}
+                        ),
                     },
                 )
                 cache_misses += 1
@@ -205,12 +213,24 @@ class CandidatePathEvaluator:
                 evaluation.versa_step_scores = list(verifier.step_scores)
                 evaluation.metadata["process_verification"] = dict(process)
             elif enable_versa:
-                evaluation.versa_status = "unavailable_unreliable_reasoning"
+                evaluation.versa_status = self._versa_skip_status(evaluation)
 
             self._cache[identity] = evaluation
             evaluations.append(evaluation)
 
         return evaluations, cache_hits, cache_misses, dict(context.metadata)
+
+    @staticmethod
+    def _versa_skip_status(evaluation: CandidatePathEvaluation) -> str:
+        diagnostics = dict(
+            evaluation.metadata.get("reasoning_parse_diagnostics") or {}
+        )
+        warnings = [str(item) for item in list(diagnostics.get("warnings") or [])]
+        if not evaluation.reasoning_steps or "no_reasoning_steps" in warnings:
+            return "unavailable_no_reasoning_steps"
+        if "unresolved_compound_steps" in warnings:
+            return "unavailable_unresolved_compound_steps"
+        return "unavailable_unreliable_reasoning"
 
     @staticmethod
     def to_verifier_result(path: CandidatePathEvaluation) -> VerifierScoreByReasoning:

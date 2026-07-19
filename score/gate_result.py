@@ -29,6 +29,7 @@ class GateResult:
     decisions: list[CandidateGateDecision] = field(default_factory=list)
     terminal_status: str = ""
     terminal_reason: str = ""
+    metadata: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -38,6 +39,17 @@ class GateResult:
             "decisions": [item.to_dict() for item in self.decisions],
             "terminal_status": self.terminal_status,
             "terminal_reason": self.terminal_reason,
+            "metadata": dict(self.metadata),
+            "active_candidate_keys": [
+                item.candidate_key
+                for item in self.survivors
+                if item.selection_state == "active"
+            ],
+            "reserve_candidate_keys": [
+                item.candidate_key
+                for item in self.survivors
+                if item.selection_state == "reserve"
+            ],
         }
 
 

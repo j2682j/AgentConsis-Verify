@@ -30,7 +30,17 @@ class LogicEquivalenceRouterHandler:
     output_schema = input_schema
 
     def match_input(self, handler_input: HandlerInput) -> HandlerMatch:
-        expr_a, expr_b = self._extract_expressions(handler_input.combined_text())
+        text = handler_input.combined_text()
+        if not self._has_logic_operation(text):
+            return HandlerMatch(
+                handler_name=self.name,
+                matched=False,
+                confidence=0.0,
+                reason="logic_operation_not_explicit",
+                handler_role=self.handler_role,
+                missing_inputs=["explicit_logic_equivalence_operation"],
+            )
+        expr_a, expr_b = self._extract_expressions(text)
         missing = []
         if not expr_a:
             missing.append("expression_a")
@@ -45,8 +55,21 @@ class LogicEquivalenceRouterHandler:
         )
 
     def build_input(self, handler_input: HandlerInput) -> dict[str, Any]:
-        expr_a, expr_b = self._extract_expressions(handler_input.combined_text())
+        text = handler_input.combined_text()
+        if not self._has_logic_operation(text):
+            return {"expression_a": "", "expression_b": ""}
+        expr_a, expr_b = self._extract_expressions(text)
         return {"expression_a": expr_a, "expression_b": expr_b}
+
+    @staticmethod
+    def _has_logic_operation(text: str) -> bool:
+        return bool(
+            re.search(
+                r"\b(?:logically\s+equivalent|logic(?:al)?\s+equivalence|truth\s+table|propositional\s+logic)\b",
+                text or "",
+                flags=re.IGNORECASE,
+            )
+        )
 
     def run(self, inputs: dict[str, Any]) -> HandlerResult:
         expr_a = str(inputs.get("expression_a") or "").strip()

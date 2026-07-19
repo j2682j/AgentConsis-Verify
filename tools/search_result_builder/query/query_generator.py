@@ -95,6 +95,11 @@ class QueryGenerator:
             salient_spans = list(self.generator.last_salient_spans)
             classified_spans = list(getattr(self.generator, "last_classified_spans", []))
             relation_plan = getattr(self.generator, "last_relation_plan", RelationPlan())
+            relation_validation = getattr(
+                self.generator,
+                "last_relation_plan_validation",
+                None,
+            )
             query_state = self._query_state_from_classified_spans(
                 classified_spans,
                 relation_plan=relation_plan,
@@ -143,6 +148,11 @@ class QueryGenerator:
                     "query_state": query_state.to_dict(),
                     "search_intent_plan": query_state.to_dict(),
                     "relation_plan": relation_plan.to_dict(),
+                    "relation_plan_validation": (
+                        relation_validation.to_dict()
+                        if relation_validation is not None
+                        else {"valid": True, "errors": [], "repairs": []}
+                    ),
                     "intent_planning": "disabled",
                 }
         except Exception as exc:

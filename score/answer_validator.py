@@ -80,6 +80,8 @@ class AnswerValidator:
         candidate = re.sub(r"^\*\*(.*?)\*\*$", r"\1", candidate, flags=re.DOTALL).strip()
         candidate = re.sub(r"^\*+\s*", "", candidate).strip()
         candidate = re.sub(r"\s*\*+$", "", candidate).strip()
+        candidate = re.sub(r"\*+(?=[\s.,;:!?]*$)", "", candidate).strip()
+        candidate = re.sub(r"`+(?=[\s.,;:!?]*$)", "", candidate).strip()
         candidate = re.sub(r"^FINAL[_ ]ANSWER\s*[:=]\s*", "", candidate, flags=re.IGNORECASE).strip()
         candidate = re.sub(r"^ANSWER\s*[:=]\s*", "", candidate, flags=re.IGNORECASE).strip()
         boolean_match = re.fullmatch(r"(yes|no)\.?", candidate, re.IGNORECASE)

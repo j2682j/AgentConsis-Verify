@@ -9,6 +9,7 @@ from typing import Any
 from utils.network_utils import normalize_text
 
 from .models import EvidenceFact
+from utils.canonical_answer_value import CanonicalAnswerValueParser
 from .completeness_contract import (
     AbsenceCheck,
     CompletenessContract,
@@ -26,6 +27,13 @@ class TaskFactStore:
         self._absence_checks: dict[str, AbsenceCheck] = {}
         self._set_difference_derivations: dict[str, SetDifferenceDerivation] = {}
         self._lock = RLock()
+        self._revision = 0
+        self._value_parser = CanonicalAnswerValueParser()
+
+    @property
+    def revision(self) -> int:
+        with self._lock:
+            return self._revision
 
     def add(self, fact: EvidenceFact) -> bool:
         if fact.grounding_status != "grounded":
@@ -40,11 +48,14 @@ class TaskFactStore:
                 self._facts[key] = merged
                 self._by_id[existing.fact_id] = merged
                 self._by_id[fact.fact_id] = merged
+                if merged != existing:
+                    self._revision += 1
                 return False
             if fact.fact_id in self._by_id:
                 return False
             self._facts[key] = fact
             self._by_id[fact.fact_id] = fact
+            self._revision += 1
             return True
 
     def extend(self, facts: Iterable[EvidenceFact]) -> int:
@@ -69,9 +80,20 @@ class TaskFactStore:
             if (
                 fact.grounding_status == "grounded"
                 and fact.qualifiers.get("answer_binding") == "direct"
+                and self._relation_grounding_is_verifiable(fact)
                 and self._negative_scope_is_verifiable(fact)
             )
         ]
+
+    @staticmethod
+    def _relation_grounding_is_verifiable(fact: EvidenceFact) -> bool:
+        if fact.extraction_method not in {
+            "grounded_answer_value_promotion",
+            "direct_contract_adapter",
+        }:
+            return True
+        origin_id = normalize_text(fact.qualifiers.get("origin_fact_id", ""))
+        return bool(origin_id and (fact.parent_fact_ids or origin_id))
 
     def add_completeness_contract(self, contract: CompletenessContract) -> bool:
         if not contract.contract_id or not contract.scope_id:
@@ -80,6 +102,7 @@ class TaskFactStore:
             if contract.contract_id in self._completeness_contracts:
                 return False
             self._completeness_contracts[contract.contract_id] = contract
+            self._revision += 1
             return True
 
     def add_absence_check(self, check: AbsenceCheck) -> bool:
@@ -89,6 +112,7 @@ class TaskFactStore:
             if check.check_id in self._absence_checks:
                 return False
             self._absence_checks[check.check_id] = check
+            self._revision += 1
             return True
 
     def add_set_difference_derivation(
@@ -101,6 +125,7 @@ class TaskFactStore:
             if derivation.derivation_id in self._set_difference_derivations:
                 return False
             self._set_difference_derivations[derivation.derivation_id] = derivation
+            self._revision += 1
             return True
 
     def completeness_contracts(self) -> list[CompletenessContract]:
@@ -155,6 +180,10 @@ class TaskFactStore:
                 store.add_set_difference_derivation(
                     SetDifferenceDerivation.from_dict(item)
                 )
+        store._revision = max(
+            store._revision,
+            int((value or {}).get("revision", 0) or 0),
+        )
         return store
 
     def to_dict(self) -> dict[str, object]:
@@ -164,6 +193,7 @@ class TaskFactStore:
         absence_checks = self.absence_checks()
         set_difference_derivations = self.set_difference_derivations()
         return {
+            "revision": self.revision,
             "facts": [fact.to_dict() for fact in facts],
             "fact_count": len(facts),
             "role_counts": {
@@ -269,16 +299,16 @@ class TaskFactStore:
             )
         return False
 
-    @staticmethod
-    def _key(fact: EvidenceFact) -> tuple[str, ...]:
+    @classmethod
+    def _key(cls, fact: EvidenceFact) -> tuple[str, ...]:
+        canonical_object = CanonicalAnswerValueParser().parse(fact.object).normalized_text
         return (
             normalize_text(fact.subject).casefold(),
             normalize_text(fact.relation).casefold(),
-            normalize_text(fact.object).casefold(),
+            canonical_object or normalize_text(fact.object).casefold(),
             fact.polarity,
             fact.role,
             normalize_text(fact.goal_id).casefold(),
-            normalize_text(fact.source_id).casefold(),
         )
 
     @classmethod

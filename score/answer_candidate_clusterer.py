@@ -11,6 +11,7 @@ from core.config import (
 )
 from parsers.reasoning_parser import prepare_reasoning_for_verifier
 from score.answer_validator import AnswerValidator
+from score.answer_requirement_gate import AnswerRequirementGate
 from utils.network_utils import normalize_for_exact
 
 
@@ -25,12 +26,20 @@ class AnswerCandidateClusterer:
      - AnswerCandidateClusterer: 提供候選分群與代表推理路徑重建功能。
     """
 
-    def __init__(self, answer_validator: AnswerValidator | None = None) -> None:
+    def __init__(
+        self,
+        answer_validator: AnswerValidator | None = None,
+        answer_requirement_gate: AnswerRequirementGate | None = None,
+    ) -> None:
         self.answer_validator = answer_validator or AnswerValidator()
+        self.answer_requirement_gate = answer_requirement_gate or AnswerRequirementGate()
 
     def cluster(
         self,
         stage1_results: list[AgentReasoningSummary],
+        *,
+        answer_requirement: str = "",
+        answer_role: str = "",
     ) -> list[AnswerCandidate]:
         """
         收集全部有效 run，並以保守答案正規化結果進行跨 Agent 分群。
@@ -52,13 +61,21 @@ class AnswerCandidateClusterer:
             eligible_counts[summary.agent_id] = len(valid_runs)
             per_agent_keys[summary.agent_id] = [
                 self.candidate_key(
-                    run.final_answer,
+                    self._canonical_answer(
+                        run.final_answer,
+                        answer_requirement=answer_requirement,
+                        answer_role=answer_role,
+                    ),
                     answer_type=self._answer_type(run),
                 )
                 for run in valid_runs
             ]
             for run in valid_runs:
-                answer = self.answer_validator.clean(run.final_answer)
+                answer = self._canonical_answer(
+                    run.final_answer,
+                    answer_requirement=answer_requirement,
+                    answer_role=answer_role,
+                )
                 answer_type = self._answer_type(run)
                 key = self.candidate_key(answer, answer_type=answer_type)
                 if not key:
@@ -108,6 +125,9 @@ class AnswerCandidateClusterer:
                                 else bool(saved_steps)
                             )
                         ),
+                        reasoning_parse_diagnostics=dict(
+                            getattr(run, "reasoning_parse_diagnostics", {}) or {}
+                        ),
                     )
                 )
 
@@ -142,6 +162,21 @@ class AnswerCandidateClusterer:
             candidate.representative_answer = representative.answer
         return list(groups.values())
 
+    def _canonical_answer(
+        self,
+        answer: str,
+        *,
+        answer_requirement: str,
+        answer_role: str,
+    ) -> str:
+        cleaned = self.answer_validator.clean(answer)
+        canonical, _ = self.answer_requirement_gate.canonicalize(
+            cleaned,
+            answer_requirement=answer_requirement,
+            answer_role=answer_role,
+        )
+        return self.answer_validator.clean(canonical)
+
     def candidate_key(self, answer: str, *, answer_type: str = "") -> str:
         """
         產生保守且可重現的候選答案分群鍵值。
@@ -160,6 +195,9 @@ class AnswerCandidateClusterer:
             return ""
         normalized = normalize_for_exact(cleaned).strip().lower()
         normalized = re.sub(r"\s+", " ", normalized)
+        # Sentence-final punctuation is presentation, not answer identity.
+        # Decimal points remain untouched because they are followed by digits.
+        normalized = re.sub(r"[.!?;:]+$", "", normalized).strip()
         if "," in normalized:
             parts = [
                 re.sub(r"\s+", " ", part.strip())

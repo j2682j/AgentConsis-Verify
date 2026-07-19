@@ -160,3 +160,34 @@ def test_unreliable_reasoning_keeps_versa_unavailable() -> None:
     assert path.versa_status == "unavailable_unreliable_reasoning"
     assert path.critical_step_floor is None
     assert scorer.calls == 0
+
+
+def test_missing_reasoning_has_specific_versa_skip_status() -> None:
+    summary = make_summary()
+    run = summary.runs[0]
+    run.reasoning = ""
+    run.reasoning_steps = []
+    run.reasoning_parse_quality = "unreliable"
+    run.reasoning_versa_eligible = False
+    run.reasoning_parse_diagnostics = {"warnings": ["no_reasoning_steps"]}
+    clusterer = AnswerCandidateClusterer()
+    scorer = FakeVersaScorer()
+    evaluator = CandidatePathEvaluator(
+        question="What is the result?",
+        clusterer=clusterer,
+        evidence_support_checker=EvidenceSupportChecker(),
+        stage2_runner=Stage2Runner(
+            question="What is the result?",
+            agents=[AgentConfig(agent_id="a1", model_name="test")],
+            versa_scorer=scorer,
+        ),
+    )
+
+    bundle = evaluator.evaluate_candidates(
+        candidates=clusterer.cluster([summary]),
+        stage1_results=[summary],
+        evidence=trusted_evidence(),
+        enable_versa=True,
+    )
+
+    assert bundle.path_evaluations[0].versa_status == "unavailable_no_reasoning_steps"

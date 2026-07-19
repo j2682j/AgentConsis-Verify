@@ -3,7 +3,6 @@ from __future__ import annotations
 import unittest
 
 from tools.system_routing_contract import SystemRoutingContract
-from tools.tool_planner.candidate_router import ToolCandidateRouter
 
 
 class SystemRoutingContractTests(unittest.TestCase):
@@ -42,24 +41,6 @@ class SystemRoutingContractTests(unittest.TestCase):
         self.assertTrue(decision.use_deterministic_solver)
         self.assertFalse(decision.use_search)
         self.assertFalse(decision.search_allowed)
-
-    def test_tool_candidates_respect_search_allowed_false(self):
-        routing = SystemRoutingContract().route(
-            question="According to the attached file, who is mentioned by name?",
-            stage="stage1_round0",
-            has_attachment=True,
-            attachment_type="pdf",
-        ).to_dict()
-
-        candidates = ToolCandidateRouter().route(
-            question="According to the attached file, who is mentioned by name?",
-            attachment={"file_path": "sample.pdf", "extension": ".pdf"},
-            routing=routing,
-        )
-
-        names = [candidate.tool_name for candidate in candidates]
-        self.assertIn("attachment_reader", names)
-        self.assertNotIn("search", names)
 
 
 if __name__ == "__main__":

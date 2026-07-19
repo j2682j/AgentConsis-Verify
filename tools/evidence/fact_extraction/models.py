@@ -53,6 +53,23 @@ class FactEvidenceRef:
 
 
 @dataclass(frozen=True)
+class StructuredRelationRecord:
+    """完整保存一列結構資料，避免語意選擇提前遺失列關係。"""
+
+    record_id: str
+    source_id: str
+    source_type: str
+    structure_id: str
+    row_id: str
+    fields: dict[str, str]
+    normalized_fields: dict[str, str]
+    provenance: list[FactEvidenceRef] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
 class EvidenceFact:
     """
     保存一筆可回溯至來源文字的語意事實。
@@ -170,6 +187,7 @@ __all__ = [
     "FactEvidenceRef",
     "SemanticExtractionResult",
     "SemanticSourceUnit",
+    "StructuredRelationRecord",
     "VALID_FACT_ROLES",
     "VALID_GROUNDING_STATUSES",
     "VALID_POLARITIES",

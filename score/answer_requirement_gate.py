@@ -4,6 +4,7 @@ from dataclasses import dataclass
 import re
 
 from utils.network_utils import normalize_text
+from utils.canonical_answer_value import CanonicalAnswerValueParser
 
 
 @dataclass
@@ -51,6 +52,7 @@ class AnswerRequirementGate:
         "duration": "number",
         "distance": "number",
         "volume": "number",
+        "measurement": "number",
         "person": "person",
         "human": "person",
         "name": "person",
@@ -67,12 +69,17 @@ class AnswerRequirementGate:
         "array": "list",
         "text": "text",
         "string": "text",
+        "short_text": "text",
+        "translated_text": "text",
     }
     _NUMBER_WORDS = {
         "zero", "one", "two", "three", "four", "five", "six", "seven",
         "eight", "nine", "ten", "eleven", "twelve", "thirteen", "fourteen",
         "fifteen", "sixteen", "seventeen", "eighteen", "nineteen", "twenty",
     }
+
+    def __init__(self) -> None:
+        self.value_parser = CanonicalAnswerValueParser()
 
     def evaluate(
         self,
@@ -125,6 +132,64 @@ class AnswerRequirementGate:
             declared_type=declared,
             observed_type=observed,
         )
+
+    def canonicalize(
+        self,
+        answer: str,
+        *,
+        answer_requirement: str = "",
+        answer_role: str = "",
+    ) -> tuple[str, list[str]]:
+        """Repair only an unambiguous output granularity requested by the task."""
+
+        text = normalize_text(answer)
+        requirement = normalize_text(answer_requirement)
+        role = normalize_text(answer_role).casefold()
+        repairs: list[str] = []
+        asks_for_year = bool(
+            re.search(r"\b(?:what|which)?\s*year\b", requirement.casefold())
+            or role == "year"
+        )
+        if asks_for_year:
+            years = re.findall(r"(?<!\d)(?:1[0-9]{3}|20[0-9]{2}|21[0-9]{2})(?!\d)", text)
+            if len(set(years)) == 1 and text != years[0]:
+                text = years[0]
+                repairs.append("reduce_date_to_requested_year")
+        expected = self._expected_type(answer_role, requirement)
+        if expected == "boolean":
+            match = re.match(r"^\s*(yes|no)\b", text, flags=re.IGNORECASE)
+            if match and text.casefold().rstrip(".") != match.group(1).casefold():
+                text = match.group(1).casefold()
+                repairs.append("reduce_sentence_to_boolean")
+        elif expected == "person":
+            person = self._unique_person_answer(text)
+            if person and person != text:
+                text = person
+                repairs.append("reduce_sentence_to_unique_person")
+        elif expected == "number":
+            parsed = self.value_parser.parse(text, answer_requirement=requirement)
+            if parsed.value_type in {"number", "measurement"} and parsed.normalized_text:
+                canonical_text = parsed.normalized_text
+                if parsed.unit_inherited_from_question and parsed.canonical_unit:
+                    canonical_text = canonical_text.removesuffix(
+                        f" {parsed.canonical_unit}"
+                    )
+                if canonical_text != normalize_text(text):
+                    text = canonical_text
+                    repairs.append("canonicalize_numeric_unit")
+        return text, repairs
+
+    @staticmethod
+    def _unique_person_answer(text: str) -> str:
+        compact = normalize_text(text).strip(" \"'`*.,;:")
+        if not compact or len(compact.split()) <= 1:
+            return compact
+        lead = re.match(
+            r"^([A-Z][A-Za-z'\-]*(?:\s+[A-Z][A-Za-z'\-]*){0,3})"
+            r"\s+(?:did|does|do|was|were|is|has|had|gave|gives|didn't|doesn't)\b",
+            compact,
+        )
+        return lead.group(1).strip() if lead else ""
 
     def _expected_type(self, answer_role: str, requirement: str) -> str:
         role = self._normalize_type(answer_role)

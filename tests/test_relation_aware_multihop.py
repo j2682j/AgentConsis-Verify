@@ -264,6 +264,11 @@ class RelationAwareControlTests(unittest.TestCase):
                         {
                             "goal_id": "G2",
                             "answer_span": "728,000 square feet",
+                            "fact_id": "F-area",
+                            "subject": "Dimond Center",
+                            "relation": "floor area",
+                            "object": "728,000 square feet",
+                            "grounding_status": "grounded",
                             "context": "The Dimond Center has a floor area of 728,000 square feet.",
                             "document_id": "D2",
                         }

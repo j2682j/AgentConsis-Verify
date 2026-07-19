@@ -139,6 +139,38 @@ class AdaptiveToolTurnTests(unittest.TestCase):
             reply.tool_results[-1]["tool_turn_policy"]["allowed_budget"],
             4,
         )
+        self.assertTrue(reply.reasoning_versa_eligible)
+        self.assertEqual(reply.reasoning_parse_quality, "valid")
+        self.assertTrue(reply.reasoning_steps)
+
+    def test_trajectory_reasoning_is_used_when_final_turn_has_only_answer(self):
+        manager = ScriptedToolManager([success_result(1)])
+        agent = ScriptedAgent(
+            [
+                tool_request(1),
+                {"type": "final_answer", "final_answer": "done"},
+            ]
+        )
+        runner = Stage1ToolUseRunner(
+            tool_manager=manager,
+            max_tool_turns=2,
+            hard_max_tool_turns=4,
+        )
+
+        reply, _, _ = runner.run(
+            config=AgentConfig(agent_id="a1", model_name="fake"),
+            agent=agent,
+            question="Find information using search.",
+            evidence_packets=[],
+            run_index=1,
+        )
+
+        self.assertEqual(reply.final_answer, "done")
+        self.assertTrue(reply.reasoning_versa_eligible)
+        self.assertEqual(
+            reply.reasoning_steps,
+            [(1, "gather new evidence")],
+        )
 
     def test_trajectory_stops_after_two_no_progress_results(self):
         manager = ScriptedToolManager([no_progress_result(), no_progress_result()])

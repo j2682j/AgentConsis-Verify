@@ -195,8 +195,7 @@ def run_sample(
     enable_evidence_prepare: bool,
     enable_compact_search_evidence: bool,
     enable_evidence_driven_search: bool,
-    enable_deterministic_handler_router: bool,
-    enable_tool_planner: bool,
+    bypass_search_labeler: bool,
     max_parallel_next_hop_queries: int,
     max_stage1_tool_turns: int,
     stage1_prepared_search_budget: int,
@@ -224,8 +223,7 @@ def run_sample(
         enable_evidence_prepare=enable_evidence_prepare,
         enable_compact_search_evidence=enable_compact_search_evidence,
         enable_evidence_driven_search=enable_evidence_driven_search,
-        enable_deterministic_handler_router=enable_deterministic_handler_router,
-        enable_tool_planner=enable_tool_planner,
+        bypass_search_labeler=bypass_search_labeler,
         max_parallel_next_hop_queries=max_parallel_next_hop_queries,
         max_stage1_tool_turns=max_stage1_tool_turns,
         stage1_prepared_search_budget=stage1_prepared_search_budget,
@@ -948,8 +946,6 @@ def run_gaia_evaluation(args: argparse.Namespace) -> dict[str, Any]:
     # print(f"[INFO] compact_search_evidence={args.compact_search_evidence}")
     # print("[INFO] query_planner=signal")
     # print(f"[INFO] enable_evidence_driven_search={args.enable_evidence_driven_search}")
-    # print(f"[INFO] enable_deterministic_handler_router={args.enable_deterministic_handler_router}")
-    # print(f"[INFO] enable_tool_planner={args.enable_tool_planner}")
     # print(f"[INFO] max_parallel_next_hop_queries={args.max_parallel_next_hop_queries}")
     # print(f"[INFO] max_stage1_tool_turns={args.max_stage1_tool_turns}")
     # print(f"[INFO] enable_stage1_early_stop={args.enable_stage1_early_stop}")
@@ -992,8 +988,7 @@ def run_gaia_evaluation(args: argparse.Namespace) -> dict[str, Any]:
             enable_evidence_prepare=args.evidence_prepare,
             enable_compact_search_evidence=args.compact_search_evidence,
             enable_evidence_driven_search=args.enable_evidence_driven_search,
-            enable_deterministic_handler_router=args.enable_deterministic_handler_router,
-            enable_tool_planner=args.enable_tool_planner,
+            bypass_search_labeler=args.bypass_search_labeler,
             max_parallel_next_hop_queries=args.max_parallel_next_hop_queries,
             max_stage1_tool_turns=args.max_stage1_tool_turns,
             stage1_prepared_search_budget=args.stage1_prepared_search_budget,
@@ -1118,8 +1113,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--evidence-prepare", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--compact-search-evidence", action="store_true")
     parser.add_argument("--enable-evidence-driven-search", action=argparse.BooleanOptionalAction, default=True)
-    parser.add_argument("--enable-deterministic-handler-router", action="store_true")
-    parser.add_argument("--enable-tool-planner", action="store_true")
+    parser.add_argument(
+        "--bypass-search-labeler",
+        action="store_true",
+        help=(
+            "Skip EfficientRAG Labeler and build sentence-level evidence units "
+            "for SpanRoleClassifier directly."
+        ),
+    )
     parser.add_argument(
         "--max-parallel-next-hop-queries",
         type=int,

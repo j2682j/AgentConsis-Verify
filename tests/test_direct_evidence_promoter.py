@@ -92,6 +92,29 @@ def test_rejects_local_value_for_global_maximum() -> None:
     assert any(item.failed_gate == "scope_completion" for item in result.diagnostics)
 
 
+def test_question_preserves_count_type_when_answer_requirement_is_truncated() -> None:
+    context = (
+        "Record Type: article Title: 10 Questions We Need Answered "
+        "Source: Highest Number Of Bird Species On Camera Simultaneously"
+    )
+    result = DirectEvidencePromoter().promote(
+        model_role="ANSWER_SUPPORT",
+        candidate_span=context,
+        context=context,
+        question="What is the highest number of bird species on camera simultaneously?",
+        answer_requirement="camera simultaneously",
+        answer_target="camera simultaneously highest number",
+        source_id="D4",
+        source_title="Unrelated article",
+        document_id="D4",
+        goal_id="G1",
+        semantic_facts=[],
+    )
+
+    assert not result.promoted_values
+    assert any(item.failed_gate == "context_binding" for item in result.diagnostics)
+
+
 def test_negative_fact_never_uses_positive_promotion_path() -> None:
     context = "The article does not mention plasmons."
     result = DirectEvidencePromoter().promote(

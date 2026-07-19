@@ -268,6 +268,7 @@ def case_stage1_intermediate_value_supports_reasoning() -> None:
     )
 
     assert result.status == "tool_intermediate_supported"
+    assert result.verification_status == "unknown"
     assert result.step_results[0].status == "supported"
     assert result.step_results[1].status == "unsupported"
 
@@ -292,6 +293,7 @@ def case_two_source_calculation_supports_derived_answer() -> None:
     )
 
     assert result.status == "derived_evidence_supported"
+    assert result.verification_status == "supported"
     assert result.step_results[2].status == "supported"
     assert result.step_results[2].reason == "evidence_grounded_calculation_verified"
     derivation = result.metadata["numerical_derivation"]
@@ -321,6 +323,7 @@ def case_wrong_two_source_calculation_is_contradicted() -> None:
     )
 
     assert result.status == "contradicted"
+    assert result.verification_status == "contradicted"
     assert result.step_results[2].status == "contradicted"
     assert result.step_results[2].reason == "calculation_result_mismatch"
 
@@ -371,6 +374,7 @@ def case_failed_attachment_allows_model_only_result_at_low_priority() -> None:
     )
 
     assert result.status == "tool_failed_model_only"
+    assert result.verification_status == "unknown"
     assert result.priority == 1
     assert result.step_results[0].status == "tool_failed"
 

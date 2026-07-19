@@ -4,6 +4,9 @@ from dataclasses import asdict, dataclass, field
 from typing import Any, Iterable
 
 from utils.network_utils import normalize_text
+from tools.evidence.fact_extraction.fact_goal_binding_validator import (
+    FactGoalBindingValidator,
+)
 
 from ..query.relation_plan import RelationPlan
 
@@ -92,6 +95,15 @@ class EvidenceRoleContracts:
 
 class EvidenceRoleContractBuilder:
     """Convert grounded classifier roles into non-overlapping authority contracts."""
+
+    def __init__(
+        self,
+        *,
+        fact_goal_binding_validator: FactGoalBindingValidator | None = None,
+    ) -> None:
+        self.fact_goal_binding_validator = (
+            fact_goal_binding_validator or FactGoalBindingValidator()
+        )
 
     def build(
         self,
@@ -303,6 +315,35 @@ class EvidenceRoleContractBuilder:
                         )
                     )
                     continue
+                matching_goal = next(
+                    (goal for goal in plan.goals if goal.goal_id == goal_id),
+                    None,
+                )
+                if matching_goal is not None:
+                    binding = self.fact_goal_binding_validator.validate(
+                        fact=semantic_fact,
+                        goal=matching_goal,
+                        effective_subjects=self.fact_goal_binding_validator.effective_subjects(
+                            plan,
+                            matching_goal,
+                        ),
+                        answer_role=(
+                            matching_goal.target
+                            if matching_goal == plan.goals[-1]
+                            else ""
+                        ),
+                    )
+                    if not binding.bound:
+                        unsupported.append(
+                            RejectedEvidenceSpan(
+                                original,
+                                role,
+                                document_id,
+                                f"fact_{binding.status}",
+                                goal_id,
+                            )
+                        )
+                        continue
                 direct.append(
                     DirectEvidenceContract(
                         goal_id=goal_id,

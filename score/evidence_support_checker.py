@@ -27,6 +27,7 @@ from utils.network_utils import normalize_for_exact
 from tools.evidence.fact_extraction import (
     FactDerivationEngine,
     EvidenceFact,
+    QuestionRuleFactExtractor,
     TaskFactCollector,
     TaskFactStore,
 )
@@ -54,7 +55,6 @@ class EvidenceSupportChecker:
         "tool_final_supported": 5,
     }
     _IGNORED_TOOLS = {
-        "tool_planner",
         "attachment_strategy_planner",
         "attachment_strategy_reviewer",
         "attachment_fact_extractor",
@@ -74,6 +74,7 @@ class EvidenceSupportChecker:
         candidate_fact_verifier: CandidateFactVerifier | None = None,
         fact_derivation_engine: FactDerivationEngine | None = None,
         fact_collector: TaskFactCollector | None = None,
+        question_rule_extractor: QuestionRuleFactExtractor | None = None,
     ) -> None:
         self.answer_validator = answer_validator or AnswerValidator()
         self.numerical_derivation_verifier = (
@@ -84,6 +85,7 @@ class EvidenceSupportChecker:
         )
         self.fact_derivation_engine = fact_derivation_engine or FactDerivationEngine()
         self.fact_collector = fact_collector or TaskFactCollector()
+        self.question_rule_extractor = question_rule_extractor or QuestionRuleFactExtractor()
 
     def check_agent(
         self,
@@ -108,11 +110,20 @@ class EvidenceSupportChecker:
         shared_fact_store = self.collect_fact_store(
             target=target,
             evidence=evidence or {},
+            question=question,
         )
         answer_requirement = str((evidence or {}).get("answer_requirement") or question).strip()
+        required_relation = str((evidence or {}).get("required_relation") or "").strip()
+        required_relation_goal_id = str(
+            (evidence or {}).get("required_relation_goal_id") or ""
+        ).strip()
+        answer_role = str((evidence or {}).get("answer_role") or "").strip()
         fact_derivation = self.fact_derivation_engine.derive(
             shared_fact_store,
             answer_requirement=answer_requirement,
+            required_relation=required_relation,
+            required_relation_goal_id=required_relation_goal_id,
+            answer_role=answer_role,
         )
         if evidence is not None:
             evidence["fact_store"] = shared_fact_store.to_dict()
@@ -162,6 +173,9 @@ class EvidenceSupportChecker:
                 candidate_answer=final_answer,
                 fact_store=fact_store,
                 answer_requirement=answer_requirement,
+                required_relation=required_relation,
+                required_relation_goal_id=required_relation_goal_id,
+                answer_role=answer_role,
             )
         numerical_by_step = {
             item.step_index: item for item in numerical_derivation.step_results
@@ -193,12 +207,23 @@ class EvidenceSupportChecker:
             fact_verification=fact_verification,
             fact_store=fact_store,
         )
+        verification_status = self._verification_status(status)
+        unknown_reason = (
+            fact_verification.reason
+            if verification_status == "unknown"
+            else ""
+        )
         failures = [record for record in records if record.output_type == "failed"]
         return AgentEvidenceSupportSummary(
             agent_id=target.agent_id,
             status=status,
             priority=self.SUPPORT_PRIORITY[status],
             support_level=support_level_for_status(status).value,
+            verification_status=verification_status,
+            supporting_fact_ids=list(fact_verification.supporting_fact_ids),
+            contradicting_fact_ids=list(fact_verification.contradicting_fact_ids),
+            derivation_chain_ids=list(fact_verification.derivation_chain_ids),
+            unknown_reason=unknown_reason,
             step_results=step_results,
             evidence_records=records,
             matched_final_values=matched_final_values,
@@ -215,10 +240,26 @@ class EvidenceSupportChecker:
                 ),
                 "numerical_derivation": numerical_derivation.to_dict(),
                 "candidate_fact_verification": fact_verification.to_dict(),
+                "candidate_verification_status": verification_status,
+                "candidate_unknown_reason": unknown_reason,
                 "fact_derivation": fact_derivation.to_dict(),
                 "fact_store": fact_store.to_dict(),
             },
         )
+
+    @staticmethod
+    def _verification_status(status: str) -> str:
+        normalized = str(status or "").strip().lower()
+        if normalized == "contradicted":
+            return "contradicted"
+        if normalized in {
+            "search_evidence_supported",
+            "attachment_evidence_supported",
+            "derived_evidence_supported",
+            "tool_final_supported",
+        }:
+            return "supported"
+        return "unknown"
 
     def prepare_context(
         self,
@@ -295,12 +336,14 @@ class EvidenceSupportChecker:
         *,
         target: AgentReasoningSummary,
         evidence: dict[str, Any],
+        question: str = "",
     ) -> TaskFactStore:
         """彙整 Evidence Prepare 與 Stage1 Tool Use 產生的任務事實。"""
 
         store = evidence.get("_fact_store")
         if not isinstance(store, TaskFactStore):
             store = TaskFactStore.from_dict(evidence.get("fact_store"))
+        store.extend(self.question_rule_extractor.extract(question=question))
         self.fact_collector.collect_many(
             store,
             list(evidence.get("tool_usage") or []),
@@ -680,6 +723,20 @@ class EvidenceSupportChecker:
             metadata={
                 "handler_name": str(item.get("handler_name") or raw.get("handler_name") or ""),
                 "cache_hit": bool(item.get("cache_hit")),
+                "trust_status": str(trust.get("status") or ""),
+                "trust_reasons": list(trust.get("reasons") or []),
+                "handler_role": str(
+                    trust.get("semantic_role")
+                    or raw.get("handler_role")
+                    or raw.get("semantic_role")
+                    or ""
+                ),
+                "operation": str(
+                    raw.get("operation")
+                    or (raw.get("structured_result") or {}).get("operation", "")
+                    if isinstance(raw.get("structured_result"), dict)
+                    else raw.get("operation") or ""
+                ),
             },
         )
 
@@ -1102,8 +1159,8 @@ class EvidenceSupportChecker:
         return bool(value_key and text_key and self._contains_value(text_key, value_key))
 
     def _contains_value(self, text_key: str, value_key: str) -> bool:
-        if len(value_key) == 1 and value_key.isalpha():
-            return bool(re.search(rf"\b{re.escape(value_key)}\b", text_key))
+        if re.fullmatch(r"[a-z]+", value_key):
+            return bool(re.search(rf"(?<![a-z0-9]){re.escape(value_key)}(?![a-z0-9])", text_key))
         if re.fullmatch(r"[-+]?\d+(?:\.\d+)?", value_key):
             return bool(
                 re.search(
@@ -1206,6 +1263,11 @@ class EvidenceSupportChecker:
             "status": summary.status,
             "priority": summary.priority,
             "support_level": summary.support_level,
+            "verification_status": summary.verification_status,
+            "supporting_fact_ids": list(summary.supporting_fact_ids),
+            "contradicting_fact_ids": list(summary.contradicting_fact_ids),
+            "derivation_chain_ids": list(summary.derivation_chain_ids),
+            "unknown_reason": summary.unknown_reason,
             "step_results": [asdict(item) for item in summary.step_results],
             "evidence_records": [
                 {

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 import hashlib
 import re
 from typing import Iterable
@@ -28,6 +28,8 @@ class GroundedAnswerValue:
     value_type: str
     promotion_reason: str
     scope_status: str
+    origin_subject: str = ""
+    origin_relation: str = ""
 
     def to_dict(self) -> dict[str, str]:
         return asdict(self)
@@ -92,9 +94,8 @@ class AnswerValueCanonicalizer:
     ) -> list[_CanonicalValue]:
         source = normalize_text(context)
         raw_values: list[tuple[str, str, str]] = []
-        span = normalize_text(candidate_span).strip(" \"'`.,;:")
-        if span:
-            raw_values.append((span, "", "positive"))
+        # Prefer values already attached to grounded facts. Otherwise an equal
+        # free span would win deduplication and silently lose its provenance.
         for fact in facts:
             raw_values.append((fact.object, fact.fact_id, fact.polarity))
             raw_values.extend(
@@ -105,6 +106,9 @@ class AnswerValueCanonicalizer:
                 (value, fact.fact_id, fact.polarity)
                 for value in fact.evidence_spans
             )
+        span = normalize_text(candidate_span).strip(" \"'`.,;:")
+        if span:
+            raw_values.append((span, "", "positive"))
 
         output: list[_CanonicalValue] = []
         seen: set[str] = set()
@@ -189,6 +193,10 @@ class DirectEvidencePromoter:
         r"not mention|not contain|lacks?)\b",
         re.IGNORECASE,
     )
+    _STRUCTURED_METADATA_RE = re.compile(
+        r"^\s*Record\s+Type\s*:",
+        re.IGNORECASE,
+    )
 
     def __init__(
         self,
@@ -217,7 +225,14 @@ class DirectEvidencePromoter:
         result = DirectEvidencePromotionResult()
         facts = list(semantic_facts)
         requirement = normalize_text(answer_requirement) or normalize_text(question)
-        value_type = self._value_type(requirement)
+        requirement_context = normalize_text(
+            " ".join(
+                part
+                for part in [question, answer_requirement, answer_target]
+                if normalize_text(part)
+            )
+        )
+        value_type = self._value_type(requirement_context)
         candidates = self.canonicalizer.candidates(
             candidate_span=candidate_span,
             context=context,
@@ -226,7 +241,7 @@ class DirectEvidencePromoter:
         )
         if normalize_text(model_role).upper() != "ANSWER_SUPPORT":
             return self._reject_all(result, candidates, "role_authorization", "model_role_not_answer_support")
-        if self._NEGATIVE_REQUIREMENT_RE.search(requirement) or (
+        if self._NEGATIVE_REQUIREMENT_RE.search(requirement_context) or (
             facts and all(fact.polarity == "negative" for fact in facts)
         ):
             return self._reject_all(
@@ -242,7 +257,7 @@ class DirectEvidencePromoter:
         compatible: list[_CanonicalValue] = []
         for item in positive:
             ok, reason = self.answer_bound_validator.value_compatible(
-                requirement=requirement,
+                requirement=requirement_context,
                 value=item.value,
             )
             if not ok:
@@ -261,6 +276,45 @@ class DirectEvidencePromoter:
             return self._reject_all(result, compatible, "conflict", "conflicting_answer_values")
 
         item = compatible[0]
+        if (
+            value_type in {"count", "measurement"}
+            and not item.origin_fact_id
+            and self._STRUCTURED_METADATA_RE.search(candidate_span)
+        ):
+            result.diagnostics.append(
+                self._rejection(
+                    item,
+                    "context_binding",
+                    "structured_metadata_value_requires_extracted_fact",
+                )
+            )
+            return result
+        origin_fact = next(
+            (fact for fact in facts if fact.fact_id and fact.fact_id == item.origin_fact_id),
+            None,
+        )
+        if origin_fact is None:
+            origin_fact = self._explicit_local_origin(
+                context=context,
+                value=item.value,
+                value_type=value_type,
+                source_id=source_id,
+                source_title=source_title,
+                document_id=document_id,
+                goal_id=goal_id,
+            )
+            if origin_fact is None:
+                result.diagnostics.append(
+                    self._rejection(
+                        item,
+                        "relation_grounding",
+                        "direct_answer_requires_grounded_origin_fact",
+                    )
+                )
+                return result
+            item = replace(item, origin_fact_id=origin_fact.fact_id)
+            facts.append(origin_fact)
+            result.promoted_facts.append(origin_fact)
         probe = EvidenceFact(
             fact_id=item.origin_fact_id,
             subject=normalize_text(answer_target) or requirement,
@@ -281,7 +335,7 @@ class DirectEvidencePromoter:
             result.diagnostics.append(self._rejection(item, "context_binding", "answer_target_not_grounded"))
             return result
 
-        scope_status = self._scope_status(requirement, context, facts)
+        scope_status = self._scope_status(requirement_context, context, facts)
         if not scope_status:
             result.diagnostics.append(self._rejection(item, "scope_completion", "aggregate_scope_not_complete"))
             return result
@@ -300,6 +354,8 @@ class DirectEvidencePromoter:
             value_type=value_type,
             promotion_reason="ordered_gates_passed",
             scope_status=scope_status,
+            origin_subject=normalize_text(origin_fact.subject),
+            origin_relation=normalize_text(origin_fact.relation),
         )
         fact = self._promoted_fact(grounded)
         result.promoted_values.append(grounded)
@@ -308,6 +364,68 @@ class DirectEvidencePromoter:
             PromotionDiagnostic(item.value, item.origin_fact_id, True, "", "promoted")
         )
         return result
+
+    def _explicit_local_origin(
+        self,
+        *,
+        context: str,
+        value: str,
+        value_type: str,
+        source_id: str,
+        source_title: str,
+        document_id: str,
+        goal_id: str,
+    ) -> EvidenceFact | None:
+        if value_type not in {"measurement", "count"}:
+            return None
+        sentence = next(
+            (
+                normalize_text(part)
+                for part in re.split(r"(?<=[.!?])\s+", normalize_text(context))
+                if value.casefold() in normalize_text(part).casefold()
+            ),
+            "",
+        )
+        if not sentence:
+            return None
+        match = re.search(
+            rf"(?:therefore,?\s*)?(?:the\s+)?([A-Za-z][A-Za-z0-9'\- ]{{0,60}}?)\s+"
+            rf"(?:has|had|is|was)\s+(?:a\s+)?(capacity|volume|count|number|total)\s+"
+            rf"(?:of|is|=)\s*{re.escape(value)}\b",
+            sentence,
+            flags=re.IGNORECASE,
+        )
+        if not match:
+            return None
+        subject = normalize_text(match.group(1)).strip(" ,.;:")
+        relation = "has_" + normalize_text(match.group(2)).casefold().replace(" ", "_")
+        if not subject or len(subject.split()) > 8:
+            return None
+        raw = "\x1f".join([source_id, document_id, subject, relation, value])
+        return EvidenceFact(
+            fact_id="local-relation-" + hashlib.sha1(raw.encode("utf-8")).hexdigest()[:14],
+            subject=subject,
+            relation=relation,
+            object=value,
+            qualifiers={"relation_grounding": "explicit_local_sentence"},
+            role="BRIDGE",
+            goal_id=goal_id,
+            evidence_spans=[sentence],
+            evidence_refs=[
+                FactEvidenceRef(
+                    source_id=source_id,
+                    unit_id=document_id or source_id,
+                    document_id=document_id,
+                    text=sentence,
+                )
+            ],
+            context=sentence,
+            source_id=source_id,
+            source_type="web",
+            source_title=source_title,
+            grounding_status="grounded",
+            extraction_method="explicit_local_relation",
+        )
 
     def _value_type(self, requirement: str) -> str:
         if self._MEASUREMENT_RE.search(requirement):
@@ -355,8 +473,8 @@ class DirectEvidencePromoter:
         }
         return EvidenceFact(
             fact_id=fact_id,
-            subject=value.answer_target or value.answer_requirement,
-            relation=value.answer_requirement,
+            subject=value.origin_subject,
+            relation=value.origin_relation,
             object=value.value,
             qualifiers=qualifiers,
             polarity="positive",

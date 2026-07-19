@@ -11,6 +11,7 @@ from .evidence_support_level import (
     support_level_rank,
 )
 from .candidate_fact_verifier import CandidateFactVerification, CandidateFactVerifier
+from .evidence_answer_resolver import EvidenceAnswerResolution, EvidenceAnswerResolver
 from .final_winner_selector import FinalWinnerSelection, FinalWinnerSelector
 from .gate_result import CandidateGateDecision, GateResult
 from .numerical_derivation_verifier import (
@@ -36,6 +37,8 @@ __all__ = [
     "support_level_rank",
     "CandidateFactVerification",
     "CandidateFactVerifier",
+    "EvidenceAnswerResolution",
+    "EvidenceAnswerResolver",
     "FinalWinnerSelection",
     "FinalWinnerSelector",
     "CandidateGateDecision",

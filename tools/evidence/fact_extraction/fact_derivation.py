@@ -32,6 +32,9 @@ class FactDerivationEngine:
         fact_store: TaskFactStore,
         *,
         answer_requirement: str = "",
+        required_relation: str = "",
+        required_relation_goal_id: str = "",
+        answer_role: str = "",
     ) -> FactDerivationResult:
         derivations: list[FactDerivation] = []
         added_ids: list[str] = []
@@ -85,6 +88,11 @@ class FactDerivationEngine:
             added_fact_ids=added_ids,
             diagnostics={
                 "answer_requirement": normalize_text(answer_requirement),
+                "required_relation": normalize_text(required_relation),
+                "required_relation_goal_id": normalize_text(
+                    required_relation_goal_id
+                ),
+                "answer_role": normalize_text(answer_role),
                 "base_fact_count": len(base_facts),
                 "derived_fact_count": len(added_ids),
                 "max_depth": self.max_depth,

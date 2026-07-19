@@ -192,6 +192,11 @@ class GoalCompletionEvaluatorTests(unittest.TestCase):
                         {
                             "goal_id": "G1",
                             "answer_span": "728,000 square feet",
+                            "fact_id": "F-area",
+                            "subject": "Dimond Center",
+                            "relation": "floor area",
+                            "object": "728,000 square feet",
+                            "grounding_status": "grounded",
                             "document_id": "D1",
                         }
                     ]
@@ -242,11 +247,21 @@ class GoalCompletionEvaluatorTests(unittest.TestCase):
                 {
                     "goal_id": "G1",
                     "answer_span": "Dimond Center",
+                    "fact_id": "F-location",
+                    "subject": "KGOT",
+                    "relation": "studio location",
+                    "object": "Dimond Center",
+                    "grounding_status": "grounded",
                     "document_id": "D1",
                 },
                 {
                     "goal_id": "G2",
                     "answer_span": "728,000 square feet",
+                    "fact_id": "F-area",
+                    "subject": "Dimond Center",
+                    "relation": "floor area",
+                    "object": "728,000 square feet",
+                    "grounding_status": "grounded",
                     "document_id": "D2",
                 },
             ],
@@ -257,6 +272,11 @@ class GoalCompletionEvaluatorTests(unittest.TestCase):
             {
                 "goal_id": "G2",
                 "answer_span": "728,000 square feet",
+                "fact_id": "F-area",
+                "subject": "Dimond Center",
+                "relation": "floor area",
+                "object": "728,000 square feet",
+                "grounding_status": "grounded",
                 "document_id": "D2",
             }
         ])

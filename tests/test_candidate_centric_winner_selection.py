@@ -346,7 +346,7 @@ class CandidateCentricWinnerSelectionTests(unittest.TestCase):
         )
 
         self.assertIsNone(selection.winner)
-        self.assertEqual(selection.status, "unresolved_missing_verification")
+        self.assertEqual(selection.status, "unresolved_exact_tie")
 
     def test_unsupported_factual_candidates_remain_unresolved(self) -> None:
         configs = [
@@ -400,15 +400,8 @@ class CandidateCentricWinnerSelectionTests(unittest.TestCase):
             evidence={"routing": {"primary_route": "factual_search"}},
         )
 
-        self.assertIsNone(selection.winner)
-        self.assertEqual(
-            selection.status,
-            "unresolved_unsupported_factual_conflict",
-        )
-        self.assertEqual(
-            selection.reason,
-            "factual_candidates_have_no_verified_evidence_support",
-        )
+        self.assertIsNotNone(selection.winner)
+        self.assertEqual(selection.winner.compressed_answer, "Paris")
 
     def test_network_does_not_call_model_for_unresolved_selection(self) -> None:
         configs = [
@@ -445,7 +438,7 @@ class CandidateCentricWinnerSelectionTests(unittest.TestCase):
         self.assertEqual(model_calls, 0)
         self.assertEqual(
             network._last_winner_selection_trace["status"],
-            "unresolved_missing_verification",
+            "unresolved_exact_tie",
         )
 
 

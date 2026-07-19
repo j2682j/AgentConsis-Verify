@@ -10,7 +10,6 @@ from core.evidence_runner import EvidenceRunner
 from tools.attachment_reader import AttachmentEvidenceBuilder
 from tools.attachment_strategy import AttachmentStrategy, AttachmentStrategyExecutor
 from tools.deterministic_handlers import DeterministicHandlerRouter
-from tools.tool_planner import ToolPlan, ToolPlanResult
 
 
 class _RecordingPlanner:
@@ -164,35 +163,6 @@ class AttachmentStrategyFlowTests(unittest.TestCase):
                 question="What is the named value?",
                 attachment={"file_path": str(path), "extension": ".jsonld"},
                 attachment_strategy_executor=executor,
-            ).run()
-
-        self.assertIn("Aurora", evidence["attachment_result"])
-        self.assertEqual(
-            evidence["attachment_strategy"]["strategy_status"],
-            "invalid_output",
-        )
-
-    def test_tool_plan_path_preserves_attachment_when_strategy_is_invalid(self):
-        class _EmptyToolPlanningRunner:
-            def plan(self, **kwargs):
-                plan = ToolPlan(requires_tools=False, planner_source="test")
-                return ToolPlanResult(
-                    candidate_tools=[],
-                    raw_planner_reply="",
-                    parsed_plan=plan,
-                    validated_plan=plan,
-                )
-
-        with tempfile.TemporaryDirectory() as tmp:
-            path = Path(tmp) / "facts.jsonld"
-            path.write_text('{"name":"Aurora","value":17}', encoding="utf-8")
-            executor = AttachmentStrategyExecutor(planner=_InvalidPlanner())
-            evidence = EvidenceRunner(
-                question="What is the named value?",
-                attachment={"file_path": str(path), "extension": ".jsonld"},
-                attachment_strategy_executor=executor,
-                tool_planning_runner=_EmptyToolPlanningRunner(),
-                enable_tool_planner=True,
             ).run()
 
         self.assertIn("Aurora", evidence["attachment_result"])

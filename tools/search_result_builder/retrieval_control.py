@@ -30,6 +30,7 @@ from .evidence import (
     CandidateSpanQualityGate,
     EvidenceUtilityGate,
     EvidenceRoleContractBuilder,
+    PassageEvidenceUnitBuilder,
     RoleAwareSpanFinalizer,
     SpanRoleClassifier,
 )
@@ -278,6 +279,8 @@ class IterativeRetrievalControl:
         cross_context_assembler: CrossContextAssembler | None = None,
         cross_context_fact_extractor: CrossContextFactExtractor | None = None,
         labeler_input_builder: LabelerInputBuilder | None = None,
+        passage_evidence_unit_builder: PassageEvidenceUnitBuilder | None = None,
+        bypass_labeler: bool = False,
         intent_state_tracker: SearchIntentStateTracker | None = None,
         query_guard: NextHopQueryGuard | None = None,
         max_iter: int = 4,
@@ -294,7 +297,12 @@ class IterativeRetrievalControl:
         max_relation_branches: int = 2,
     ) -> None:
         self.retriever = retriever
-        self.labeler = labeler or EfficientRAGLabelerAdapter()
+        self.bypass_labeler = bool(bypass_labeler)
+        self.labeler = (
+            labeler
+            if labeler is not None
+            else (None if self.bypass_labeler else EfficientRAGLabelerAdapter())
+        )
         self.rag_filter = rag_filter or EfficientRAGFilterAdapter()
         self.next_hop_composer = next_hop_composer or NextHopQueryComposer()
         self.next_hop_evidence_selector = (
@@ -318,6 +326,9 @@ class IterativeRetrievalControl:
             cross_context_fact_extractor or CrossContextFactExtractor()
         )
         self.labeler_input_builder = labeler_input_builder or LabelerInputBuilder()
+        self.passage_evidence_unit_builder = (
+            passage_evidence_unit_builder or PassageEvidenceUnitBuilder()
+        )
         self.intent_state_tracker = intent_state_tracker or SearchIntentStateTracker()
         self.query_guard = query_guard or NextHopQueryGuard()
         self.passage_selector = passage_selector or PassageCandidateSelector()
@@ -498,31 +509,41 @@ class IterativeRetrievalControl:
                 stop_reason = round_trace.stop_reason
                 break
 
-            labeler_batch = self.labeler_input_builder.build_batch(
-                question=initial_query,
-                current_query=current_query,
-                documents=label_documents,
-                intent_plan=current_intent_plan,
-            )
-            label_results = self.labeler.label_texts(
-                question=labeler_batch.question_context,
-                texts=labeler_batch.texts,
-            )
-            for trace_index, result, prepared in zip(
-                label_trace_indexes,
-                label_results,
-                labeler_batch.documents,
-            ):
-                result.metadata = {
-                    **result.metadata,
-                    **prepared.diagnostics,
-                }
-                self._apply_label(
-                    round_trace.documents[trace_index],
-                    result,
+            if self.bypass_labeler:
+                self._apply_labeler_bypass(
+                    round_trace=round_trace,
                     question=initial_query,
+                    documents=label_documents,
+                    trace_indexes=label_trace_indexes,
+                )
+            else:
+                labeler_batch = self.labeler_input_builder.build_batch(
+                    question=initial_query,
+                    current_query=current_query,
+                    documents=label_documents,
                     intent_plan=current_intent_plan,
                 )
+                if self.labeler is None:
+                    raise RuntimeError("Labeler is required when bypass_labeler is false.")
+                label_results = self.labeler.label_texts(
+                    question=labeler_batch.question_context,
+                    texts=labeler_batch.texts,
+                )
+                for trace_index, result, prepared in zip(
+                    label_trace_indexes,
+                    label_results,
+                    labeler_batch.documents,
+                ):
+                    result.metadata = {
+                        **result.metadata,
+                        **prepared.diagnostics,
+                    }
+                    self._apply_label(
+                        round_trace.documents[trace_index],
+                        result,
+                        question=initial_query,
+                        intent_plan=current_intent_plan,
+                    )
 
             self._apply_span_role_classification(
                 round_trace=round_trace,
@@ -557,10 +578,14 @@ class IterativeRetrievalControl:
                 transitions: list[dict[str, str]] = []
                 bound_evidence: list[Any] = []
                 rejected_bindings: list[str] = []
+                rejected_direct_contracts: list[dict[str, str]] = []
                 for _ in range(len(current_relation_plan.goals)):
                     direct_resolution = self.relation_resolver.resolve_direct(
                         current_relation_plan,
                         direct_contracts,
+                    )
+                    rejected_direct_contracts.extend(
+                        direct_resolution.rejected_contracts
                     )
                     if direct_resolution.resolved_goal_ids:
                         current_relation_plan = direct_resolution.plan
@@ -603,6 +628,7 @@ class IterativeRetrievalControl:
                             if item.get("resolution_type") == "direct"
                         ],
                         "contract_count": len(direct_contracts),
+                        "rejected_contracts": rejected_direct_contracts,
                         "plan": current_relation_plan.to_dict(),
                     },
                     "relation_binding": {
@@ -616,8 +642,7 @@ class IterativeRetrievalControl:
                     },
                 }
                 if (
-                    transitions
-                    and not current_relation_plan.complete
+                    not current_relation_plan.complete
                     and round_index < self.max_iter
                 ):
                     relation_requests = self.next_hop_composer.build_relation_requests(
@@ -1580,6 +1605,52 @@ class IterativeRetrievalControl:
             trace=trace,
         )
 
+    def _apply_labeler_bypass(
+        self,
+        *,
+        round_trace: RetrievalRoundTrace,
+        question: str,
+        documents: list[dict[str, Any]],
+        trace_indexes: list[int],
+    ) -> None:
+        """Prepare sentence-level span candidates without invoking Labeler."""
+
+        result = self.passage_evidence_unit_builder.build(
+            question=question,
+            documents=documents,
+            embedder=getattr(self.retriever, "embedder", None),
+        )
+        grouped: dict[int, list[str]] = {}
+        for unit in result.units:
+            if unit.document_index >= len(trace_indexes):
+                continue
+            trace_index = trace_indexes[unit.document_index]
+            grouped.setdefault(trace_index, []).append(unit.text)
+
+        for trace_index in trace_indexes:
+            trace = round_trace.documents[trace_index]
+            units = self._dedupe_tokens(grouped.get(trace_index, []))
+            trace.sequence_tag = "<BYPASS>"
+            trace.label = "candidate" if units else "useless"
+            trace.useful_tokens = list(units)
+            trace.useful_spans = list(units)
+            trace.raw_labeler_spans = []
+            trace.grounded_labeler_spans = list(units)
+            trace.label_status = (
+                "labeler_bypass_candidate_units"
+                if units
+                else "labeler_bypass_no_candidate_unit"
+            )
+            trace.valid_for_next_hop = False
+            trace.valid_for_evidence = False
+            trace.labeler_diagnostics = {
+                "mode": "bypass",
+                "labeler_called": False,
+                "candidate_unit_count": len(units),
+                "candidate_units": list(units),
+            }
+        round_trace.filter_metadata["labeler_bypass"] = result.to_dict()
+
     def _apply_span_role_classification(
         self,
         *,
@@ -1703,12 +1774,24 @@ class IterativeRetrievalControl:
             if mapped is None:
                 continue
             trace_index, span_text = mapped
+            effective_role = role_result.role
+            if (
+                self.bypass_labeler
+                and effective_role == "NOISE"
+                and role_result.model_role == ANSWER_SUPPORT
+            ):
+                effective_role = BRIDGE
             by_trace_index.setdefault(trace_index, []).append(
                 {
                     "id": role_result.id,
                     "text": span_text,
-                    "role": role_result.role,
+                    "role": effective_role,
                     "model_role": role_result.model_role,
+                    "role_repair": (
+                        "unbound_answer_support_demoted_to_bridge"
+                        if effective_role != role_result.role
+                        else ""
+                    ),
                     "goal_id": role_result.goal_id,
                     "semantic_facts": [
                         fact.to_dict() for fact in role_result.semantic_facts
@@ -1817,7 +1900,7 @@ class IterativeRetrievalControl:
                 trace.support_level = "bridge"
             else:
                 trace.support_level = "unsupported"
-            trace.valid_for_next_hop = self._can_sequence_tag_hop(trace.sequence_tag) and bool(bridge)
+            trace.valid_for_next_hop = self._can_document_hop(trace) and bool(bridge)
             trace.valid_for_evidence = bool(answer_support)
             if trace.useful_spans:
                 trace.label = "useful"
@@ -2374,6 +2457,11 @@ class IterativeRetrievalControl:
     def _can_sequence_tag_hop(self, sequence_tag: str) -> bool:
         return normalize_text(sequence_tag) in {CONTINUE_TAG, FINISH_TAG}
 
+    def _can_document_hop(self, trace: RetrievedDocumentTrace) -> bool:
+        if self.bypass_labeler:
+            return True
+        return self._can_sequence_tag_hop(trace.sequence_tag)
+
     def _labeler_diagnostics(
         self,
         *,
@@ -2569,6 +2657,7 @@ class WebRetrievalControl:
         embedding_batch_size: int = 8,
         max_collection_links_to_fetch: int = 3,
         collection_link_fetch_tokens: int = 5000,
+        bypass_labeler: bool = False,
     ) -> None:
         self.query_generator = query_generator or QueryGenerator()
         if search_tool is None:
@@ -2594,7 +2683,12 @@ class WebRetrievalControl:
         self.page_content_fetcher = (
             page_content_fetcher or PageContentFetcher(max_workers=4)
         )
-        self.labeler = labeler or EfficientRAGLabelerAdapter()
+        self.bypass_labeler = bool(bypass_labeler)
+        self.labeler = (
+            labeler
+            if labeler is not None
+            else (None if self.bypass_labeler else EfficientRAGLabelerAdapter())
+        )
         self.rag_filter = rag_filter or EfficientRAGFilterAdapter()
         self.next_hop_composer = next_hop_composer or NextHopQueryComposer()
         self.next_hop_evidence_selector = (
@@ -2764,6 +2858,9 @@ class WebRetrievalControl:
                 "->collection_record_or_passage->e5->faiss"
             ),
             "embedding_model": self.model_type,
+            "labeler_mode": (
+                "bypass_span_role" if self.bypass_labeler else "efficientrag"
+            ),
         }
         if not records:
             diagnostics["stop_reason"] = "empty_corpus"
@@ -2908,6 +3005,7 @@ class WebRetrievalControl:
         retrieval = IterativeRetrievalControl(
             retriever=retriever,
             labeler=self.labeler,
+            bypass_labeler=self.bypass_labeler,
             rag_filter=self.rag_filter,
             next_hop_composer=self.next_hop_composer,
             next_hop_evidence_selector=self.next_hop_evidence_selector,

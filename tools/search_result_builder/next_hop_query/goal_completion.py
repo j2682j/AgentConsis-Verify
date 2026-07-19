@@ -4,6 +4,9 @@ from dataclasses import asdict, dataclass, field
 from typing import Any, Iterable, Mapping
 
 from utils.network_utils import normalize_text
+from tools.evidence.fact_extraction.fact_goal_binding_validator import (
+    FactGoalBindingValidator,
+)
 
 from ..query.relation_plan import RelationGoal, RelationPlan
 from ..source_analyze.full_document_verifier import (
@@ -58,8 +61,16 @@ class GoalCompletionResult:
 class GoalCompletionEvaluator:
     """Require completed relation goals and grounded direct answer evidence."""
 
-    def __init__(self, verifier: FullDocumentVerifier | None = None) -> None:
+    def __init__(
+        self,
+        verifier: FullDocumentVerifier | None = None,
+        *,
+        fact_goal_binding_validator: FactGoalBindingValidator | None = None,
+    ) -> None:
         self.verifier = verifier or FullDocumentVerifier()
+        self.fact_goal_binding_validator = (
+            fact_goal_binding_validator or FactGoalBindingValidator()
+        )
 
     def evaluate(
         self,
@@ -101,22 +112,39 @@ class GoalCompletionEvaluator:
             for contract in list(self._field(document, "direct_contracts", []) or [])
         ]
         final_goal = plan.goals[-1] if plan.goals else None
-        positive_direct = bool(direct_contracts) and (
-            final_goal is None
-            or any(
-                normalize_text(self._contract_field(item, "goal_id"))
-                in {"", final_goal.goal_id}
-                for item in direct_contracts
+        bound_direct_contracts: list[Any] = []
+        if final_goal is not None:
+            effective_subjects = self.fact_goal_binding_validator.effective_subjects(
+                plan,
+                final_goal,
             )
+            for contract in direct_contracts:
+                fact_payload = {
+                    "fact_id": self._contract_field(contract, "fact_id"),
+                    "goal_id": self._contract_field(contract, "goal_id"),
+                    "subject": self._contract_field(contract, "subject"),
+                    "relation": self._contract_field(contract, "relation"),
+                    "object": (
+                        self._contract_field(contract, "object")
+                        or self._contract_field(contract, "answer_span")
+                    ),
+                    "grounding_status": self._contract_field(
+                        contract,
+                        "grounding_status",
+                    ),
+                }
+                binding = self.fact_goal_binding_validator.validate(
+                    fact=fact_payload,
+                    goal=final_goal,
+                    effective_subjects=effective_subjects,
+                    answer_role=final_goal.target,
+                )
+                if binding.bound:
+                    bound_direct_contracts.append(contract)
+        positive_direct = bool(direct_contracts) if final_goal is None else bool(
+            bound_direct_contracts
         )
-        relation_bound_direct = bool(
-            final_goal is not None
-            and any(
-                normalize_text(self._contract_field(item, "goal_id"))
-                == final_goal.goal_id
-                for item in direct_contracts
-            )
-        )
+        relation_bound_direct = bool(final_goal is not None and bound_direct_contracts)
         negative_direct = any(item.resolved for item in negative_results)
         direct_answer_found = bool(
             (

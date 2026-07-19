@@ -6,7 +6,11 @@ import re
 from typing import Any, Callable
 
 from tools.evidence.fact_extraction import EvidenceFact, TaskFactStore
+from tools.evidence.fact_extraction.fact_goal_binding_validator import (
+    FactGoalBindingValidator,
+)
 from utils.network_utils import normalize_for_exact
+from utils.canonical_answer_value import CanonicalAnswerValueParser
 
 
 @dataclass(frozen=True)
@@ -20,6 +24,8 @@ class CandidateFactVerification:
     support_kind: str = ""
     reason: str = ""
     answer_requirement: str = ""
+    required_relation: str = ""
+    relation_mismatch_fact_ids: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -34,6 +40,8 @@ class CandidateFactVerifier:
         equivalence_fn: Callable[[str, str], bool] | None = None,
     ) -> None:
         self.equivalence_fn = equivalence_fn or self._equivalent
+        self.value_parser = CanonicalAnswerValueParser()
+        self.fact_goal_binding_validator = FactGoalBindingValidator()
 
     def verify(
         self,
@@ -41,6 +49,9 @@ class CandidateFactVerifier:
         candidate_answer: str,
         fact_store: TaskFactStore,
         answer_requirement: str = "",
+        required_relation: str = "",
+        required_relation_goal_id: str = "",
+        answer_role: str = "",
     ) -> CandidateFactVerification:
         candidate = str(candidate_answer or "").strip()
         if not candidate:
@@ -48,6 +59,7 @@ class CandidateFactVerifier:
                 status="unknown",
                 reason="empty_candidate",
                 answer_requirement=answer_requirement,
+                required_relation=required_relation,
             )
         answer_facts = fact_store.verifiable_answer_facts()
         negative_subject_support = [
@@ -55,9 +67,18 @@ class CandidateFactVerifier:
             for fact in answer_facts
             if (
                 fact.polarity == "negative"
-                and self.equivalence_fn(candidate, fact.subject)
+                and self._values_equivalent(candidate, fact.subject, answer_requirement)
             )
         ]
+        if negative_subject_support:
+            negative_subject_support, relation_mismatches = self._relation_bound_facts(
+                negative_subject_support,
+                required_relation=required_relation,
+                required_relation_goal_id=required_relation_goal_id,
+                answer_role=answer_role,
+            )
+        else:
+            relation_mismatches = []
         if negative_subject_support:
             support_reason = self._negative_support_reason(negative_subject_support)
             return CandidateFactVerification(
@@ -74,12 +95,21 @@ class CandidateFactVerifier:
                 ),
                 reason=support_reason,
                 answer_requirement=answer_requirement,
+                required_relation=required_relation,
             )
         negative = [
             fact
             for fact in answer_facts
-            if fact.polarity == "negative" and self.equivalence_fn(candidate, fact.object)
+            if fact.polarity == "negative" and self._values_equivalent(candidate, fact.object, answer_requirement)
         ]
+        if negative:
+            negative, negative_relation_mismatches = self._relation_bound_facts(
+                negative,
+                required_relation=required_relation,
+                required_relation_goal_id=required_relation_goal_id,
+                answer_role=answer_role,
+            )
+            relation_mismatches.extend(negative_relation_mismatches)
         if negative:
             return CandidateFactVerification(
                 status="contradicted",
@@ -87,12 +117,21 @@ class CandidateFactVerifier:
                 derivation_chain_ids=self._parent_ids(negative, fact_store),
                 reason="candidate_matches_negative_answer_fact",
                 answer_requirement=answer_requirement,
+                required_relation=required_relation,
             )
         positive = [
             fact
             for fact in answer_facts
-            if fact.polarity == "positive" and self.equivalence_fn(candidate, fact.object)
+            if fact.polarity == "positive" and self._values_equivalent(candidate, fact.object, answer_requirement)
         ]
+        if positive:
+            positive, positive_relation_mismatches = self._relation_bound_facts(
+                positive,
+                required_relation=required_relation,
+                required_relation_goal_id=required_relation_goal_id,
+                answer_role=answer_role,
+            )
+            relation_mismatches.extend(positive_relation_mismatches)
         if positive:
             direct = [fact for fact in positive if not fact.parent_fact_ids]
             derived = [fact for fact in positive if fact.parent_fact_ids]
@@ -108,17 +147,71 @@ class CandidateFactVerifier:
                     else "candidate_matches_grounded_derived_fact"
                 ),
                 answer_requirement=answer_requirement,
+                required_relation=required_relation,
+            )
+        if relation_mismatches:
+            return CandidateFactVerification(
+                status="unknown",
+                reason="candidate_only_matches_wrong_relation",
+                answer_requirement=answer_requirement,
+                required_relation=required_relation,
+                relation_mismatch_fact_ids=self._dedupe_ids(relation_mismatches),
             )
         if any(check.status == "unknown" for check in fact_store.absence_checks()):
             return CandidateFactVerification(
                 status="unknown",
                 reason="absence_unverifiable_in_incomplete_scope",
                 answer_requirement=answer_requirement,
+                required_relation=required_relation,
             )
         return CandidateFactVerification(
             status="unknown",
             reason="no_answer_bound_fact_matches_candidate",
             answer_requirement=answer_requirement,
+            required_relation=required_relation,
+        )
+
+    def _relation_bound_facts(
+        self,
+        facts: list[EvidenceFact],
+        *,
+        required_relation: str,
+        required_relation_goal_id: str,
+        answer_role: str,
+    ) -> tuple[list[EvidenceFact], list[str]]:
+        if not str(required_relation or "").strip():
+            return facts, []
+        goal = {
+            "goal_id": required_relation_goal_id,
+            "subject": "",
+            "relation": required_relation,
+            "target": answer_role or "answer",
+        }
+        bound: list[EvidenceFact] = []
+        mismatches: list[str] = []
+        for fact in facts:
+            binding = self.fact_goal_binding_validator.validate(
+                fact=fact,
+                goal=goal,
+                answer_role=answer_role,
+            )
+            if binding.bound:
+                bound.append(fact)
+            else:
+                mismatches.append(fact.fact_id)
+        return bound, mismatches
+
+    @staticmethod
+    def _dedupe_ids(values: list[str]) -> list[str]:
+        return list(dict.fromkeys(value for value in values if value))
+
+    def _values_equivalent(self, first: str, second: str, requirement: str) -> bool:
+        if self.equivalence_fn(first, second):
+            return True
+        return self.value_parser.equivalent(
+            first,
+            second,
+            answer_requirement=requirement,
         )
 
     @staticmethod

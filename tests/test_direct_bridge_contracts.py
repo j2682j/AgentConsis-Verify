@@ -10,6 +10,7 @@ from tools.search_result_builder.evidence import (
     EvidenceSelectionContract,
     SpanRoleClassifier,
 )
+from tools.evidence.fact_extraction import EvidenceFact, TaskFactStore
 from tools.search_result_builder.evidence.role_aware_span_finalizer import (
     RoleAwareSpanFinalizer,
 )
@@ -77,6 +78,20 @@ class EvidenceRoleContractTests(unittest.TestCase):
         self.assertEqual(contracts.unsupported[0].reason, "missing_active_or_next_goal")
 
     def test_converter_ignores_bridge_only_document(self) -> None:
+        bridge_fact = EvidenceFact(
+            fact_id="F-BRIDGE",
+            subject="KGOT",
+            relation="broadcasts from",
+            object="Dimond Center",
+            qualifiers={"answer_binding": "bridge"},
+            role="BRIDGE",
+            evidence_spans=["KGOT broadcasts from the Dimond Center."],
+            context="KGOT broadcasts from the Dimond Center.",
+            source_id="D1",
+            source_type="search",
+            source_title="KGOT",
+            grounding_status="grounded",
+        )
         output = {
             "retrieval": {
                 "rounds": [
@@ -90,6 +105,7 @@ class EvidenceRoleContractTests(unittest.TestCase):
                                 "text": "KGOT broadcasts from the Dimond Center.",
                                 "url": "https://example.test/kgot",
                                 "bridge_spans": ["Dimond Center"],
+                                "semantic_facts": [bridge_fact.to_dict()],
                                 "bridge_contracts": [
                                     {
                                         "goal_id": "G1",
@@ -111,8 +127,33 @@ class EvidenceRoleContractTests(unittest.TestCase):
                 question="How large is the mall where KGOT has studios?",
                 answer_requirement="mall size",
             ),
+            fact_store=(store := TaskFactStore()),
         )
         self.assertEqual(items, [])
+        self.assertEqual(store.to_dict()["fact_count"], 1)
+        self.assertEqual(store.to_dict()["role_counts"]["BRIDGE"], 1)
+
+    def test_fact_store_revision_changes_only_for_new_information(self) -> None:
+        store = TaskFactStore()
+        fact = EvidenceFact(
+            fact_id="F1",
+            subject="album",
+            relation="count",
+            object="3",
+            qualifiers={"answer_binding": "direct"},
+            role="ANSWER_SUPPORT",
+            evidence_spans=["The artist released three albums."],
+            context="The artist released three albums.",
+            source_id="D1",
+            source_type="search",
+            grounding_status="grounded",
+        )
+
+        self.assertEqual(store.revision, 0)
+        self.assertTrue(store.add(fact))
+        self.assertEqual(store.revision, 1)
+        self.assertFalse(store.add(fact))
+        self.assertEqual(store.revision, 1)
 
     def test_converter_accepts_direct_contract_only(self) -> None:
         context = "The Dimond Center has 728,000 square feet of floor area."

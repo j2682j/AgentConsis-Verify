@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from collections import Counter
+from dataclasses import asdict, dataclass, field
 import hashlib
 import math
 import re
@@ -8,6 +9,7 @@ from typing import Any
 from urllib.parse import urlparse
 
 from utils.network_utils import normalize_text
+from tools.evidence.fact_extraction import EvidenceFact, TaskFactStore
 
 from .evidence_contract import EvidenceSelectionContract
 from .span_builder import SpanBuilder
@@ -32,6 +34,9 @@ class EvidenceConversionDiagnostics:
     selected_count: int
     fallback_used: bool
     dropped_duplicates: int
+    grounded_fact_count: int = 0
+    answer_bound_fact_count: int = 0
+    rejection_reasons: dict[str, int] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -99,6 +104,9 @@ class EvidenceConverter:
             selected_count=0,
             fallback_used=False,
             dropped_duplicates=0,
+            grounded_fact_count=0,
+            answer_bound_fact_count=0,
+            rejection_reasons={},
         )
 
     def convert_web_retrieval_output(
@@ -107,6 +115,7 @@ class EvidenceConverter:
         *,
         contract: EvidenceSelectionContract | None = None,
         question: str = "",
+        fact_store: TaskFactStore | None = None,
     ) -> list[dict[str, Any]]:
         """
         從 WebRetrievalControl output 建立 Stage1 evidence items。
@@ -123,6 +132,9 @@ class EvidenceConverter:
         rounds = retrieval.get("rounds") or []
         candidates: list[_CandidateEvidence] = []
         dropped_duplicates = 0
+        grounded_fact_count = 0
+        answer_bound_fact_count = 0
+        rejection_reasons: Counter[str] = Counter()
         order = 0
 
         for round_info in rounds:
@@ -132,7 +144,14 @@ class EvidenceConverter:
                 if not isinstance(document, dict):
                     continue
                 if document.get("duplicate"):
+                    rejection_reasons["duplicate_document"] += 1
                     continue
+                grounded, answer_bound = self._collect_document_facts(
+                    document,
+                    fact_store=fact_store,
+                )
+                grounded_fact_count += grounded
+                answer_bound_fact_count += answer_bound
                 order += 1
                 candidate = self._candidate_from_document(
                     document,
@@ -143,6 +162,10 @@ class EvidenceConverter:
                 )
                 if candidate is not None:
                     candidates.append(candidate)
+                else:
+                    rejection_reasons[
+                        self._document_rejection_reason(document)
+                    ] += 1
 
         ranked = sorted(
             candidates,
@@ -178,8 +201,61 @@ class EvidenceConverter:
             selected_count=len(evidence_items),
             fallback_used=False,
             dropped_duplicates=dropped_duplicates,
+            grounded_fact_count=grounded_fact_count,
+            answer_bound_fact_count=answer_bound_fact_count,
+            rejection_reasons=dict(rejection_reasons),
         )
         return evidence_items
+
+    def _collect_document_facts(
+        self,
+        document: dict[str, Any],
+        *,
+        fact_store: TaskFactStore | None,
+    ) -> tuple[int, int]:
+        grounded: list[EvidenceFact] = []
+        answer_bound = 0
+        for value in list(document.get("semantic_facts") or []):
+            if not isinstance(value, dict):
+                continue
+            fact = EvidenceFact.from_dict(value)
+            if fact.grounding_status != "grounded":
+                continue
+            grounded.append(fact)
+            if (
+                fact.role == "ANSWER_SUPPORT"
+                and fact.qualifiers.get("answer_binding") == "direct"
+            ):
+                answer_bound += 1
+        if fact_store is not None:
+            fact_store.extend(grounded)
+        return len(grounded), answer_bound
+
+    def _document_rejection_reason(self, document: dict[str, Any]) -> str:
+        text = normalize_text(document.get("text", ""))
+        if not text:
+            return "source_content_empty"
+        contracts = [
+            item
+            for item in list(document.get("direct_contracts") or [])
+            if isinstance(item, dict)
+        ]
+        if not contracts:
+            facts = [
+                item
+                for item in list(document.get("semantic_facts") or [])
+                if isinstance(item, dict)
+                and normalize_text(item.get("grounding_status")) == "grounded"
+            ]
+            return "bridge_only" if facts else "no_grounded_fact"
+        if not any(
+            normalize_text(item.get("answer_span", ""))
+            and normalize_text(item.get("answer_span", "")).casefold()
+            in text.casefold()
+            for item in contracts
+        ):
+            return "answer_span_not_grounded"
+        return "direct_contract_invalid"
 
     def _candidate_from_document(
         self,

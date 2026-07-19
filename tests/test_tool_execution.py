@@ -36,6 +36,30 @@ class CountingToolManager:
         return dict(self.result)
 
 
+class ContextCountingToolManager(CountingToolManager):
+    def execute_tool(
+        self,
+        tool_name,
+        tool_args,
+        *,
+        agent_id,
+        stage,
+        runtime_context=None,
+    ):
+        del runtime_context
+        return super().execute_tool(
+            tool_name,
+            tool_args,
+            agent_id=agent_id,
+            stage=stage,
+        )
+
+
+class FakeWorkspace:
+    def __init__(self, fingerprint):
+        self.fingerprint = fingerprint
+
+
 class RaisingToolManager:
     def __init__(self):
         self.calls = 0
@@ -182,7 +206,7 @@ class ToolExecutionTests(unittest.TestCase):
         self.assertEqual(second["status"], "duplicate_blocked")
         self.assertEqual(second["error_code"], "duplicate_failed_request")
 
-    def test_single_flight_releases_waiters_when_manager_raises(self):
+    def test_retryable_failure_is_not_permanently_cached(self):
         manager = RaisingToolManager()
         cache = ToolCache()
         kwargs = {
@@ -196,10 +220,53 @@ class ToolExecutionTests(unittest.TestCase):
         first = cache.get_or_execute(**kwargs)
         second = cache.get_or_execute(**kwargs)
 
-        self.assertEqual(manager.calls, 1)
+        self.assertEqual(manager.calls, 2)
         self.assertEqual(first["status"], "retryable_failure")
         self.assertEqual(first["error_code"], "tool_manager_exception")
-        self.assertEqual(second["status"], "duplicate_blocked")
+        self.assertEqual(second["status"], "retryable_failure")
+        self.assertFalse(second["cache_hit"])
+        self.assertEqual(cache.snapshot()["retryable_failure_count"], 2)
+
+    def test_search_query_key_normalizes_case_and_whitespace(self):
+        manager = CountingToolManager(self._success_result())
+        cache = ToolCache()
+        common = {
+            "tool_manager": manager,
+            "tool_name": "search",
+            "agent_id": "a1",
+            "stage": "stage1",
+        }
+
+        first = cache.get_or_execute(tool_args={"input": "  Paris   Population "}, **common)
+        second = cache.get_or_execute(tool_args={"input": "paris population"}, **common)
+
+        self.assertFalse(first["cache_hit"])
+        self.assertTrue(second["cache_hit"])
+        self.assertEqual(manager.calls, 1)
+        self.assertEqual(cache.snapshot()["cache_hit_count"], 1)
+
+    def test_attachment_fingerprint_prevents_cross_file_cache_reuse(self):
+        manager = ContextCountingToolManager(self._success_result())
+        cache = ToolCache()
+        common = {
+            "tool_manager": manager,
+            "tool_name": "attachment_reader",
+            "tool_args": {"input": "read the attachment"},
+            "agent_id": "a1",
+            "stage": "stage1",
+        }
+
+        cache.get_or_execute(
+            runtime_context={"attachment_workspace": FakeWorkspace("file-a")},
+            **common,
+        )
+        cache.get_or_execute(
+            runtime_context={"attachment_workspace": FakeWorkspace("file-b")},
+            **common,
+        )
+
+        self.assertEqual(manager.calls, 2)
+        self.assertEqual(cache.snapshot()["cached_entry_count"], 2)
 
     def _success_result(self):
         return {

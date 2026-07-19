@@ -4,6 +4,9 @@ from dataclasses import dataclass, field
 from typing import Any, Iterable
 
 from utils.network_utils import normalize_text
+from tools.evidence.fact_extraction.fact_goal_binding_validator import (
+    FactGoalBindingValidator,
+)
 
 from ..query.relation_plan import RelationGoal, RelationPlan
 from .relation_evidence import RelationEvidence
@@ -17,10 +20,20 @@ class RelationResolution:
     resolved_goal_ids: list[str] = field(default_factory=list)
     activated_goal_id: str = ""
     transitions: list[dict[str, str]] = field(default_factory=list)
+    rejected_contracts: list[dict[str, str]] = field(default_factory=list)
 
 
 class RelationGoalResolver:
     """Resolve the active relation goal and activate its dependent successor."""
+
+    def __init__(
+        self,
+        *,
+        fact_goal_binding_validator: FactGoalBindingValidator | None = None,
+    ) -> None:
+        self.fact_goal_binding_validator = (
+            fact_goal_binding_validator or FactGoalBindingValidator()
+        )
 
     def effective_subjects(self, plan: RelationPlan) -> list[str]:
         active = plan.active_goal
@@ -107,6 +120,8 @@ class RelationGoalResolver:
             return RelationResolution(plan=plan)
         values: list[str] = []
         evidence_ids: list[str] = []
+        rejected_contracts: list[dict[str, str]] = []
+        effective_subjects = self.effective_subjects(plan)
         for contract in contracts:
             if isinstance(contract, dict):
                 getter = contract.get
@@ -114,11 +129,45 @@ class RelationGoalResolver:
                 getter = lambda key, default="": getattr(contract, key, default)
             if normalize_text(str(getter("goal_id", ""))) != active.goal_id:
                 continue
-            values.append(normalize_text(str(getter("answer_span", ""))))
+            fact_payload = {
+                "fact_id": normalize_text(str(getter("fact_id", ""))),
+                "goal_id": normalize_text(str(getter("goal_id", ""))),
+                "subject": normalize_text(str(getter("subject", ""))),
+                "relation": normalize_text(str(getter("relation", ""))),
+                "object": normalize_text(
+                    str(getter("object", "") or getter("answer_span", ""))
+                ),
+                "grounding_status": normalize_text(
+                    str(getter("grounding_status", ""))
+                ),
+            }
+            binding = self.fact_goal_binding_validator.validate(
+                fact=fact_payload,
+                goal=active,
+                effective_subjects=effective_subjects,
+                answer_role=active.target,
+            )
+            if not binding.bound:
+                rejected_contracts.append(
+                    {
+                        **binding.to_dict(),
+                        "document_id": normalize_text(
+                            str(getter("document_id", ""))
+                        ),
+                        "answer_span": normalize_text(
+                            str(getter("answer_span", ""))
+                        ),
+                    }
+                )
+                continue
+            values.append(fact_payload["object"])
             evidence_ids.append(normalize_text(str(getter("document_id", ""))))
         values = self._dedupe(values)
         if not values:
-            return RelationResolution(plan=plan)
+            return RelationResolution(
+                plan=plan,
+                rejected_contracts=rejected_contracts,
+            )
 
         updated_active = active.replace(
             state="resolved",
@@ -150,6 +199,7 @@ class RelationGoalResolver:
                     "activated_goal_id": activated_goal_id,
                 }
             ],
+            rejected_contracts=rejected_contracts,
         )
 
     def _dedupe(self, values: Iterable[str]) -> list[str]:

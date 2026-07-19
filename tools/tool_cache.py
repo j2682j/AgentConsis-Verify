@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from threading import Event, Lock
 from typing import Any
 
@@ -31,6 +32,11 @@ class ToolCache:
         self._cache: dict[str, dict[str, Any]] = {}
         self._inflight: dict[str, Event] = {}
         self._lock = Lock()
+        self._request_count = 0
+        self._execution_count = 0
+        self._cache_hit_count = 0
+        self._duplicate_request_count = 0
+        self._retryable_failure_count = 0
 
     def get_or_execute(
         self,
@@ -55,8 +61,13 @@ class ToolCache:
         Returns:
             - dict[str, Any]: 工具結果，並包含 cache_hit 欄位。
         """
-        key = self._cache_key(tool_name, tool_args)
+        key = self._cache_key(
+            tool_name,
+            tool_args,
+            runtime_context=runtime_context,
+        )
         with self._lock:
+            self._request_count += 1
             cached = self._cache.get(key)
             inflight = self._inflight.get(key)
             if cached is None and inflight is None:
@@ -66,6 +77,7 @@ class ToolCache:
             else:
                 is_owner = False
         if cached is not None:
+            self._record_cache_hit()
             return self._duplicate_result(cached)
         if not is_owner:
             assert inflight is not None
@@ -73,9 +85,12 @@ class ToolCache:
             with self._lock:
                 cached = self._cache.get(key)
             if cached is not None:
+                self._record_cache_hit()
                 return self._duplicate_result(cached)
 
         try:
+            with self._lock:
+                self._execution_count += 1
             if tool_manager is None or not hasattr(tool_manager, "execute_tool"):
                 result = failure_result(
                     tool_name,
@@ -111,7 +126,10 @@ class ToolCache:
             result["duplicate_request"] = False
 
         with self._lock:
-            self._cache[key] = dict(result)
+            if bool(result.get("retryable")):
+                self._retryable_failure_count += 1
+            else:
+                self._cache[key] = dict(result)
             event = self._inflight.pop(key, None)
             if event is not None:
                 event.set()
@@ -144,7 +162,32 @@ class ToolCache:
         )
         return result
 
-    def _cache_key(self, tool_name: str, tool_args: dict[str, Any]) -> str:
+    def snapshot(self) -> dict[str, int]:
+        """Return task-local cache counters for reports and regression tests."""
+
+        with self._lock:
+            return {
+                "request_count": self._request_count,
+                "execution_count": self._execution_count,
+                "cache_hit_count": self._cache_hit_count,
+                "duplicate_request_count": self._duplicate_request_count,
+                "retryable_failure_count": self._retryable_failure_count,
+                "cached_entry_count": len(self._cache),
+                "inflight_count": len(self._inflight),
+            }
+
+    def _record_cache_hit(self) -> None:
+        with self._lock:
+            self._cache_hit_count += 1
+            self._duplicate_request_count += 1
+
+    def _cache_key(
+        self,
+        tool_name: str,
+        tool_args: dict[str, Any],
+        *,
+        runtime_context: dict[str, Any] | None = None,
+    ) -> str:
         """
         建立穩定的工具快取 key。
 
@@ -155,12 +198,44 @@ class ToolCache:
         Returns:
             - str: JSON 序列化後的快取 key。
         """
+        attachment_fingerprint = ""
+        if runtime_context:
+            workspace = runtime_context.get("attachment_workspace")
+            attachment_fingerprint = str(
+                getattr(workspace, "fingerprint", "") or ""
+            ).strip()
         return json.dumps(
-            {"tool_name": tool_name, "tool_args": tool_args},
+            {
+                "tool_name": str(tool_name or "").strip().casefold(),
+                "tool_args": self._canonicalize(
+                    tool_args,
+                    search_mode=str(tool_name or "").strip().casefold() == "search",
+                ),
+                "attachment_fingerprint": attachment_fingerprint,
+            },
             ensure_ascii=False,
             sort_keys=True,
             default=str,
         )
+
+    def _canonicalize(self, value: Any, *, search_mode: bool = False) -> Any:
+        if isinstance(value, dict):
+            return {
+                str(key).strip(): self._canonicalize(
+                    item,
+                    search_mode=search_mode,
+                )
+                for key, item in sorted(value.items(), key=lambda pair: str(pair[0]))
+            }
+        if isinstance(value, (list, tuple)):
+            return [
+                self._canonicalize(item, search_mode=search_mode)
+                for item in value
+            ]
+        if isinstance(value, str):
+            normalized = re.sub(r"\s+", " ", value).strip()
+            return normalized.casefold() if search_mode else normalized
+        return value
 
 
 __all__ = ["ToolCache"]

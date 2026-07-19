@@ -111,6 +111,7 @@ class CandidateRun:
     reasoning_steps: list[tuple[int, str]] = field(default_factory=list)
     reasoning_parse_quality: str = "unreliable"
     reasoning_versa_eligible: bool = False
+    reasoning_parse_diagnostics: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -174,6 +175,9 @@ class CandidateEvaluation:
     critical_step_floor: float = 0.0
     critical_step_geometric_mean: float = 0.0
     average_verifier_probability: float = 0.0
+    selection_state: str = "active"
+    hard_rejection_reason: str = ""
+    soft_deferred_by: list[str] = field(default_factory=list)
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
@@ -257,6 +261,11 @@ class AgentEvidenceSupportSummary:
     status: str
     priority: int
     support_level: str = "unsupported"
+    verification_status: str = "unknown"
+    supporting_fact_ids: list[str] = field(default_factory=list)
+    contradicting_fact_ids: list[str] = field(default_factory=list)
+    derivation_chain_ids: list[str] = field(default_factory=list)
+    unknown_reason: str = ""
     step_results: list[StepSupportResult] = field(default_factory=list)
     evidence_records: list[ToolEvidenceRecord] = field(default_factory=list)
     matched_final_values: list[str] = field(default_factory=list)

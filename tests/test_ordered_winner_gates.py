@@ -326,6 +326,52 @@ class OrderedWinnerGateTests(unittest.TestCase):
             "unresolved_exact_tie",
         )
 
+    def test_markdown_tail_does_not_split_same_candidate(self) -> None:
+        configs = [
+            AgentConfig(agent_id="a1", model_name="test-model"),
+            AgentConfig(agent_id="a2", model_name="test-model"),
+        ]
+        results = [
+            make_summary(
+                "a1",
+                [make_run("a1", 1, "egalitarian")],
+                answer="egalitarian",
+                confidence=1.0,
+            ),
+            make_summary(
+                "a2",
+                [make_run("a2", 1, "egalitarian**.")],
+                answer="egalitarian**.",
+                confidence=1.0,
+            ),
+        ]
+        network = Network("Which word?", configs)
+
+        candidates = network.answer_candidate_clusterer.cluster(results)
+
+        self.assertEqual(len(candidates), 1)
+        self.assertEqual(candidates[0].candidate_key, "egalitarian")
+
+    def test_year_requirement_canonicalizes_full_date_before_clustering(self) -> None:
+        configs = [AgentConfig(agent_id="a1", model_name="test-model")]
+        results = [
+            make_summary(
+                "a1",
+                [make_run("a1", 1, "August 16, 2018", answer_type="date")],
+                answer="August 16, 2018",
+                confidence=1.0,
+            )
+        ]
+        network = Network("What year was it released?", configs)
+
+        candidates = network.answer_candidate_clusterer.cluster(
+            results,
+            answer_requirement="what year was it released",
+            answer_role="year",
+        )
+
+        self.assertEqual(candidates[0].representative_answer, "2018")
+
 
 if __name__ == "__main__":
     unittest.main()

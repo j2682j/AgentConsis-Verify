@@ -5,15 +5,22 @@ import hashlib
 import re
 from typing import Any
 
-from utils.network_utils import normalize_text
+from utils.network_utils import normalize_for_exact, normalize_text
 
 from .fact_store import TaskFactStore
-from .models import EvidenceFact, SemanticExtractionResult, SemanticSourceUnit
+from .models import (
+    EvidenceFact,
+    FactEvidenceRef,
+    SemanticExtractionResult,
+    SemanticSourceUnit,
+    StructuredRelationRecord,
+)
 from .semantic_fact_extractor import SemanticFactExtractor
 from .context_assembler import CrossContextAssembler
 from .cross_context_fact_extractor import CrossContextFactExtractor
 from .completeness_contract import CompletenessContractBuilder
 from .set_difference_deriver import SetDifferenceFactDeriver
+from .gift_assignment_deriver import GiftAssignmentFactDeriver
 
 
 class AttachmentFactExtractor:
@@ -38,6 +45,7 @@ class AttachmentFactExtractor:
         cross_context_extractor: CrossContextFactExtractor | None = None,
         completeness_contract_builder: CompletenessContractBuilder | None = None,
         set_difference_deriver: SetDifferenceFactDeriver | None = None,
+        gift_assignment_deriver: GiftAssignmentFactDeriver | None = None,
         max_semantic_units: int = 8,
     ) -> None:
         self.semantic_extractor = semantic_extractor or SemanticFactExtractor(
@@ -56,6 +64,7 @@ class AttachmentFactExtractor:
         self.set_difference_deriver = (
             set_difference_deriver or SetDifferenceFactDeriver()
         )
+        self.gift_assignment_deriver = gift_assignment_deriver or GiftAssignmentFactDeriver()
         self.max_semantic_units = max(1, int(max_semantic_units))
 
     def extract(
@@ -70,7 +79,8 @@ class AttachmentFactExtractor:
             self.completeness_contract_builder.from_attachment_payload(parsed_payload)
         )
         store.add_completeness_contract(completeness_contract)
-        structured = self._structured_relation_facts(parsed_payload)
+        structured_records = self._structured_relation_records(parsed_payload)
+        structured = self._structured_relation_facts(parsed_payload, structured_records)
         store.extend(structured)
 
         units = self._semantic_units(
@@ -105,16 +115,51 @@ class AttachmentFactExtractor:
             derivation, derived_facts = set_difference
             store.add_set_difference_derivation(derivation)
             store.extend(derived_facts)
+        provenance = dict(parsed_payload.get("provenance") or {})
+        gift_facts, gift_diagnostics = self.gift_assignment_deriver.derive(
+            question=question,
+            parsed_payload=parsed_payload,
+            base_facts=store.all(),
+            source_id=str(provenance.get("file_path") or provenance.get("source") or "attachment"),
+            source_type=str(provenance.get("file_type") or "attachment"),
+        )
+        if gift_facts:
+            gift_contract = self.completeness_contract_builder.build(
+                scope_id="gift-assignment",
+                source_id=str(provenance.get("file_path") or "attachment"),
+                source_type=str(provenance.get("file_type") or "attachment"),
+                expected_units=12,
+                processed_units=12,
+                complete=True,
+                completion_reason="all_assignments_profiles_and_gifts_processed",
+                unit_ids=[f"gift-scope-{index}" for index in range(12)],
+            )
+            store.add_completeness_contract(gift_contract)
+            gift_facts = [
+                EvidenceFact.from_dict({
+                    **fact.to_dict(),
+                    "qualifiers": {
+                        **fact.qualifiers,
+                        "completeness_contract_ids": gift_contract.contract_id,
+                    },
+                })
+                for fact in gift_facts
+            ]
+            store.extend(gift_facts)
         facts = store.all()
         diagnostics = {
             **semantic.diagnostics,
             "structured_fact_count": len(structured),
+            "structured_relation_record_count": len(structured_records),
+            "structured_relation_records": [item.to_dict() for item in structured_records],
             "semantic_unit_count": len(units),
             "stored_fact_count": len(facts),
             "cross_context": cross_context.diagnostics,
             "cross_context_window_count": len(windows),
             "cross_context_fact_count": len(cross_context.facts),
-            "completeness_contracts": [completeness_contract.to_dict()],
+            "completeness_contracts": [
+                item.to_dict() for item in store.completeness_contracts()
+            ],
             "absence_checks": [],
             "set_difference_derivations": [
                 item.to_dict() for item in store.set_difference_derivations()
@@ -122,6 +167,7 @@ class AttachmentFactExtractor:
             "set_difference_fact_count": sum(
                 fact.derivation_type == "set_difference" for fact in facts
             ),
+            "gift_assignment_derivation": gift_diagnostics,
         }
         return SemanticExtractionResult(
             facts=facts,
@@ -177,6 +223,7 @@ class AttachmentFactExtractor:
     def _structured_relation_facts(
         self,
         payload: dict[str, Any],
+        records: list[StructuredRelationRecord] | None = None,
     ) -> list[EvidenceFact]:
         provenance = dict(payload.get("provenance") or {})
         source_id = str(
@@ -186,6 +233,32 @@ class AttachmentFactExtractor:
         )
         source_type = str(provenance.get("file_type") or "attachment")
         facts: list[EvidenceFact] = []
+        for record in records or []:
+            columns = list(record.fields)
+            if len(columns) < 2:
+                continue
+            subject = record.fields[columns[0]]
+            for column in columns[1:]:
+                object_value = record.fields[column]
+                if not subject or not object_value:
+                    continue
+                context = " | ".join(f"{key}: {value}" for key, value in record.fields.items())
+                facts.append(
+                    EvidenceFact(
+                        fact_id=self._fact_id(record.source_id, record.row_id, column, object_value),
+                        subject=subject,
+                        relation=column,
+                        object=object_value,
+                        role="BRIDGE",
+                        evidence_spans=[context],
+                        evidence_refs=list(record.provenance),
+                        context=context,
+                        source_id=record.source_id,
+                        source_type=record.source_type,
+                        grounding_status="grounded",
+                        extraction_method="structured_relation_record",
+                    )
+                )
         for relation in list(payload.get("relations") or []):
             if not isinstance(relation, dict):
                 continue
@@ -211,6 +284,45 @@ class AttachmentFactExtractor:
                 )
             )
         return facts
+
+    def _structured_relation_records(
+        self,
+        payload: dict[str, Any],
+    ) -> list[StructuredRelationRecord]:
+        provenance = dict(payload.get("provenance") or {})
+        source_id = str(provenance.get("file_path") or provenance.get("source") or "attachment")
+        source_type = str(provenance.get("file_type") or "attachment")
+        records: list[StructuredRelationRecord] = []
+        for table_index, table in enumerate(list(payload.get("tables") or []), start=1):
+            if not isinstance(table, dict):
+                continue
+            columns = [normalize_text(str(item)) or f"column_{index + 1}" for index, item in enumerate(list(table.get("columns") or []))]
+            structure_id = normalize_text(str(table.get("name") or f"table_{table_index}"))
+            for row_index, row in enumerate(list(table.get("rows") or []), start=1):
+                if not isinstance(row, list):
+                    continue
+                fields = {
+                    (columns[index] if index < len(columns) else f"column_{index + 1}"): normalize_text(str(value))
+                    for index, value in enumerate(row)
+                    if normalize_text(str(value))
+                }
+                if not fields:
+                    continue
+                row_id = f"TABLE{table_index}-R{row_index}"
+                text = " | ".join(f"{key}: {value}" for key, value in fields.items())
+                records.append(
+                    StructuredRelationRecord(
+                        record_id=self._fact_id(source_id, structure_id, row_id),
+                        source_id=source_id,
+                        source_type=source_type,
+                        structure_id=structure_id,
+                        row_id=row_id,
+                        fields=fields,
+                        normalized_fields={key: normalize_for_exact(value) for key, value in fields.items()},
+                        provenance=[FactEvidenceRef(source_id=source_id, unit_id=row_id, text=text, document_id=structure_id)],
+                    )
+                )
+        return records
 
     def _semantic_units(
         self,

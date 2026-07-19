@@ -9,7 +9,7 @@ from .base import AdapterResult, payload_provenance
 class AttachmentFileInputAdapter:
     """Bind specialized image handlers to the exact parsed attachment file."""
 
-    handler_names = {"fraction_document", "chess_image_solver"}
+    handler_names = {"fraction_document", "chess_image_solver", "color_grid_hamiltonian"}
 
     def adapt(self, handler_name: str, handler_input: HandlerInput) -> AdapterResult:
         del handler_name

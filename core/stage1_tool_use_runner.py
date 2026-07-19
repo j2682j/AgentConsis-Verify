@@ -10,6 +10,7 @@ from core.slm_agent import SLM_Agent
 from core.stage1_search_gate import Stage1SearchAccessState
 from core.tool_turn_policy import AdaptiveToolTurnPolicy
 from parsers.tool_request_parser import ToolRequestParser
+from parsers.reasoning_parser import prepare_reasoning_for_verifier
 from tools.tool_cache import ToolCache
 from tools.attachment_workspace import AttachmentWorkspace
 from tools.evidence.fact_extraction import (
@@ -322,7 +323,11 @@ class Stage1ToolUseRunner:
 
                 reasoning = str(parsed.get("reasoning", "") or "").strip()
                 if not reasoning and reasoning_steps:
-                    reasoning = "\n".join(reasoning_steps)
+                    reasoning = "\n".join(
+                        f"step {index}. {self._strip_step_marker(step)}"
+                        for index, step in enumerate(reasoning_steps, start=1)
+                        if self._strip_step_marker(step)
+                    )
                 final_answer = str(parsed.get("final_answer", "") or "").strip()
                 return (
                     self._make_reply(
@@ -403,7 +408,10 @@ class Stage1ToolUseRunner:
             "source": final_answer_source,
             "success": bool(parsed.get("eligible_for_winner")),
         }
-        reasoning_parse = dict(parsed.get("reasoning_parse") or {})
+        reasoning_parse = prepare_reasoning_for_verifier(
+            reasoning,
+            final_answer=final_answer,
+        ).to_dict()
         return EachAgentReply(
             agent_id=config.agent_id,
             model_name=config.model_name,
@@ -442,6 +450,19 @@ class Stage1ToolUseRunner:
                 if isinstance(item, (list, tuple)) and len(item) >= 2
             ],
         )
+
+    @staticmethod
+    def _strip_step_marker(value: str) -> str:
+        """Remove an existing step prefix before trajectory steps are renumbered."""
+
+        import re
+
+        return re.sub(
+            r"^\s*(?:step\s*)?\d{1,3}\s*[.):\-]\s*",
+            "",
+            str(value or "").strip(),
+            flags=re.IGNORECASE,
+        ).strip()
 
     def _make_no_final_reply(
         self,

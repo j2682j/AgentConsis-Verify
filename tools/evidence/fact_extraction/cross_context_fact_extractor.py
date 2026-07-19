@@ -215,6 +215,8 @@ class CrossContextFactExtractor:
                 "- Extract a fact only when at least two different units are required to support it.",
                 "- Every fact must include two or three evidence_refs copied exactly from their units.",
                 "- subject and object must both be explicitly recoverable from the cited evidence_refs.",
+                "- A fact assigned to Current Relation Goal must preserve that exact relation and Current Goal ID.",
+                "- Keep nominated_by, promoted_by, reviewed_by, illustrated_by, and supported_by as different relations.",
                 "- Resolve pronouns only when the antecedent is explicit in another cited unit.",
                 "- Use ANSWER_SUPPORT only when object itself satisfies Answer Requirement.",
                 "- Use BRIDGE for an intermediate entity or relation needed by the current goal.",
