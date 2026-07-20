@@ -23,6 +23,7 @@ from score.numerical_derivation_verifier import (
     NumericalDerivationSummary,
     NumericalDerivationVerifier,
 )
+from score.question_echo import is_question_echo
 from utils.network_utils import normalize_for_exact
 from tools.evidence.fact_extraction import (
     FactDerivationEngine,
@@ -214,6 +215,7 @@ class EvidenceSupportChecker:
                     numerical_by_step.get(step_index),
                 )
             )
+        question_echo = is_question_echo(final_answer, question)
         status = self._agent_status(
             final_answer=final_answer,
             records=records,
@@ -224,6 +226,7 @@ class EvidenceSupportChecker:
             numerical_derivation=numerical_derivation,
             fact_verification=fact_verification,
             fact_store=fact_store,
+            question_echo=question_echo,
         )
         verification_status = self._verification_status(status)
         unknown_reason = (
@@ -249,6 +252,7 @@ class EvidenceSupportChecker:
             tool_failure_count=len(failures),
             metadata={
                 "trusted_final_conflict": trusted_final_conflict,
+                "question_echo": question_echo,
                 "record_count": len(records),
                 "supported_step_count": sum(
                     1 for item in step_results if item.status == "supported"
@@ -900,10 +904,15 @@ class EvidenceSupportChecker:
         numerical_derivation: NumericalDerivationSummary,
         fact_verification: CandidateFactVerification,
         fact_store: TaskFactStore,
+        question_echo: bool = False,
     ) -> str:
+        # A question-echo answer is always "found" in retrieved text because
+        # pages echo the query; text-match promotions are tautological for it.
+        # Trusted tool finals stay exempt: a deterministic handler computing
+        # the same value is real verification, independent of text echo.
         if fact_verification.status == "contradicted":
             return "contradicted"
-        if fact_verification.status == "supported":
+        if fact_verification.status == "supported" and not question_echo:
             if fact_verification.support_kind == "derived":
                 return "derived_evidence_supported"
             supporting_facts = [
@@ -925,7 +934,7 @@ class EvidenceSupportChecker:
             return "contradicted"
         if matched_final_values:
             return "tool_final_supported"
-        if numerical_derivation.final_supported:
+        if numerical_derivation.final_supported and not question_echo:
             return "derived_evidence_supported"
         supporting_fact_records = [
             record
@@ -938,7 +947,7 @@ class EvidenceSupportChecker:
                 and self._answers_equivalent(final_answer, record.value)
             )
         ]
-        if supporting_fact_records:
+        if supporting_fact_records and not question_echo:
             if any(
                 record.tool_name == "search"
                 or str(record.metadata.get("source_type") or "") == "web"
@@ -979,11 +988,11 @@ class EvidenceSupportChecker:
                 and self._record_directly_supports_answer(record, final_answer)
             )
         ]
-        if supporting_text_records:
+        if supporting_text_records and not question_echo:
             if any(record.tool_name == "search" for record in supporting_text_records):
                 return "search_evidence_supported"
             return "attachment_evidence_supported"
-        if any(
+        if not question_echo and any(
             item.status == "supported"
             and any(
                 record.output_type == "intermediate_value"

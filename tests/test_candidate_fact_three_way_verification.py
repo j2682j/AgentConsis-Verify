@@ -81,6 +81,20 @@ def test_negative_answer_fact_explicitly_contradicts_candidate() -> None:
     assert result.contradicting_fact_ids == ["F-negative-41"]
 
 
+def test_negative_boolean_fact_supports_no_without_double_negation() -> None:
+    store = TaskFactStore()
+    store.add(_fact(value="no", polarity="negative"))
+
+    result = CandidateFactVerifier().verify(
+        candidate_answer="no",
+        fact_store=store,
+        answer_requirement="Can the route return to its starting plot?",
+    )
+
+    assert result.status == "supported"
+    assert result.supporting_fact_ids == ["F-negative-no"]
+
+
 def test_final_answer_support_is_independent_from_step_wording() -> None:
     store = TaskFactStore()
     store.add(_fact(value="42"))

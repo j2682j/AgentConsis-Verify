@@ -26,6 +26,24 @@ class DeterministicHandlerExpansionTests(unittest.TestCase):
         self.assertEqual(result.answer, "yes")
         self.assertEqual(result.output_type, "final_answer")
 
+    def test_logic_equivalence_handler_finds_unique_outlier(self):
+        question = """¬(A ∧ B) ↔ (¬A ∨ ¬B)
+¬(A ∨ B) ↔ (¬A ∧ ¬B)
+(A → B) ↔ (¬B → ¬A)
+(A → B) ↔ (¬A ∨ B)
+(¬A → B) ↔ (A ∨ ¬B)
+¬(A → B) ↔ (A ∧ ¬B)
+
+Which of the above is not logically equivalent to the rest?"""
+        result = DeterministicHandlerRouter().run(
+            question=question,
+            required_handler_role="logic_equivalence",
+        )
+
+        self.assertTrue(result.ok)
+        self.assertEqual(result.answer, "(¬A → B) ↔ (A ∨ ¬B)")
+        self.assertEqual(result.structured_result["outlier_index"], 4)
+
     def test_probability_handler_solves_dice_sum_task(self):
         result = DeterministicHandlerRouter().run(
             question="If rolling 2d6, what is the probability that the sum is exactly 7?",

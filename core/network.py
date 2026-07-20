@@ -29,6 +29,7 @@ from score.versa_prm_scorer import (
     DEFAULT_VERSA_PRM_MODEL_ID,
 )
 from score.answer_requirement_contract import TaskAnswerRequirementContract
+from score.question_echo import is_question_echo
 from tools.attachment_workspace import AttachmentWorkspace
 from tools.evidence.fact_extraction import TaskFactStore
 from utils.network_utils import normalize_for_exact
@@ -245,6 +246,14 @@ class Network:
                     direct_consensus_winner,
                     direct_consensus_supporting_agents,
                 ) = self._confidence_one_answer_consensus(stage1_results)
+                if direct_consensus_winner is not None and is_question_echo(
+                    direct_consensus_winner.compressed_answer,
+                    self.question,
+                ):
+                    # Agreement on a fragment of the question itself is not a
+                    # verified answer; route it through the full ordered gates.
+                    direct_consensus_winner = None
+                    direct_consensus_supporting_agents = []
             else:
                 direct_consensus_winner = None
                 direct_consensus_supporting_agents = []

@@ -77,6 +77,15 @@ class AnswerRequirementGate:
         "eight", "nine", "ten", "eleven", "twelve", "thirteen", "fourteen",
         "fifteen", "sixteen", "seventeen", "eighteen", "nineteen", "twenty",
     }
+    _UNIT_RE = re.compile(
+        r"(?<![A-Za-z0-9])(?:"
+        r"m\^?3|m3|cubic\s+met(?:er|re)s?|lit(?:er|re)s?|l|"
+        r"kg|kilograms?|g|grams?|lb|lbs|pounds?|"
+        r"km|kilometers?|kilometres?|mi|miles?|meters?|metres?|cm|mm|"
+        r"hours?|hrs?|minutes?|mins?|seconds?|secs?|%|percent"
+        r")(?![A-Za-z0-9])",
+        re.IGNORECASE,
+    )
 
     def __init__(self) -> None:
         self.value_parser = CanonicalAnswerValueParser()
@@ -98,6 +107,17 @@ class AnswerRequirementGate:
             return AnswerRequirementResult(
                 outcome="unknown",
                 reason="answer_requirement_type_unresolved",
+                requirement=requirement,
+                expected_type=expected,
+                declared_type=declared,
+                observed_type=observed,
+            )
+
+        unit_conflict = self._unit_conflict(requirement, answer)
+        if expected == "number" and unit_conflict:
+            return AnswerRequirementResult(
+                outcome="incompatible",
+                reason="candidate_unit_conflicts_with_answer_requirement",
                 requirement=requirement,
                 expected_type=expected,
                 declared_type=declared,
@@ -132,6 +152,36 @@ class AnswerRequirementGate:
             declared_type=declared,
             observed_type=observed,
         )
+
+    def _unit_conflict(self, requirement: str, answer: str) -> bool:
+        required_units = {
+            self._unit_family(match.group(0))
+            for match in self._UNIT_RE.finditer(requirement or "")
+        }
+        answer_units = {
+            self._unit_family(match.group(0))
+            for match in self._UNIT_RE.finditer(answer or "")
+        }
+        required_units.discard("")
+        answer_units.discard("")
+        if len(required_units) != 1 or not answer_units:
+            return False
+        return any(unit not in required_units for unit in answer_units)
+
+    @staticmethod
+    def _unit_family(value: str) -> str:
+        unit = normalize_text(value).casefold().replace("^", "")
+        if unit in {"m3", "cubic meter", "cubic meters", "cubic metre", "cubic metres", "l", "liter", "liters", "litre", "litres"}:
+            return "volume"
+        if unit in {"kg", "kilogram", "kilograms", "g", "gram", "grams", "lb", "lbs", "pound", "pounds"}:
+            return "mass"
+        if unit in {"km", "kilometer", "kilometers", "kilometre", "kilometres", "mi", "mile", "miles", "m", "meter", "meters", "metre", "metres", "cm", "mm"}:
+            return "distance"
+        if unit in {"hour", "hours", "hr", "hrs", "minute", "minutes", "min", "mins", "second", "seconds", "sec", "secs"}:
+            return "duration"
+        if unit in {"%", "percent"}:
+            return "percentage"
+        return ""
 
     def canonicalize(
         self,

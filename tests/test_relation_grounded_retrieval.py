@@ -300,3 +300,68 @@ def test_evidence_only_resolution_refuses_conflicting_relation_values() -> None:
 
     assert result.status == "conflict"
     assert set(result.conflicting_values) == {"FunkMonk", "AnotherEditor"}
+
+
+def test_evidence_only_resolution_uses_unique_strictly_promoted_value() -> None:
+    store = TaskFactStore()
+    store.add(
+        EvidenceFact(
+            fact_id="promotion-volume",
+            subject="fish bag",
+            relation="capacity",
+            object="0.1777 m3",
+            qualifiers={
+                "answer_binding": "direct",
+                "origin_fact_id": "origin-volume",
+            },
+            role="ANSWER_SUPPORT",
+            evidence_spans=["The fish bag capacity is 0.1777 m3."],
+            context="The fish bag capacity is 0.1777 m3.",
+            source_id="paper",
+            source_type="web",
+            grounding_status="grounded",
+            extraction_method="grounded_answer_value_promotion",
+            parent_fact_ids=["origin-volume"],
+        )
+    )
+
+    result = EvidenceAnswerResolver().resolve(
+        {
+            "answer_requirement": "What is the volume in m3 of the fish bag?",
+            "fact_store": store.to_dict(),
+        }
+    )
+
+    assert result.resolved
+    assert result.answer == "0.1777 m3"
+    assert result.reason == "unique_promoted_answer_fact"
+
+
+def test_evidence_only_resolution_does_not_trust_raw_semantic_direct_role() -> None:
+    store = TaskFactStore()
+    store.add(
+        EvidenceFact(
+            fact_id="semantic-noise",
+            subject="article",
+            relation="published",
+            object="article",
+            qualifiers={"answer_binding": "direct"},
+            role="ANSWER_SUPPORT",
+            evidence_spans=["The author published an article."],
+            context="The author published an article.",
+            source_id="page",
+            source_type="web",
+            grounding_status="grounded",
+            extraction_method="semantic_model",
+        )
+    )
+
+    result = EvidenceAnswerResolver().resolve(
+        {
+            "answer_requirement": "What word was quoted by both authors?",
+            "fact_store": store.to_dict(),
+        }
+    )
+
+    assert not result.resolved
+    assert result.status == "not_applicable"

@@ -38,6 +38,7 @@ class BestEffortReferenceSelector:
         retrieval = output.get("retrieval")
         retrieval = retrieval if isinstance(retrieval, dict) else {}
         ranked: list[tuple[float, int, int, dict[str, Any]]] = []
+        collection_rows: dict[str, list[tuple[float, int, dict[str, Any]]]] = {}
         for round_position, round_info in enumerate(
             list(retrieval.get("rounds") or []),
             start=1,
@@ -52,6 +53,19 @@ class BestEffortReferenceSelector:
                 if not isinstance(document, dict) or document.get("duplicate"):
                     continue
                 text = normalize_text(document.get("text"))
+                group_key = self._collection_group_key(document)
+                if group_key:
+                    # Collection rows are typically short; keep them even
+                    # below min_chars so an aggregate table stays complete.
+                    if text:
+                        collection_rows.setdefault(group_key, []).append(
+                            (
+                                float(document.get("retrieval_score", 0.0) or 0.0),
+                                round_index,
+                                {**document, "text": text},
+                            )
+                        )
+                    continue
                 if len(text) < self.min_chars:
                     continue
                 ranked.append(
@@ -62,6 +76,22 @@ class BestEffortReferenceSelector:
                         {**document, "text": text},
                     )
                 )
+
+        for group_position, (group_key, rows) in enumerate(
+            sorted(collection_rows.items()),
+            start=1,
+        ):
+            merged = self._merged_collection_document(group_key, rows)
+            if merged is None:
+                continue
+            ranked.append(
+                (
+                    -float(merged.get("retrieval_score", 0.0) or 0.0),
+                    int(merged.get("_round_index", 1) or 1),
+                    group_position,
+                    merged,
+                )
+            )
 
         selected: list[UnverifiedReference] = []
         seen_urls: set[str] = set()
@@ -74,17 +104,25 @@ class BestEffortReferenceSelector:
             text = normalize_text(document.get("text"))
             content_key = self._content_key(text)
             domain = self._domain(url)
+            is_merged_collection = bool(document.get("_merged_collection"))
             if url_key and url_key in seen_urls:
                 continue
             if content_key in seen_content:
                 continue
-            if domain and domain_counts.get(domain, 0) >= self.max_items_per_domain:
+            if (
+                not is_merged_collection
+                and domain
+                and domain_counts.get(domain, 0) >= self.max_items_per_domain
+            ):
                 continue
 
             remaining = self.max_total_chars - total_chars
             if remaining < self.min_chars:
                 break
-            text = self._truncate(text, min(self.max_chars_per_item, remaining))
+            per_item_limit = (
+                self.max_total_chars if is_merged_collection else self.max_chars_per_item
+            )
+            text = self._truncate(text, min(per_item_limit, remaining))
             if len(text) < self.min_chars:
                 continue
             selected.append(
@@ -116,6 +154,73 @@ class BestEffortReferenceSelector:
             if len(selected) >= self.max_items:
                 break
         return selected
+
+    def _collection_group_key(self, document: dict[str, Any]) -> str:
+        """Group sibling collection rows extracted from one parent page."""
+
+        record_type = normalize_text(document.get("record_type")).casefold()
+        if record_type in {"", "passage"}:
+            return ""
+        fields = document.get("record_fields")
+        fields = fields if isinstance(fields, dict) else {}
+        parent = (
+            normalize_text(fields.get("parent_url"))
+            or normalize_text(document.get("parent_url"))
+            or normalize_text(fields.get("source"))
+            or self._domain(normalize_text(document.get("url")))
+        )
+        if not parent:
+            return ""
+        return f"{record_type}::{parent.casefold()}"
+
+    def _merged_collection_document(
+        self,
+        group_key: str,
+        rows: list[tuple[float, int, dict[str, Any]]],
+    ) -> dict[str, Any] | None:
+        """Merge sibling rows into one reference so aggregates stay complete.
+
+        Per-row selection capped rows via the domain limit, which starved
+        count/aggregate questions of most of the table; one merged reference
+        keeps every row the char budget allows.
+        """
+
+        if not rows:
+            return None
+        if len(rows) == 1:
+            document = dict(rows[0][2])
+            document["_round_index"] = rows[0][1]
+            return document
+        ordered = sorted(rows, key=lambda item: -item[0])
+        best_score = ordered[0][0]
+        first_round = min(item[1] for item in rows)
+        source_title = (
+            normalize_text(ordered[0][2].get("title"))
+            or group_key.split("::", 1)[-1]
+        )
+        lines = []
+        seen_lines: set[str] = set()
+        for _, _, document in ordered:
+            line = normalize_text(document.get("text"))
+            line = line if len(line) <= 220 else line[:220].rstrip() + " ..."
+            key = line.casefold()
+            if not line or key in seen_lines:
+                continue
+            seen_lines.add(key)
+            lines.append(f"- {line}")
+        if not lines:
+            return None
+        parent = group_key.split("::", 1)[-1]
+        return {
+            "title": f"Collection rows ({len(lines)}): {source_title}",
+            "text": "\n".join(lines),
+            "url": normalize_text(ordered[0][2].get("parent_url")) or parent,
+            "retrieval_score": best_score,
+            "record_type": "collection_rows",
+            "document_id": f"merged::{parent}",
+            "_merged_collection": True,
+            "_round_index": first_round,
+        }
 
     @staticmethod
     def _truncate(text: str, max_chars: int) -> str:

@@ -62,6 +62,39 @@ class CandidateFactVerifier:
                 required_relation=required_relation,
             )
         answer_facts = fact_store.verifiable_answer_facts()
+        boolean_negative_support = [
+            fact
+            for fact in answer_facts
+            if (
+                fact.polarity == "negative"
+                and self._is_boolean_requirement(answer_requirement)
+                and self._is_negative_boolean(candidate)
+                and self._values_equivalent(candidate, fact.object, answer_requirement)
+            )
+        ]
+        if boolean_negative_support:
+            boolean_negative_support, relation_mismatches = self._relation_bound_facts(
+                boolean_negative_support,
+                required_relation=required_relation,
+                required_relation_goal_id=required_relation_goal_id,
+                answer_role=answer_role,
+            )
+        else:
+            relation_mismatches = []
+        if boolean_negative_support:
+            return CandidateFactVerification(
+                status="supported",
+                supporting_fact_ids=[fact.fact_id for fact in boolean_negative_support],
+                derivation_chain_ids=self._parent_ids(boolean_negative_support, fact_store),
+                support_kind=(
+                    "derived"
+                    if all(fact.parent_fact_ids for fact in boolean_negative_support)
+                    else "direct"
+                ),
+                reason="candidate_supported_by_negative_boolean_fact",
+                answer_requirement=answer_requirement,
+                required_relation=required_relation,
+            )
         negative_subject_support = [
             fact
             for fact in answer_facts
@@ -78,7 +111,7 @@ class CandidateFactVerifier:
                 answer_role=answer_role,
             )
         else:
-            relation_mismatches = []
+            relation_mismatches = list(relation_mismatches)
         if negative_subject_support:
             support_reason = self._negative_support_reason(negative_subject_support)
             return CandidateFactVerification(
@@ -222,6 +255,23 @@ class CandidateFactVerifier:
         if types & {"closed_world_absence", "closed_world_set_difference"}:
             return "candidate_supported_by_closed_world_absence"
         return "candidate_subject_satisfies_grounded_negative_condition"
+
+    @staticmethod
+    def _is_negative_boolean(value: str) -> bool:
+        return normalize_for_exact(value) in {"no", "false"}
+
+    @staticmethod
+    def _is_boolean_requirement(requirement: str) -> bool:
+        text = str(requirement or "").strip().casefold()
+        if re.search(r"\b(?:yes\s*(?:or|/)\s*no|whether)\b", text):
+            return True
+        return bool(
+            re.search(
+                r"(?:^|[.!?]\s+)(?:can|could|do|does|did|is|are|was|were|"
+                r"has|have|had|will|would|should)\b[^?]*\?",
+                text,
+            )
+        )
 
     def _parent_ids(
         self,

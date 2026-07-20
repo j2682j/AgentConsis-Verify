@@ -62,6 +62,7 @@ Instructions:
 - If Capability_Gap lists a missing capability, do not repeat an unsupported request.
 - Follow Tool_Turn_Policy. When it requests final_answer, do not request another tool.
 - Use Search_Result before requesting search.
+- A name or title that already appears in the Question is the starting point of the task, not the final answer, unless the question explicitly asks you to repeat it.
 - When search is refinement-only, include one specific missing_information inside tool_args.
 - Do not repeat a query already covered by prepared evidence or Tool_Trace.
 - Use Attachment_Result before requesting attachment_reader.

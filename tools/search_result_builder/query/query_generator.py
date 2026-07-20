@@ -7,11 +7,12 @@ from typing import Any
 from core.llm_client import LLMClient
 from utils.network_utils import normalize_text
 
+from .document_type_directive import detect_document_type_directive
 from .mask_salience_query import MaskSalienceQueryGenerator
 from .query_coverage import QueryCoverageChecker
 from .relation_plan import RelationPlan
 from .search_intent_plan import SearchIntentPlan
-from .source_requirement import SearchQueryRequest
+from .source_requirement import SearchQueryRequest, SourceRequirement
 from .span_classifier import ClassifiedSpan
 
 
@@ -118,15 +119,36 @@ class QueryGenerator:
                     for candidate in candidates
                     if candidate.query in queries
                 ][: max(1, max_queries)]
+                query_requests = [
+                    SearchQueryRequest(
+                        query=candidate.query,
+                        source_requirement=candidate.source_requirement,
+                    ).to_dict()
+                    for candidate in selected_candidates
+                ]
+                directive = detect_document_type_directive(text)
+                directive_metadata: dict[str, Any] = {}
+                if directive is not None:
+                    directive_query = normalize_text(
+                        f"{queries[0]} {directive.type_terms}"
+                    )
+                    if self._normalize_query_key(directive_query) not in {
+                        self._normalize_query_key(query) for query in queries
+                    }:
+                        queries = [*queries, directive_query]
+                        query_requests.append(
+                            SearchQueryRequest(
+                                query=directive_query,
+                                source_requirement=SourceRequirement(
+                                    required_content=directive.required_content,
+                                ),
+                            ).to_dict()
+                        )
+                    directive_metadata = directive.to_dict()
                 return {
                     "queries": queries,
-                    "query_requests": [
-                        SearchQueryRequest(
-                            query=candidate.query,
-                            source_requirement=candidate.source_requirement,
-                        ).to_dict()
-                        for candidate in selected_candidates
-                    ],
+                    "query_requests": query_requests,
+                    "document_type_directive": directive_metadata,
                     "precision_needed": self.precision_needed,
                     "salient_spans": [span.text for span in salient_spans],
                     "query_candidates": [

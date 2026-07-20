@@ -100,6 +100,26 @@ class ExplicitFormatDirectiveTests(unittest.TestCase):
         )
         self.assertEqual(result.expected_type, "place")
 
+    def test_measurement_rejects_conflicting_unit_family(self) -> None:
+        result = self.gate.evaluate(
+            answer="716 kg",
+            answer_type="short_text",
+            answer_requirement="What was the volume in m^3 of the fish bag?",
+        )
+        self.assertEqual(result.outcome, "incompatible")
+        self.assertEqual(
+            result.reason,
+            "candidate_unit_conflicts_with_answer_requirement",
+        )
+
+    def test_measurement_allows_unit_inherited_from_question(self) -> None:
+        result = self.gate.evaluate(
+            answer="0.1777",
+            answer_type="number",
+            answer_requirement="What was the volume in m^3 of the fish bag?",
+        )
+        self.assertNotEqual(result.outcome, "incompatible")
+
 
 class TrustedFinalShapeGuardTests(unittest.TestCase):
     def _evidence_with_trusted_final(self, value: str) -> dict:

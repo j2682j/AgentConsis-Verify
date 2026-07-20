@@ -56,6 +56,15 @@ class AnswerBoundFactValidationTests(unittest.TestCase):
         self.assertNotEqual(missing_unit.role, "ANSWER_SUPPORT")
         self.assertTrue(validator.is_direct(with_unit))
 
+    def test_what_is_question_is_not_misclassified_as_boolean(self) -> None:
+        validator = AnswerBoundFactValidator()
+        context = "The first name of the author is Fred."
+        bound = validator.bind(
+            grounded_answer_fact("Fred", context=context),
+            question="What is the first name of the author?",
+        )
+        self.assertTrue(validator.is_direct(bound))
+
     def test_contract_rejects_span_without_answer_bound_fact(self) -> None:
         contracts = EvidenceRoleContractBuilder().build(
             question="How many studio albums were released?",

@@ -66,6 +66,7 @@ class SystemRoutingDecision:
     search_policy: str = "fallback"
     has_attachment: bool = False
     attachment_type: str | None = None
+    question_encoding: str = ""
     task_type: str = "system_contract"
     trigger_terms: list[str] = field(default_factory=list)
     routing_reasons: list[str] = field(default_factory=list)
@@ -112,6 +113,7 @@ class SystemRoutingDecision:
             "search_policy": self.search_policy,
             "has_attachment": self.has_attachment,
             "attachment_type": self.attachment_type,
+            "question_encoding": self.question_encoding,
             "task_type": self.task_type,
             "trigger_terms": list(self.trigger_terms),
             "tool_policy": {
@@ -134,6 +136,23 @@ class SystemRoutingContract:
     Returns:
         - SystemRoutingContract: 可根據 question 產生 SystemRoutingDecision 的 routing 規則物件。
     """
+
+    # Character-level detection for reversed-text questions. Keyword routing
+    # can never catch these: the trigger phrases are themselves reversed.
+    _REVERSED_DETECT_WORDS = frozenset("""
+        the and for you that this with have from are was were what which when
+        where who how why can could would should will shall may might must not
+        but all any each own same other more most some such only very just
+        than then them they their there here his her its our your out about
+        into over under again once during before after above below between
+        both few many off nor too also is be been being do does did doing it
+        if or as at by to of in on no so up he she we me my word words write
+        reverse opposite answer sentence understand left right give name find
+        using number two three four five first second last question please
+        listen list read text letter letters say tell make take know think
+        want need use see look
+    """.split())
+    _REVERSED_TOKEN_RE = re.compile(r"[A-Za-z]{3,}")
 
     SEARCH_TERMS = {
         "added",
@@ -355,6 +374,22 @@ class SystemRoutingContract:
             )
             return decision
 
+        if not has_attachment and self._reversed_text_signal(question):
+            decision.question_encoding = "reversed"
+            decision.initial_route = "deterministic_first"
+            decision.search_allowed = False
+            decision.search_policy = "forbidden"
+            decision.use_deterministic_solver = True
+            decision.task_type = "closed_world_puzzle"
+            decision.trigger_terms.append("reversed_text")
+            decision.routing_reasons.append(
+                "question text reads as reversed English; search is forbidden "
+                "so the encoded text cannot pollute retrieval, and the decoded "
+                "text is provided as deterministic context"
+            )
+            self._write_tool_policy(decision)
+            return decision
+
         python_hits = _has_word(normalized, self.PYTHON_TERMS)
         python_hits.extend(phrase for phrase in sorted(self.PYTHON_PHRASES) if phrase in normalized)
         if attachment_type_clean in {"xlsx", "xls", "csv", "tsv"}:
@@ -502,6 +537,31 @@ class SystemRoutingContract:
         if re.search(r"\b(18|19|20)\d{2}\b", normalized):
             hits.append("year")
         return hits
+
+    def _reversed_text_signal(self, question: str) -> bool:
+        """Detect a question written entirely in reversed English.
+
+        Keyword routing cannot catch these because the trigger phrases are
+        themselves reversed. Character statistics can: when reversing each
+        token multiplies dictionary hits while the forward text has almost
+        none, the text is encoded. Both thresholds must hold so ordinary
+        English, non-English names, and identifier-heavy questions never
+        trigger (0 false positives across 166 recorded GAIA questions).
+        """
+
+        tokens = [
+            token.casefold()
+            for token in self._REVERSED_TOKEN_RE.findall(str(question or ""))
+        ]
+        if len(tokens) < 5:
+            return False
+        forward_hits = sum(1 for token in tokens if token in self._REVERSED_DETECT_WORDS)
+        reversed_hits = sum(
+            1 for token in tokens if token[::-1] in self._REVERSED_DETECT_WORDS
+        )
+        forward_ratio = forward_hits / len(tokens)
+        reversed_ratio = reversed_hits / len(tokens)
+        return reversed_ratio >= 0.5 and forward_ratio <= 0.2
 
     def _closed_world_hits(self, normalized: str) -> list[str]:
         hits = _has_word(normalized, self.CLOSED_WORLD_TERMS)

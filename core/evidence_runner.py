@@ -143,6 +143,9 @@ class EvidenceRunner:
         attachment_result = self._resolve_attachment_result()
         search_result = self.search_result.strip()
         solver_result = ""
+        if str(routing.get("question_encoding") or "") == "reversed":
+            solver_result, decode_usage = self._decode_reversed_question()
+            tool_usage.extend(decode_usage)
         attachment_strategy_metadata: dict[str, Any] = {}
         attachment_answer_requirement = ""
         attachment_strategy_executed = False
@@ -677,6 +680,37 @@ class EvidenceRunner:
             routing["use_attachment"] = False
             routing["provided_attachment_result"] = True
         return routing
+
+    def _decode_reversed_question(self) -> tuple[str, list[dict[str, Any]]]:
+        """
+        將反寫題目字元反轉成明文，作為可信的中間 context 提供給 Stage1。
+
+        Args:
+            - 無。
+
+        Returns:
+            - str: 附說明的解碼文字，放入 solver_result。
+            - list[dict[str, Any]]: 解碼工具使用紀錄。
+        """
+        decoded = str(self.question or "")[::-1].strip()
+        context = (
+            "Decoded_Question (the original question text is written in "
+            "reverse; read this decoded version instead):\n"
+            f"{decoded}"
+        )
+        usage = {
+            "ok": True,
+            "tool_name": "reversed_text_decoder",
+            "status": "success",
+            "output_type": "intermediate_value",
+            "output_text": context,
+            "value": decoded,
+            "trusted": True,
+            "evidence_valid": True,
+            "raw_result": {"decoded_question": decoded, "encoding": "reversed"},
+            "error": None,
+        }
+        return context, [usage]
 
     def _attachment_type(self) -> str | None:
         """

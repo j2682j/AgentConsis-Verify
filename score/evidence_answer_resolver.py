@@ -4,6 +4,9 @@ from dataclasses import asdict, dataclass, field
 from typing import Any, Mapping
 
 from tools.evidence.fact_extraction import TaskFactStore
+from tools.evidence.fact_extraction.answer_bound_validator import (
+    AnswerBoundFactValidator,
+)
 from tools.evidence.fact_extraction.fact_goal_binding_validator import (
     FactGoalBindingValidator,
 )
@@ -40,6 +43,7 @@ class EvidenceAnswerResolver:
         binding_validator: FactGoalBindingValidator | None = None,
     ) -> None:
         self.binding_validator = binding_validator or FactGoalBindingValidator()
+        self.answer_bound_validator = AnswerBoundFactValidator()
 
     def resolve(self, evidence: Mapping[str, Any] | None) -> EvidenceAnswerResolution:
         payload = evidence or {}
@@ -47,10 +51,13 @@ class EvidenceAnswerResolver:
         required_goal_id = normalize_text(
             str(payload.get("required_relation_goal_id") or "")
         )
+        store = self._fact_store(payload)
         if not required_relation:
-            return EvidenceAnswerResolution(
-                status="not_applicable",
-                reason="task_has_no_required_relation",
+            return self._resolve_unique_promoted_answer(
+                store=store,
+                answer_requirement=normalize_text(
+                    str(payload.get("answer_requirement") or "")
+                ),
             )
 
         relation_plan = RelationPlan.from_dict(
@@ -74,7 +81,6 @@ class EvidenceAnswerResolver:
                 required_relation_goal_id=required_goal_id,
             )
 
-        store = self._fact_store(payload)
         effective_subjects = self.binding_validator.effective_subjects(
             relation_plan,
             final_goal,
@@ -125,6 +131,59 @@ class EvidenceAnswerResolver:
             reason="unique_relation_bound_answer_fact",
             required_relation=required_relation,
             required_relation_goal_id=required_goal_id,
+        )
+
+    def _resolve_unique_promoted_answer(
+        self,
+        *,
+        store: TaskFactStore,
+        answer_requirement: str,
+    ) -> EvidenceAnswerResolution:
+        """Resolve only values that passed a strict promotion or trusted handler."""
+
+        accepted_methods = {
+            "grounded_answer_value_promotion",
+            "trusted_handler",
+            "deterministic_adapter",
+        }
+        grouped: dict[str, dict[str, Any]] = {}
+        for fact in store.verifiable_answer_facts():
+            if fact.polarity != "positive":
+                continue
+            if fact.extraction_method not in accepted_methods:
+                continue
+            if normalize_text(str(fact.qualifiers.get("answer_binding") or "")).casefold() != "direct":
+                continue
+            compatible, _ = self.answer_bound_validator.value_compatible(
+                requirement=answer_requirement,
+                value=fact.object,
+            )
+            if not compatible:
+                continue
+            answer = normalize_text(fact.object)
+            key = normalize_for_exact(answer)
+            if not key:
+                continue
+            bucket = grouped.setdefault(key, {"answer": answer, "fact_ids": []})
+            bucket["fact_ids"].append(fact.fact_id)
+
+        if not grouped:
+            return EvidenceAnswerResolution(
+                status="not_applicable",
+                reason="task_has_no_required_relation_or_promoted_answer",
+            )
+        if len(grouped) > 1:
+            return EvidenceAnswerResolution(
+                status="conflict",
+                conflicting_values=[str(item["answer"]) for item in grouped.values()],
+                reason="multiple_promoted_answer_values",
+            )
+        selected = next(iter(grouped.values()))
+        return EvidenceAnswerResolution(
+            status="resolved",
+            answer=str(selected["answer"]),
+            supporting_fact_ids=list(dict.fromkeys(selected["fact_ids"])),
+            reason="unique_promoted_answer_fact",
         )
 
     @staticmethod

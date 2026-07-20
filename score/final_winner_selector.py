@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from dataclasses import asdict, dataclass, field
 from typing import Any, Callable
 
@@ -22,6 +23,7 @@ from score.evidence_support_level import (
 )
 from score.evidence_answer_resolver import EvidenceAnswerResolver
 from score.gate_result import CandidateGateDecision, GateResult
+from score.question_echo import is_question_echo
 
 
 @dataclass
@@ -466,18 +468,41 @@ class FinalWinnerSelector:
                 },
             )
 
-        if not is_strong_support_level(best_bucket):
+        top_candidates = [
+            item
+            for item in candidates
+            if buckets[item.candidate_key] == best_bucket
+        ]
+        echo_only_support = (
+            best_bucket
+            in {
+                EvidenceSupportLevel.DIRECT_EVIDENCE.value,
+                EvidenceSupportLevel.VERIFIED_DERIVED.value,
+            }
+            and all(
+                is_question_echo(item.answer, self.question)
+                for item in top_candidates
+            )
+        )
+        if not is_strong_support_level(best_bucket) or echo_only_support:
             # A weak/indirect signal (bridge_evidence) is often a single matched
-            # tool value from a low-quality source. It should not by itself
-            # eliminate rivals that simply have no signal yet; carry it forward
-            # as a soft hint for the consensus/consistency gates instead.
+            # tool value from a low-quality source, and support held only by
+            # question-echo answers is tautological (pages echo the query).
+            # Neither may eliminate rivals; carry the signal forward as a soft
+            # hint for the consensus/consistency gates instead. Trusted tool
+            # finals stay exempt from the echo demotion: a deterministic
+            # handler computing an echoed value is real verification.
             for item in candidates:
                 item.metadata["weak_support_bucket"] = buckets[item.candidate_key]
             decisions = [
                 self._decision(
                     item,
                     "unknown",
-                    "weak_support_bucket_not_eliminating",
+                    (
+                        "echo_support_not_eliminating"
+                        if echo_only_support
+                        else "weak_support_bucket_not_eliminating"
+                    ),
                     {"support_bucket": buckets[item.candidate_key]},
                 )
                 for item in candidates
@@ -489,7 +514,8 @@ class FinalWinnerSelector:
                 metadata={
                     "gate_strength": "soft",
                     "best_bucket": best_bucket,
-                    "weak_signal_not_eliminating": True,
+                    "weak_signal_not_eliminating": not echo_only_support,
+                    "echo_support_not_eliminating": echo_only_support,
                 },
             )
 
@@ -549,6 +575,49 @@ class FinalWinnerSelector:
         *,
         evidence: dict[str, Any],
     ) -> GateResult:
+        # Agents fed the same empty context often agree on a fragment of the
+        # question itself; that agreement carries no information. When echo
+        # and non-echo candidates coexist, only non-echo candidates compete
+        # for consensus. Trusted tool finals stay exempt: a deterministic
+        # handler computing an echoed value is real verification.
+        echo_candidates = [
+            item
+            for item in candidates
+            if (
+                is_question_echo(item.answer, self.question)
+                and self._support_bucket(item.support_status)
+                != EvidenceSupportLevel.TRUSTED_TOOL_FINAL.value
+            )
+        ]
+        non_echo_candidates = [
+            item for item in candidates if item not in echo_candidates
+        ]
+        if echo_candidates and non_echo_candidates:
+            for item in echo_candidates:
+                item.selection_state = "reserve"
+                if "cross_agent_consensus" not in item.soft_deferred_by:
+                    item.soft_deferred_by.append("cross_agent_consensus")
+            result = self._retain_maximum(
+                gate_name="cross_agent_consensus",
+                candidates=non_echo_candidates,
+                value=lambda item: len(set(item.supporting_agent_ids)),
+                pass_reason="maximum_distinct_agent_support",
+                reject_reason="fewer_distinct_supporting_agents",
+                detail_name="distinct_agent_count",
+                hard=False,
+            )
+            result.metadata["echo_candidates_deferred"] = [
+                item.candidate_key for item in echo_candidates
+            ]
+            result.decisions.extend(
+                self._decision(
+                    item,
+                    "reserve",
+                    "question_echo_answer_cannot_win_consensus",
+                )
+                for item in echo_candidates
+            )
+            return result
         return self._retain_maximum(
             gate_name="cross_agent_consensus",
             candidates=candidates,
@@ -690,6 +759,15 @@ class FinalWinnerSelector:
                 lambda item: item.selected_agent_answer_frequency,
             )
             tie_break_depth = 3
+        corpus_mentions: dict[str, int] = {}
+        if len(survivors) > 1:
+            corpus_mentions = self._corpus_mention_counts(evidence, survivors)
+            if any(corpus_mentions.values()):
+                survivors = self._filter_max(
+                    survivors,
+                    lambda item: corpus_mentions.get(item.candidate_key, 0),
+                )
+                tie_break_depth = 4
         result = self._gate_from_survivors(
             gate_name="versa_verification",
             candidates=candidates,
@@ -708,6 +786,8 @@ class FinalWinnerSelector:
             hard=False,
         )
         result.metadata["tie_break_depth"] = tie_break_depth
+        if corpus_mentions:
+            result.metadata["corpus_mention_counts"] = dict(corpus_mentions)
         if len(survivors) > 1:
             result.terminal_status = "unresolved_exact_tie"
             result.terminal_reason = "versa_could_not_separate_surviving_candidates"
@@ -1008,6 +1088,63 @@ class FinalWinnerSelector:
             reason=reason,
             details=dict(details or {}),
         )
+
+    def _corpus_mention_counts(
+        self,
+        evidence: dict[str, Any],
+        candidates: list[CandidateEvaluation],
+        *,
+        max_corpus_chars: int = 200_000,
+    ) -> dict[str, int]:
+        """Count exact candidate mentions in already-fetched retrieval text.
+
+        Verification is cheaper than generation: when Versa cannot separate
+        surviving candidates, the fetched corpus often can — a candidate that
+        actually occurs in retrieved passages beats one that occurs nowhere.
+        Uses only text already in the evidence bundle; no new network calls.
+        """
+
+        blocks: list[str] = []
+        total = 0
+        for usage in list(evidence.get("tool_usage") or []):
+            if not isinstance(usage, dict):
+                continue
+            raw = usage.get("raw_result")
+            raw = raw if isinstance(raw, dict) else {}
+            retrieval = raw.get("retrieval")
+            retrieval = retrieval if isinstance(retrieval, dict) else {}
+            for round_info in list(retrieval.get("rounds") or []):
+                if not isinstance(round_info, dict):
+                    continue
+                for document in list(round_info.get("documents") or []):
+                    if not isinstance(document, dict):
+                        continue
+                    text = str(document.get("text") or "")
+                    if text:
+                        blocks.append(text.casefold())
+                        total += len(text)
+                    if total >= max_corpus_chars:
+                        break
+            for reference in list(raw.get("unverified_references") or []):
+                if isinstance(reference, dict):
+                    text = str(reference.get("text") or "")
+                    if text:
+                        blocks.append(text.casefold())
+                        total += len(text)
+        if not blocks:
+            return {}
+        corpus = "\n".join(blocks)[:max_corpus_chars]
+        counts: dict[str, int] = {}
+        for candidate in candidates:
+            answer = str(candidate.answer or "").strip().casefold()
+            if not answer:
+                counts[candidate.candidate_key] = 0
+                continue
+            pattern = re.compile(
+                rf"(?<![a-z0-9]){re.escape(answer)}(?![a-z0-9])"
+            )
+            counts[candidate.candidate_key] = len(pattern.findall(corpus))
+        return counts
 
     def _filter_max(
         self,

@@ -29,8 +29,14 @@ class AnswerBoundFactValidator:
         r"kilometers?|miles?|meters?|metres?|kilograms?|hours?|minutes?|seconds?)\b",
         flags=re.IGNORECASE,
     )
-    _BOOLEAN_RE = re.compile(
-        r"\b(?:yes\s*(?:or|/)\s*no|whether|can\s+.+\?|does\s+.+\?|is\s+.+\?)",
+    _BOOLEAN_DIRECTIVE_RE = re.compile(
+        r"\b(?:yes\s*(?:or|/)\s*no|whether)\b",
+        flags=re.IGNORECASE,
+    )
+    _BOOLEAN_QUESTION_RE = re.compile(
+        r"(?:^|[.!?]\s+)"
+        r"(?:can|could|do|does|did|is|are|was|were|has|have|had|"
+        r"will|would|should)\b[^?]*\?",
         flags=re.IGNORECASE,
     )
     _LIST_RE = re.compile(
@@ -177,7 +183,7 @@ class AnswerBoundFactValidator:
                 return False, "measurement_requires_number_and_unit"
             return True, "measurement_value_matches_requirement"
 
-        if self._BOOLEAN_RE.search(requirement_text):
+        if self._is_boolean_requirement(requirement_text):
             if value_text.casefold() not in {"yes", "no", "true", "false"}:
                 return False, "boolean_requires_yes_or_no_value"
             return True, "boolean_value_matches_requirement"
@@ -194,6 +200,16 @@ class AnswerBoundFactValidator:
             return True, "text_value_matches_requirement"
 
         return True, "model_direct_role_with_grounded_value"
+
+    @classmethod
+    def _is_boolean_requirement(cls, requirement: str) -> bool:
+        """Recognize yes/no questions without treating ``What is ...?`` as boolean."""
+
+        text = normalize_text(requirement)
+        return bool(
+            cls._BOOLEAN_DIRECTIVE_RE.search(text)
+            or cls._BOOLEAN_QUESTION_RE.search(text)
+        )
 
     def _target_bound(
         self,
