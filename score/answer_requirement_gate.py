@@ -227,6 +227,48 @@ class AnswerRequirementGate:
                 if canonical_text != normalize_text(text):
                     text = canonical_text
                     repairs.append("canonicalize_numeric_unit")
+        text, format_repairs = self._canonicalize_explicit_format(
+            text,
+            requirement=requirement,
+        )
+        repairs.extend(format_repairs)
+        return text, repairs
+
+    @staticmethod
+    def _canonicalize_explicit_format(
+        answer: str,
+        *,
+        requirement: str,
+    ) -> tuple[str, list[str]]:
+        """Apply deterministic presentation repairs only when explicitly requested."""
+
+        text = normalize_text(answer)
+        lowered = normalize_text(requirement).casefold()
+        repairs: list[str] = []
+        parts = [part.strip() for part in text.split(",") if part.strip()]
+        if (
+            len(parts) > 1
+            and re.search(r"\b(?:alphabetical(?:ly)?|alphabetize[sd]?)\b", lowered)
+        ):
+            ordered = sorted(parts, key=lambda value: value.casefold())
+            rendered = ", ".join(ordered)
+            if rendered != text:
+                text = rendered
+                repairs.append("alphabetize_explicit_list")
+        if re.search(
+            r"\b(?:without|no)\s+(?:any\s+)?(?:spaces?|whitespace)\b",
+            lowered,
+        ):
+            compact = re.sub(r"\s+", "", text)
+            if compact != text:
+                text = compact
+                repairs.append("remove_explicitly_forbidden_whitespace")
+        if re.search(r"\blowercase\b", lowered) and text != text.lower():
+            text = text.lower()
+            repairs.append("apply_explicit_lowercase")
+        elif re.search(r"\buppercase\b", lowered) and text != text.upper():
+            text = text.upper()
+            repairs.append("apply_explicit_uppercase")
         return text, repairs
 
     @staticmethod
@@ -284,6 +326,13 @@ class AnswerRequirementGate:
         if re.search(
             r"\b(?:ioc|country|nation|airport|station|iata|icao)\s+(?:country\s+)?code\b"
             r"|\bcode\s+as\s+your\s+answer\b",
+            text,
+        ):
+            return "text"
+        if re.search(
+            r"\b(?:write|return|respond with|answer with)\s+only\s+(?:the\s+)?"
+            r"(?:word|phrase|text)\b"
+            r"|\b(?:word|phrase)\s+as\s+your\s+(?:final\s+)?answer\b",
             text,
         ):
             return "text"

@@ -14,6 +14,7 @@ import unittest
 
 from core.config import AgentReasoningSummary, EachAgentReply
 from score.answer_requirement_gate import AnswerRequirementGate
+from score.answer_requirement_contract import TaskAnswerRequirementContract
 from score.evidence_support_checker import EvidenceSupportChecker
 
 
@@ -100,6 +101,21 @@ class ExplicitFormatDirectiveTests(unittest.TestCase):
         )
         self.assertEqual(result.expected_type, "place")
 
+    def test_write_only_word_overrides_embedded_count_question(self) -> None:
+        requirement = (
+            'Do not answer the questions below. Write only the word "Guava". '
+            "1. What is 4+4? 2. How many hours are there in a day?"
+        )
+        result = self.gate.evaluate(
+            answer="Guava",
+            answer_type="text",
+            answer_requirement=requirement,
+            answer_role="count",
+        )
+
+        self.assertEqual(result.expected_type, "text")
+        self.assertNotEqual(result.outcome, "incompatible")
+
     def test_measurement_rejects_conflicting_unit_family(self) -> None:
         result = self.gate.evaluate(
             answer="716 kg",
@@ -119,6 +135,40 @@ class ExplicitFormatDirectiveTests(unittest.TestCase):
             answer_requirement="What was the volume in m^3 of the fish bag?",
         )
         self.assertNotEqual(result.outcome, "incompatible")
+
+    def test_explicit_alphabetical_list_is_canonicalized(self) -> None:
+        answer, repairs = self.gate.canonicalize(
+            "sugar, apples, Flour",
+            answer_requirement=(
+                "Return the ingredients as a comma-separated list in "
+                "alphabetical order."
+            ),
+        )
+
+        self.assertEqual(answer, "apples, Flour, sugar")
+        self.assertIn("alphabetize_explicit_list", repairs)
+
+    def test_unrequested_list_order_is_preserved(self) -> None:
+        answer, repairs = self.gate.canonicalize(
+            "sugar, apples, Flour",
+            answer_requirement="List the ingredients in recipe order.",
+        )
+
+        self.assertEqual(answer, "sugar, apples, Flour")
+        self.assertNotIn("alphabetize_explicit_list", repairs)
+
+    def test_contract_records_only_explicit_format_constraints(self) -> None:
+        contract = TaskAnswerRequirementContract.build(
+            question=(
+                "Name the ingredients in alphabetical order as a "
+                "comma-separated list without spaces."
+            )
+        )
+
+        self.assertEqual(contract.format_constraints.ordering, "alphabetical")
+        self.assertEqual(contract.format_constraints.separator, "comma")
+        self.assertEqual(contract.format_constraints.whitespace, "none")
+        self.assertEqual(contract.contract_confidence, "explicit")
 
 
 class TrustedFinalShapeGuardTests(unittest.TestCase):

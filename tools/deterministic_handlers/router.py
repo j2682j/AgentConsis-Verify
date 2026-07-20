@@ -400,10 +400,14 @@ class DeterministicHandlerRouter:
                 or ""
             ),
         )
+        result.operation = str(
+            result.operation or result.structured_result.get("operation") or ""
+        ).strip()
         result.structured_result.setdefault("output_type", result.output_type)
         result.structured_result.setdefault("semantic_role", result.semantic_role)
         result.structured_result.setdefault("supporting_inputs", list(result.supporting_inputs or []))
         result.structured_result.setdefault("calculation_trace", {})
+        self._apply_derivation_metadata(result)
         if isinstance(input_contract, HandlerIOContract):
             result.structured_result.setdefault(
                 "input_contract",
@@ -421,6 +425,61 @@ class DeterministicHandlerRouter:
                     "required_outputs": output_contract.required_output_names(),
                 },
             )
+
+    @staticmethod
+    def _apply_derivation_metadata(result: HandlerResult) -> None:
+        """Normalize deterministic provenance without inventing task semantics."""
+
+        structured = result.structured_result
+        if not result.derivation_type:
+            result.derivation_type = str(
+                structured.get("derivation_type")
+                or (
+                    "deterministic_computation"
+                    if result.output_type == "final_answer"
+                    else "intermediate_extraction"
+                )
+            ).strip()
+        if not result.derivation_trace:
+            raw_trace = structured.get("derivation_trace")
+            if isinstance(raw_trace, list):
+                result.derivation_trace = [
+                    dict(item) for item in raw_trace if isinstance(item, dict)
+                ]
+            if not result.derivation_trace:
+                trace_payload = next(
+                    (
+                        structured.get(key)
+                        for key in (
+                            "calculation_trace",
+                            "terms",
+                            "evidence",
+                            "rows",
+                            "path",
+                        )
+                        if structured.get(key)
+                    ),
+                    None,
+                )
+                if trace_payload is not None:
+                    result.derivation_trace = [
+                        {
+                            "operation": result.operation,
+                            "inputs": list(result.supporting_inputs or []),
+                            "result": result.answer,
+                            "trace": trace_payload,
+                        }
+                    ]
+        if not result.verification_payload:
+            result.verification_payload = {
+                "operation": result.operation,
+                "answer": result.answer,
+                "supporting_inputs": list(result.supporting_inputs or []),
+                "derivation_type": result.derivation_type,
+            }
+        structured.setdefault("derivation_type", result.derivation_type)
+        structured.setdefault("derivation_trace", list(result.derivation_trace))
+        structured.setdefault("verification_payload", dict(result.verification_payload))
 
     def _input_summary(self, inputs: dict[str, Any]) -> dict[str, Any]:
         summary: dict[str, Any] = {}

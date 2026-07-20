@@ -45,7 +45,13 @@ class EvidenceAnswerResolver:
         self.binding_validator = binding_validator or FactGoalBindingValidator()
         self.answer_bound_validator = AnswerBoundFactValidator()
 
-    def resolve(self, evidence: Mapping[str, Any] | None) -> EvidenceAnswerResolution:
+    def resolve(
+        self,
+        evidence: Mapping[str, Any] | None,
+        *,
+        allowed_candidate_keys: set[str] | None = None,
+        allow_new_nomination: bool = False,
+    ) -> EvidenceAnswerResolution:
         payload = evidence or {}
         required_relation = normalize_text(str(payload.get("required_relation") or ""))
         required_goal_id = normalize_text(
@@ -53,11 +59,16 @@ class EvidenceAnswerResolver:
         )
         store = self._fact_store(payload)
         if not required_relation:
-            return self._resolve_unique_promoted_answer(
+            resolution = self._resolve_unique_promoted_answer(
                 store=store,
                 answer_requirement=normalize_text(
                     str(payload.get("answer_requirement") or "")
                 ),
+            )
+            return self._restrict_to_candidates(
+                resolution,
+                allowed_candidate_keys=allowed_candidate_keys,
+                allow_new_nomination=allow_new_nomination,
             )
 
         relation_plan = RelationPlan.from_dict(
@@ -124,13 +135,44 @@ class EvidenceAnswerResolver:
             )
 
         selected = next(iter(grouped.values()))
-        return EvidenceAnswerResolution(
+        resolution = EvidenceAnswerResolution(
             status="resolved",
             answer=str(selected["answer"]),
             supporting_fact_ids=list(dict.fromkeys(selected["fact_ids"])),
             reason="unique_relation_bound_answer_fact",
             required_relation=required_relation,
             required_relation_goal_id=required_goal_id,
+        )
+        return self._restrict_to_candidates(
+            resolution,
+            allowed_candidate_keys=allowed_candidate_keys,
+            allow_new_nomination=allow_new_nomination,
+        )
+
+    @staticmethod
+    def _restrict_to_candidates(
+        resolution: EvidenceAnswerResolution,
+        *,
+        allowed_candidate_keys: set[str] | None,
+        allow_new_nomination: bool,
+    ) -> EvidenceAnswerResolution:
+        if not resolution.resolved or allow_new_nomination or allowed_candidate_keys is None:
+            return resolution
+        answer_key = normalize_for_exact(resolution.answer)
+        normalized_allowed = {
+            normalize_for_exact(value)
+            for value in allowed_candidate_keys
+            if normalize_for_exact(value)
+        }
+        if answer_key in normalized_allowed:
+            return resolution
+        return EvidenceAnswerResolution(
+            status="candidate_mismatch",
+            answer="",
+            supporting_fact_ids=list(resolution.supporting_fact_ids),
+            reason="resolved_fact_is_not_an_existing_agent_candidate",
+            required_relation=resolution.required_relation,
+            required_relation_goal_id=resolution.required_relation_goal_id,
         )
 
     def _resolve_unique_promoted_answer(

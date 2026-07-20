@@ -207,6 +207,9 @@ def run_sample(
     enable_evidence_driven_search: bool,
     bypass_search_labeler: bool,
     max_parallel_next_hop_queries: int,
+    enable_candidate_verification_search: bool,
+    candidate_verification_max_queries: int,
+    candidate_verification_workers: int,
     max_stage1_tool_turns: int,
     stage1_prepared_search_budget: int,
     previous_best_agent_id: str | None,
@@ -235,6 +238,9 @@ def run_sample(
         enable_evidence_driven_search=enable_evidence_driven_search,
         bypass_search_labeler=bypass_search_labeler,
         max_parallel_next_hop_queries=max_parallel_next_hop_queries,
+        enable_candidate_verification_search=enable_candidate_verification_search,
+        candidate_verification_max_queries=candidate_verification_max_queries,
+        candidate_verification_workers=candidate_verification_workers,
         max_stage1_tool_turns=max_stage1_tool_turns,
         stage1_prepared_search_budget=stage1_prepared_search_budget,
         previous_best_agent_id=previous_best_agent_id,
@@ -1032,6 +1038,9 @@ def run_gaia_evaluation(args: argparse.Namespace) -> dict[str, Any]:
             enable_evidence_driven_search=args.enable_evidence_driven_search,
             bypass_search_labeler=args.bypass_search_labeler,
             max_parallel_next_hop_queries=args.max_parallel_next_hop_queries,
+            enable_candidate_verification_search=args.candidate_verification_search,
+            candidate_verification_max_queries=args.candidate_verification_max_queries,
+            candidate_verification_workers=args.candidate_verification_workers,
             max_stage1_tool_turns=args.max_stage1_tool_turns,
             stage1_prepared_search_budget=args.stage1_prepared_search_budget,
             previous_best_agent_id=previous_best_agent_id,
@@ -1168,6 +1177,25 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         type=int,
         default=2,
         help="Maximum number of EfficientRAG filter queries searched in parallel.",
+    )
+    parser.set_defaults(candidate_verification_search=True)
+    parser.add_argument(
+        "--without-candidate-verification-search",
+        dest="candidate_verification_search",
+        action="store_false",
+        help="Disable bounded candidate evidence recovery when every factual candidate is unsupported.",
+    )
+    parser.add_argument(
+        "--candidate-verification-max-queries",
+        type=int,
+        default=5,
+        help="Maximum number of distinct candidate answers verified by recovery search.",
+    )
+    parser.add_argument(
+        "--candidate-verification-workers",
+        type=int,
+        default=2,
+        help="Maximum number of candidate verification searches executed in parallel.",
     )
     parser.add_argument("--max-stage1-tool-turns", type=int, default=2)
     parser.add_argument(

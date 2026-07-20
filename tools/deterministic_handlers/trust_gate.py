@@ -41,6 +41,9 @@ class HandlerTrustResult:
     output_type: str = ""
     semantic_role: str = ""
     supporting_inputs: list[str] = field(default_factory=list)
+    operation: str = ""
+    derivation_type: str = ""
+    derivation_trace: list[dict[str, Any]] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -142,7 +145,8 @@ class HandlerTrustGate:
             or ""
         ).strip()
         handler_operation = str(
-            structured.get("operation")
+            result.operation
+            or structured.get("operation")
             or structured.get("task_type")
             or handler_role
             or ""
@@ -152,6 +156,20 @@ class HandlerTrustGate:
             handler_operation,
         ):
             reasons.append("operation_binding_failed")
+        derivation_type = str(
+            result.derivation_type or structured.get("derivation_type") or ""
+        ).strip()
+        derivation_trace = [
+            dict(item)
+            for item in list(
+                result.derivation_trace or structured.get("derivation_trace") or []
+            )
+            if isinstance(item, dict)
+        ]
+        if output_type == "final_answer" and task_operation and not derivation_type:
+            reasons.append("missing_derivation_type")
+        if output_type == "final_answer" and task_operation and not derivation_trace:
+            reasons.append("missing_derivation_trace")
         contract_payload = handler_plan.get("answer_requirement_contract")
         if not isinstance(contract_payload, dict):
             contract_payload = {}
@@ -203,6 +221,9 @@ class HandlerTrustGate:
             output_type=output_type,
             semantic_role=semantic_role,
             supporting_inputs=supporting_inputs,
+            operation=handler_operation,
+            derivation_type=derivation_type,
+            derivation_trace=derivation_trace,
         )
 
     def _status_from_reasons(self, reasons: list[str]) -> str:
@@ -222,6 +243,8 @@ class HandlerTrustGate:
             return "handler_role_mismatch"
         if "operation_binding_failed" in reasons:
             return "operation_mismatch"
+        if "missing_derivation_type" in reasons or "missing_derivation_trace" in reasons:
+            return "missing_derivation"
         if "missing_handler" in reasons:
             return "missing_handler"
         if "missing_inputs" in reasons:
@@ -248,6 +271,13 @@ class HandlerTrustGate:
             return "logic_equivalence"
         if re.search(r"\bfamily reunion\b|\badults?\b.*\bkids?\b.*\bbags?\b", lowered, flags=re.DOTALL):
             return "multi_step_counting"
+        if re.search(
+            r"\b(?:truth[- ]?teller|liar|always lies|always tells? the truth|"
+            r"exactly one (?:person )?(?:lies|is lying|tells? the truth)|"
+            r"who is (?:lying|telling the truth))\b",
+            lowered,
+        ):
+            return "logic_truth_assignment"
         return ""
 
     @staticmethod
@@ -259,6 +289,12 @@ class HandlerTrustGate:
             return "logic_equivalence"
         if re.search(r"\b(?:shortest path|fewest stops|minimum distance)\b", lowered):
             return "graph_shortest_path"
+        if re.search(
+            r"\b(?:truth[- ]?teller|liar|always lies|always tells? the truth|"
+            r"who is (?:lying|telling the truth))\b",
+            lowered,
+        ):
+            return "logic_truth_assignment"
         return ""
 
     @staticmethod

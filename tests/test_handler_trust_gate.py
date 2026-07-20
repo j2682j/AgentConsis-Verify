@@ -81,6 +81,36 @@ class HandlerTrustGateTests(unittest.TestCase):
         self.assertFalse(trust.trusted)
         self.assertEqual(trust.status, "invalid_candidate")
 
+    def test_generic_list_handler_cannot_finalize_truth_assignment(self):
+        result = HandlerResult(
+            handler_name="list_operations",
+            status="ok",
+            answer="2",
+            evidence_text="Extracted the second item.",
+            input_summary={"items": ["1", "2", "3"]},
+            structured_result={
+                "handler_role": "list_operation",
+                "operation": "select_nth",
+                "output_contract": {"required_outputs": ["answer"]},
+            },
+            output_type="final_answer",
+            semantic_role="list_item",
+            supporting_inputs=["1", "2", "3"],
+            operation="select_nth",
+            derivation_type="deterministic_computation",
+            derivation_trace=[{"operation": "select_nth", "result": "2"}],
+        )
+
+        trust = HandlerTrustGate().validate(
+            result,
+            question=(
+                "Exactly one person is lying. Determine who is telling the truth."
+            ),
+        )
+
+        self.assertFalse(trust.trusted)
+        self.assertIn("answer_role_binding_failed", trust.reasons)
+
 
 if __name__ == "__main__":
     unittest.main()

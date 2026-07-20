@@ -337,6 +337,41 @@ def test_evidence_only_resolution_uses_unique_strictly_promoted_value() -> None:
     assert result.reason == "unique_promoted_answer_fact"
 
 
+def test_generic_promoted_fact_cannot_replace_existing_candidate_pool() -> None:
+    store = TaskFactStore()
+    store.add(
+        EvidenceFact(
+            fact_id="promotion-dialogue",
+            subject="speaker",
+            relation="says",
+            object="Isn't that hot?",
+            qualifiers={
+                "answer_binding": "direct",
+                "origin_fact_id": "dialogue-origin",
+            },
+            role="ANSWER_SUPPORT",
+            evidence_spans=["The speaker says: Isn't that hot?"],
+            context="The speaker says: Isn't that hot?",
+            source_id="dialogue",
+            source_type="attachment",
+            grounding_status="grounded",
+            extraction_method="grounded_answer_value_promotion",
+            parent_fact_ids=["dialogue-origin"],
+        )
+    )
+
+    result = EvidenceAnswerResolver().resolve(
+        {
+            "answer_requirement": "What response did the speaker say?",
+            "fact_store": store.to_dict(),
+        },
+        allowed_candidate_keys={"extremely", "moderately"},
+    )
+
+    assert result.status == "candidate_mismatch"
+    assert not result.resolved
+
+
 def test_evidence_only_resolution_does_not_trust_raw_semantic_direct_role() -> None:
     store = TaskFactStore()
     store.add(

@@ -32,6 +32,10 @@ from score.answer_requirement_contract import TaskAnswerRequirementContract
 from score.question_echo import is_question_echo
 from tools.attachment_workspace import AttachmentWorkspace
 from tools.evidence.fact_extraction import TaskFactStore
+from tools.search_result_builder.candidate_verification import (
+    CandidateVerificationSearcher,
+)
+from score.evidence_support_level import EvidenceSupportLevel
 from utils.network_utils import normalize_for_exact
 
 
@@ -74,6 +78,9 @@ class Network:
         enable_evidence_driven_search: bool = True,
         bypass_search_labeler: bool = False,
         max_parallel_next_hop_queries: int = 2,
+        enable_candidate_verification_search: bool = True,
+        candidate_verification_max_queries: int = 5,
+        candidate_verification_workers: int = 2,
         search_result: str = "",
         attachment_result: str = "",
         reference_answer: str = "",
@@ -108,6 +115,15 @@ class Network:
         self.enable_evidence_driven_search = enable_evidence_driven_search
         self.bypass_search_labeler = bool(bypass_search_labeler)
         self.max_parallel_next_hop_queries = max(0, max_parallel_next_hop_queries)
+        self.enable_candidate_verification_search = bool(
+            enable_candidate_verification_search
+        )
+        self.candidate_verification_max_queries = max(
+            1, int(candidate_verification_max_queries)
+        )
+        self.candidate_verification_workers = max(
+            1, int(candidate_verification_workers)
+        )
         self.search_result = search_result
         self.attachment_result = attachment_result
         self.reference_answer = reference_answer
@@ -177,6 +193,15 @@ class Network:
             clusterer=self.answer_candidate_clusterer,
             evidence_support_checker=self.evidence_support_checker,
             stage2_runner=self.stage2_runner,
+        )
+        self.candidate_verification_searcher = CandidateVerificationSearcher(
+            search_executor=(
+                self._execute_candidate_verification_search
+                if self.tool_manager is not None
+                else None
+            ),
+            max_candidates=self.candidate_verification_max_queries,
+            max_workers=self.candidate_verification_workers,
         )
 
     def run(self) -> NetworkSummary:
@@ -362,9 +387,44 @@ class Network:
             answer_requirement=str(evidence.get("answer_requirement") or ""),
             answer_role=str(evidence.get("answer_role") or ""),
         )
+        support_bundle = self.candidate_path_evaluator.evaluate_candidates(
+            candidates=candidates,
+            stage1_results=stage1_results,
+            evidence=evidence,
+            enable_versa=False,
+            evidence_revision=evidence_revision,
+        )
+        candidate_verification = None
+        if self._should_run_candidate_verification(
+            support_bundle.path_evaluations,
+            evidence=evidence,
+        ):
+            candidate_verification = self.candidate_verification_searcher.verify(
+                question=self.question,
+                candidate_answers=[item.representative_answer for item in candidates],
+                fact_store=evidence["_fact_store"],
+                answer_requirement=str(evidence.get("answer_requirement") or ""),
+                answer_role=str(evidence.get("answer_role") or ""),
+                required_relation=str(evidence.get("required_relation") or ""),
+                required_relation_goal_id=str(
+                    evidence.get("required_relation_goal_id") or ""
+                ),
+            )
+            evidence["candidate_verification"] = candidate_verification.to_dict()
+            if candidate_verification.changed_evidence:
+                evidence_revision = int(evidence["_fact_store"].revision)
+                evidence["fact_store"] = evidence["_fact_store"].to_dict()
+                support_bundle = self.candidate_path_evaluator.evaluate_candidates(
+                    candidates=candidates,
+                    stage1_results=stage1_results,
+                    evidence=evidence,
+                    enable_versa=False,
+                    evidence_revision=evidence_revision,
+                )
         if stage1_early_stop_used:
             verifier_results = early_stop_verifier_results
             stage2_skip_reason = "stage1_early_stop"
+            evaluation_bundle = support_bundle
         else:
             candidate_evaluation_started_at = time.perf_counter()
             evaluation_bundle = self.candidate_path_evaluator.evaluate_candidates(
@@ -389,14 +449,6 @@ class Network:
                 stage2_skip_reason = ""
             else:
                 stage2_skip_reason = "stage2_score_disabled"
-        if stage1_early_stop_used:
-            evaluation_bundle = self.candidate_path_evaluator.evaluate_candidates(
-                candidates=candidates,
-                stage1_results=stage1_results,
-                evidence=evidence,
-                enable_versa=False,
-                evidence_revision=evidence_revision,
-            )
         direct_consensus_used = (
             stage1_early_stop_used
             and direct_consensus_winner is not None
@@ -406,27 +458,27 @@ class Network:
             self._write_direct_consensus_scores(stage1_results)
         else:
             self._write_agent_scores(stage1_results, verifier_results)
+        winner_selection_started_at = time.perf_counter()
+        winner = self._select_winner(
+            stage1_results,
+            candidates=candidates,
+            path_evaluations=evaluation_bundle.path_evaluations,
+            verifier_results=verifier_results,
+            evidence=evidence,
+        )
+        winner_selection_seconds = time.perf_counter() - winner_selection_started_at
         if stage1_early_stop_used:
-            winner = early_stop_winner
-            self._last_winner_selection_trace = {
-                "strategy": "verified_stage1_early_stop",
-                "status": "answerable",
-                "selection_reason": early_stop_reason,
-                "selected_agent_id": winner.agent_id if winner else "",
-                "selected_answer": winner.compressed_answer if winner else "",
+            self._last_winner_selection_trace["early_stop_proposal"] = {
+                "agent_id": early_stop_winner.agent_id if early_stop_winner else "",
+                "answer": early_stop_winner.compressed_answer if early_stop_winner else "",
+                "reason": early_stop_reason,
+                "accepted_by_ordered_gates": bool(
+                    winner is not None
+                    and early_stop_winner is not None
+                    and normalize_for_exact(winner.compressed_answer)
+                    == normalize_for_exact(early_stop_winner.compressed_answer)
+                ),
             }
-        else:
-            winner_selection_started_at = time.perf_counter()
-            winner = self._select_winner(
-                stage1_results,
-                candidates=candidates,
-                path_evaluations=evaluation_bundle.path_evaluations,
-                verifier_results=verifier_results,
-                evidence=evidence,
-            )
-            winner_selection_seconds = time.perf_counter() - winner_selection_started_at
-        if stage1_early_stop_used:
-            winner_selection_seconds = 0.0
         selected_answer = (
             winner.compressed_answer
             if winner is not None
@@ -474,6 +526,14 @@ class Network:
                 "enable_evidence_driven_search": self.enable_evidence_driven_search,
                 "bypass_search_labeler": self.bypass_search_labeler,
                 "max_parallel_next_hop_queries": self.max_parallel_next_hop_queries,
+                "enable_candidate_verification_search": self.enable_candidate_verification_search,
+                "candidate_verification_max_queries": self.candidate_verification_max_queries,
+                "candidate_verification_workers": self.candidate_verification_workers,
+                "candidate_verification": (
+                    candidate_verification.to_dict()
+                    if candidate_verification is not None
+                    else {"attempted": False, "reason": "not_triggered"}
+                ),
                 "max_stage1_tool_turns": self.max_stage1_tool_turns,
                 "stage1_prepared_search_budget": self.stage1_prepared_search_budget,
                 "stage1_supplemental_evidence_max_items": self.stage1_supplemental_evidence_max_items,
@@ -961,6 +1021,45 @@ class Network:
         )
         self._last_winner_selection_trace = selection.to_dict()
         return selection.winner
+
+    def _should_run_candidate_verification(
+        self,
+        paths: list[CandidatePathEvaluation],
+        *,
+        evidence: dict[str, Any],
+    ) -> bool:
+        """Trigger bounded recovery only for factual, wholly unsupported pools."""
+
+        if not self.enable_candidate_verification_search or self.tool_manager is None:
+            return False
+        routing = evidence.get("routing") if isinstance(evidence.get("routing"), dict) else {}
+        primary_route = str(routing.get("primary_route") or "").strip().casefold()
+        factual = primary_route in {"factual_search", "hybrid"} or bool(
+            routing.get("use_search")
+        )
+        eligible = [path for path in paths if path.valid and path.eligible_for_winner]
+        return bool(
+            factual
+            and eligible
+            and all(
+                str(path.evidence_support_level or "")
+                == EvidenceSupportLevel.UNSUPPORTED.value
+                for path in eligible
+            )
+        )
+
+    def _execute_candidate_verification_search(
+        self,
+        query: str,
+        max_results: int,
+    ) -> dict[str, Any]:
+        if self.tool_manager is None:
+            return {}
+        return self.tool_manager.execute_tool(
+            "search",
+            {"input": query, "max_results": max(1, int(max_results))},
+            stage="candidate_verification",
+        )
 
     def _evaluate_early_candidates(
         self,

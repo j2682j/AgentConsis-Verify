@@ -59,6 +59,10 @@ class HandlerResult:
     supporting_inputs: list[str] = field(default_factory=list)
     output_schema_version: str = SCHEMA_VERSION
     next_capability: str = ""
+    operation: str = ""
+    derivation_type: str = ""
+    derivation_trace: list[dict[str, Any]] = field(default_factory=list)
+    verification_payload: dict[str, Any] = field(default_factory=dict)
 
     @property
     def ok(self) -> bool:

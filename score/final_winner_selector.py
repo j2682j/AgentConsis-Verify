@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import re
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from typing import Any, Callable
 
 from core.config import (
@@ -177,7 +177,17 @@ class FinalWinnerSelector:
                 result.gate_name == "evidence_support"
                 and bool(result.metadata.get("all_candidates_unsupported"))
             ):
-                resolution = self.evidence_answer_resolver.resolve(evidence)
+                resolution = self.evidence_answer_resolver.resolve(
+                    evidence,
+                    allowed_candidate_keys={item.candidate_key for item in survivors},
+                    # A completed relation plan may legitimately derive an
+                    # answer no Agent nominated (for example a multi-hop
+                    # relation target). Generic promoted facts may not replace
+                    # an existing candidate pool.
+                    allow_new_nomination=bool(
+                        str(evidence.get("required_relation") or "").strip()
+                    ) or not bool(survivors),
+                )
                 if resolution.resolved:
                     gate_trace.append(
                         GateResult(
@@ -269,6 +279,10 @@ class FinalWinnerSelector:
             )
 
         winner = self.clusterer.summary_for_member(stage1_results, selected_member)
+        # Candidate identity is canonical; the selected run only contributes
+        # reasoning and provenance. Restoring its raw answer can reintroduce an
+        # explicitly repaired ordering or formatting error.
+        winner = replace(winner, compressed_answer=selected.answer)
         return FinalWinnerSelection(
             winner=winner,
             evaluation=selected,

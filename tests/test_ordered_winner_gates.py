@@ -79,6 +79,33 @@ def verifier(
 
 
 class OrderedWinnerGateTests(unittest.TestCase):
+    def test_selected_output_uses_canonical_explicit_list_order(self) -> None:
+        configs = [AgentConfig(agent_id="a1", model_name="test-model")]
+        results = [
+            make_summary(
+                "a1",
+                [make_run("a1", 1, "sugar, apples, flour", answer_type="list")],
+                answer="sugar, apples, flour",
+                confidence=1.0,
+            )
+        ]
+        network = Network(
+            "Return a comma-separated list in alphabetical order.",
+            configs,
+        )
+
+        winner = network._select_winner(
+            results,
+            evidence={
+                "answer_requirement": (
+                    "Return a comma-separated list in alphabetical order."
+                ),
+                "answer_role": "list",
+            },
+        )
+
+        self.assertIsNotNone(winner)
+        self.assertEqual(winner.compressed_answer, "apples, flour, sugar")
     def test_requirement_gate_rejects_clear_answer_shape_mismatch(self) -> None:
         configs = [
             AgentConfig(agent_id="text", model_name="test-model"),
