@@ -10,6 +10,7 @@ import numpy as np
 from tools.search_result_builder.corpus import CorpusRecord, TaskCorpusSession
 from tools.search_result_builder.next_hop_query import (
     NextHopQueryComposer,
+    RelationEvidence,
     RelationEvidenceBinder,
     RelationGoalResolver,
 )
@@ -93,6 +94,82 @@ class RelationAwareMultiHopTests(unittest.TestCase):
         self.assertIn("floor area", branches[0].request.query)
         self.assertEqual(branches[0].request.source_requirement.source_kind, "web")
 
+    def test_composer_rejects_original_or_previously_searched_relation_query(self) -> None:
+        plan = self._plan()
+        first = plan.goals[0].replace(
+            state="resolved",
+            resolved_values=["Dimond Center"],
+        )
+        second = plan.goals[1].replace(state="active")
+        plan = RelationPlan(goals=[first, second], active_goal_id="G2")
+        baseline = NextHopQueryComposer().build_relation_requests(
+            relation_plan=plan,
+            answer_requirement="mall size",
+        )
+        self.assertEqual(len(baseline), 1)
+        expected_query = baseline[0].request.query
+
+        original_duplicate = NextHopQueryComposer().build_relation_requests(
+            relation_plan=plan,
+            answer_requirement="mall size",
+            original_question=expected_query,
+        )
+        searched_duplicate = NextHopQueryComposer().build_relation_requests(
+            relation_plan=plan,
+            answer_requirement="mall size",
+            seen_query_keys={expected_query.casefold()},
+        )
+
+        self.assertEqual(original_duplicate, [])
+        self.assertEqual(searched_duplicate, [])
+
+    def test_resolver_activates_only_the_next_goal_after_current_goal(self) -> None:
+        plan = RelationPlan.from_dict(
+            {
+                "goals": [
+                    {
+                        "goal_id": "G1",
+                        "subject": "unrelated",
+                        "relation": "unused relation",
+                        "target": "unused target",
+                        "state": "pending",
+                    },
+                    {
+                        "goal_id": "G2",
+                        "subject": "KGOT",
+                        "relation": "studio location",
+                        "target": "mall name",
+                        "state": "active",
+                    },
+                    {
+                        "goal_id": "G3",
+                        "subject": "",
+                        "relation": "floor area",
+                        "target": "mall size",
+                        "state": "pending",
+                    },
+                ],
+                "active_goal_id": "G2",
+            }
+        )
+        resolution = RelationGoalResolver().resolve(
+            plan,
+            [
+                RelationEvidence(
+                    goal_id="G2",
+                    subject="KGOT",
+                    relation="studio location",
+                    object="Dimond Center",
+                    context="KGOT has studios in the Dimond Center.",
+                    document_id="D1",
+                )
+            ],
+        )
+
+        self.assertEqual(resolution.activated_goal_id, "G3")
+        self.assertEqual(resolution.plan.goals[0].state, "pending")
+        self.assertEqual(resolution.plan.goals[2].state, "active")
+
     def test_query_json_parses_source_requests_and_ordered_relation_goals(self) -> None:
         output = MaskSalienceQueryGenerator()._parse_query_json(
             """{
@@ -111,6 +188,23 @@ class RelationAwareMultiHopTests(unittest.TestCase):
         self.assertEqual(output.query_requests[0].query, "KGOT studio location")
         self.assertEqual(len(output.relation_plan.goals), 2)
         self.assertEqual(output.relation_plan.active_goal_id, "G1")
+
+    def test_relation_plan_keeps_six_goals_and_content_requirements(self) -> None:
+        plan = RelationPlan.from_specs(
+            [
+                {
+                    "subject": f"subject-{index}",
+                    "relation": f"relation-{index}",
+                    "target": f"target-{index}",
+                    "source_kind": "academic",
+                    "required_content": "pdf_text",
+                }
+                for index in range(1, 7)
+            ]
+        )
+
+        self.assertEqual(len(plan.goals), 6)
+        self.assertTrue(all(goal.required_content == "pdf_text" for goal in plan.goals))
 
 
 class _FakeEmbedder:

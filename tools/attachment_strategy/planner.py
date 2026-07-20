@@ -106,7 +106,12 @@ class AttachmentStrategyPlanner:
                     "Choose at most one exact handler_name from allowed_handlers. "
                     "Use only inputs listed in attachment_profile.available_inputs. "
                     "If no listed handler can perform the operation, leave required_handler empty. "
-                    "Set needs_search only when the parsed attachment cannot provide required information."
+                    "Set needs_search only when the parsed attachment cannot provide required information. "
+                    "needs_search must be true when the attachment only supplies identifiers, names, IDs, "
+                    "or references (for example an ORCID iD, a DOI, a username, a handle, or a record ID) "
+                    "and the question asks for information that lives on an external page or database tied "
+                    "to that identifier (for example a profile page, a linked document, or a database entry) "
+                    "rather than being present in the attachment content itself."
                 ),
             },
             {
@@ -121,6 +126,7 @@ class AttachmentStrategyPlanner:
                             "expected_answer": "natural language answer requirement",
                             "needs_search": False,
                             "missing_inputs": [],
+                            "next_capability": "search, attachment, handler, agent, or empty",
                         },
                     },
                     ensure_ascii=False,

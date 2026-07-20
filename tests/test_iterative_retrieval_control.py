@@ -335,6 +335,34 @@ class WebRetrievalControlTests(unittest.TestCase):
             sources[2].filter_reasons,
         )
 
+    def test_seer_filter_reclassifies_academic_domains_for_higher_limit(self):
+        topics = ["harlequin shrimp diet", "sea star feeding behavior", "coral reef symbiosis"]
+        sources = [
+            SearchSourceCandidate(
+                source_id=f"S{index}",
+                query_id="Q1",
+                title=f"Scholar profile paper about {topic}",
+                url=(
+                    "https://scholar.google.com/citations?view_op=view_citation"
+                    f"&hl=en&user=abc123&citation_for_view=abc123:{index}"
+                ),
+                snippet=f"An abstract discussing {topic} in detail across several field sites.",
+            )
+            for index, topic in enumerate(topics, start=1)
+        ]
+
+        filtered = SourceFilter(max_urls_per_domain=1).filter_sources(
+            sources,
+            question="Unrelated question",
+            fetch_limit=3,
+        )
+
+        self.assertEqual(len(filtered), 3)
+        for source in sources:
+            self.assertEqual(source.source_kind, "academic")
+            self.assertIn("domain_reclassified:academic", source.filter_reasons)
+            self.assertEqual(source.block_reason, "")
+
     def test_seer_filter_marks_question_semantic_echo_without_blocking(self):
         question = "What writer is quoted by Merriam-Webster for the Word of the Day from June 27, 2022?"
         sources = [

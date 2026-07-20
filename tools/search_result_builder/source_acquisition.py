@@ -9,6 +9,7 @@ from utils.network_utils import normalize_text
 
 from .config import SearchSourceCandidate
 from .query import SearchQueryRequest
+from .source_analyze.content_requirement import ContentRequirementVerifier
 
 
 URL_RE = re.compile(r"https?://[^\s)>\]\"']+", re.IGNORECASE)
@@ -38,6 +39,7 @@ class SourceAcquisitionTrace:
     requested_source_kind: str
     requested_access_mode: str
     source_hint: str = ""
+    required_content: str = "html_text"
     actual_acquirer: str = ""
     result_count: int = 0
     source_ids: list[str] = field(default_factory=list)
@@ -60,13 +62,25 @@ class SourceAcquisitionRouter:
      - SourceAcquisitionRouter: 統一輸出 SearchSourceCandidate 的來源路由器。
     """
 
-    def __init__(self, *, search_tool: Any, video_tool: Any | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        search_tool: Any,
+        video_tool: Any | None = None,
+        transcript_tool: Any | None = None,
+    ) -> None:
         self.search_tool = search_tool
         if video_tool is None:
             from ..video_evidence_tool import VideoEvidenceTool
 
             video_tool = VideoEvidenceTool()
         self.video_tool = video_tool
+        if transcript_tool is None:
+            from ..video_transcript_tool import VideoTranscriptTool
+
+            transcript_tool = VideoTranscriptTool()
+        self.transcript_tool = transcript_tool
+        self.content_requirement_verifier = ContentRequirementVerifier()
 
     def acquire_many(
         self,
@@ -89,6 +103,7 @@ class SourceAcquisitionRouter:
                         requested_source_kind=requirement.source_kind,
                         requested_access_mode=requirement.access_mode,
                         source_hint=requirement.source_hint,
+                        required_content=requirement.required_content,
                         actual_acquirer="duplicate_direct_source_skipped",
                         notices=["duplicate_direct_url"],
                     )
@@ -124,6 +139,7 @@ class SourceAcquisitionRouter:
             requested_source_kind=requirement.source_kind,
             requested_access_mode=requirement.access_mode,
             source_hint=requirement.source_hint,
+            required_content=requirement.required_content,
         )
 
         if requirement.source_kind == "video":
@@ -194,14 +210,24 @@ class SourceAcquisitionRouter:
             )
 
         if direct_url:
-            payload = self.video_tool.run(
+            selected_tool = (
+                self.transcript_tool
+                if request.source_requirement.required_content == "transcript"
+                else self.video_tool
+            )
+            payload = selected_tool.run(
                 {
                     "url": direct_url,
                     "question": question,
+                    "required_content": request.source_requirement.required_content,
                 }
             )
             if bool(payload.get("ok")) and normalize_text(payload.get("output_text", "")):
-                trace.actual_acquirer = "video_evidence"
+                trace.actual_acquirer = (
+                    "video_transcript"
+                    if request.source_requirement.required_content == "transcript"
+                    else "video_evidence"
+                )
                 source = self._video_source(
                     request,
                     query_id=query_id,
@@ -265,6 +291,7 @@ class SourceAcquisitionRouter:
                     source_kind=requirement.source_kind,
                     access_mode=requirement.access_mode,
                     source_hint=requirement.source_hint,
+                    required_content=requirement.required_content,
                 )
             )
         sources = self._prioritize_hint(sources, requirement.source_hint)
@@ -292,6 +319,7 @@ class SourceAcquisitionRouter:
             source_kind=requirement.source_kind,
             access_mode=requirement.access_mode,
             source_hint=requirement.source_hint,
+            required_content=requirement.required_content,
         )
 
     def _video_source(
@@ -307,6 +335,18 @@ class SourceAcquisitionRouter:
         content = normalize_text(str(payload.get("output_text") or ""))
         title = normalize_text(str(raw.get("title") or "")) or "Video evidence"
         requirement = request.source_requirement
+        acquisition = self.content_requirement_verifier.verify(
+            required_content=requirement.required_content,
+            content=content,
+            method=(
+                "video_transcript"
+                if requirement.required_content == "transcript"
+                else "video_evidence_visual_frames"
+            ),
+            status_code=200,
+            content_complete=True,
+            source_kind="video",
+        )
         return SearchSourceCandidate(
             source_id="",
             query_id=query_id,
@@ -320,6 +360,13 @@ class SourceAcquisitionRouter:
             source_kind="video",
             access_mode=requirement.access_mode,
             source_hint=requirement.source_hint,
+            required_content=requirement.required_content,
+            transport_ok=acquisition.transport_ok,
+            content_extracted=acquisition.content_extracted,
+            content_complete=acquisition.content_complete,
+            requirement_met=acquisition.requirement_met,
+            acquisition_state=acquisition.state,
+            missing_content=list(acquisition.missing_content),
             filter_reasons=["source_acquirer:video_evidence"],
         )
 

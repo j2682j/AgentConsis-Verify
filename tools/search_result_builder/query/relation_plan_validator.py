@@ -56,7 +56,7 @@ class RelationPlanValidator:
         goals: list[RelationGoal] = []
         seen: set[tuple[str, str, str]] = set()
 
-        for index, original in enumerate(plan.goals[:3]):
+        for index, original in enumerate(plan.goals[:6]):
             goal = original.replace(
                 subject=normalize_text(original.subject),
                 relation=self.normalize_relation(original.relation),

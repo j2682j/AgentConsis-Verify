@@ -9,6 +9,18 @@ from utils.network_utils import normalize_text
 
 SOURCE_KINDS = frozenset({"web", "video", "academic", "collection"})
 ACCESS_MODES = frozenset({"search", "direct_fetch", "browser"})
+REQUIRED_CONTENT_TYPES = frozenset(
+    {
+        "html_text",
+        "full_page",
+        "pdf_text",
+        "pdf_figure",
+        "transcript",
+        "temporal_video",
+        "visual",
+        "collection_records",
+    }
+)
 URL_RE = re.compile(r"https?://[^\s)>\]\"']+", re.IGNORECASE)
 
 
@@ -29,6 +41,7 @@ class SourceRequirement:
     source_kind: str = "web"
     access_mode: str = "search"
     source_hint: str = ""
+    required_content: str = "html_text"
 
     def to_dict(self) -> dict[str, str]:
         return asdict(self)
@@ -44,11 +57,16 @@ class SourceRequirement:
         source_kind = normalize_text(str(data.get("source_kind") or "web")).lower()
         access_mode = normalize_text(str(data.get("access_mode") or "search")).lower()
         source_hint = normalize_text(str(data.get("source_hint") or ""))
+        required_content = normalize_text(
+            str(data.get("required_content") or "html_text")
+        ).lower()
 
         if source_kind not in SOURCE_KINDS:
             source_kind = "web"
         if access_mode not in ACCESS_MODES:
             access_mode = "search"
+        if required_content not in REQUIRED_CONTENT_TYPES:
+            required_content = "html_text"
         if access_mode == "direct_fetch" and not (
             source_hint or URL_RE.search(str(query or ""))
         ):
@@ -58,6 +76,7 @@ class SourceRequirement:
             source_kind=source_kind,
             access_mode=access_mode,
             source_hint=source_hint,
+            required_content=required_content,
         )
 
 
@@ -111,6 +130,7 @@ class SearchQueryRequest:
 __all__ = [
     "ACCESS_MODES",
     "SOURCE_KINDS",
+    "REQUIRED_CONTENT_TYPES",
     "SearchQueryRequest",
     "SourceRequirement",
 ]

@@ -62,6 +62,8 @@ class CorpusRecord:
     content_complete: bool = False
     content_truncated: bool = False
     original_content_chars: int = 0
+    required_content: str = "html_text"
+    acquisition_state: str = "pending"
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -86,6 +88,8 @@ class CorpusRecord:
             "content_complete": self.content_complete,
             "content_truncated": self.content_truncated,
             "original_content_chars": self.original_content_chars,
+            "required_content": self.required_content,
+            "acquisition_state": self.acquisition_state,
         }
 
 
@@ -273,6 +277,7 @@ class WebCorpusBuilder:
                         text=chunk,
                         url=source_data["url"],
                         retrieved_at=retrieved_date,
+                        record_type=self._record_type_for_source(source_data),
                         parent_url=source_data["url"],
                         content_scope=(
                             "full_document"
@@ -285,6 +290,8 @@ class WebCorpusBuilder:
                             or not source_content_complete
                         ),
                         original_content_chars=source_data["original_content_chars"],
+                        required_content=source_data["required_content"],
+                        acquisition_state=source_data["acquisition_state"],
                     )
                 )
         return records
@@ -437,7 +444,26 @@ class WebCorpusBuilder:
                 getter("original_content_chars", 0) or 0
             ),
             "final_url": str(getter("final_url", "") or ""),
+            "required_content": str(
+                getter("required_content", "html_text") or "html_text"
+            ),
+            "acquisition_state": str(
+                getter("acquisition_state", "pending") or "pending"
+            ),
         }
+
+    def _record_type_for_source(self, source_data: dict[str, Any]) -> str:
+        required = str(source_data.get("required_content") or "").casefold()
+        source_kind = str(source_data.get("source_kind") or "").casefold()
+        if required in {"pdf_text", "pdf_figure"}:
+            return "pdf_page"
+        if required == "transcript":
+            return "transcript_segment"
+        if required in {"temporal_video", "visual"} or source_kind == "video":
+            return "visual_observation"
+        if required == "collection_records":
+            return "collection_record"
+        return "passage"
 
     def _fetch_payload(self, url: str, *, max_tokens: int) -> PageFetchResult:
         result = self.page_fetcher(url, max_tokens=max_tokens)

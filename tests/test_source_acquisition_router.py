@@ -43,6 +43,16 @@ class FakeVideoTool:
         }
 
 
+class FakeTranscriptTool(FakeVideoTool):
+    def run(self, parameters):
+        self.calls.append(dict(parameters))
+        return {
+            "ok": True,
+            "output_text": "Video transcript source: youtube captions\n[00:12] target phrase",
+            "raw_result": {"title": "Transcript"},
+        }
+
+
 class SourceAcquisitionRouterTests(unittest.TestCase):
     def test_invalid_source_values_fall_back_to_web_search(self):
         request = SearchQueryRequest.from_dict(
@@ -90,6 +100,7 @@ class SourceAcquisitionRouterTests(unittest.TestCase):
                 source_kind="academic",
                 access_mode="search",
                 source_hint="example.org",
+                required_content="pdf_text",
             ),
         )
 
@@ -102,6 +113,8 @@ class SourceAcquisitionRouterTests(unittest.TestCase):
         self.assertEqual(len(search.calls), 1)
         self.assertEqual(sources[0].source_kind, "academic")
         self.assertEqual(sources[0].source_hint, "example.org")
+        self.assertEqual(sources[0].required_content, "pdf_text")
+        self.assertEqual(traces[0].required_content, "pdf_text")
         self.assertEqual(traces[0].actual_acquirer, "fake-search")
 
     def test_direct_browser_request_skips_search(self):
@@ -208,6 +221,37 @@ class SourceAcquisitionRouterTests(unittest.TestCase):
         self.assertEqual(len(sources), 1)
         self.assertTrue(traces[0].fallback_used)
         self.assertIn("video failed", traces[0].notices)
+
+    def test_transcript_requirement_uses_transcript_acquirer(self):
+        search = FakeSearchTool()
+        video = FakeVideoTool()
+        transcript = FakeTranscriptTool()
+        router = SourceAcquisitionRouter(
+            search_tool=search,
+            video_tool=video,
+            transcript_tool=transcript,
+        )
+        request = SearchQueryRequest(
+            query="https://youtube.com/watch?v=abcdefghijk",
+            source_requirement=SourceRequirement(
+                source_kind="video",
+                access_mode="direct_fetch",
+                source_hint="youtube.com",
+                required_content="transcript",
+            ),
+        )
+
+        sources, traces = router.acquire_many(
+            [request],
+            question="What is said at 00:12?",
+            max_results=3,
+        )
+
+        self.assertEqual(video.calls, [])
+        self.assertEqual(len(transcript.calls), 1)
+        self.assertEqual(traces[0].actual_acquirer, "video_transcript")
+        self.assertEqual(sources[0].required_content, "transcript")
+        self.assertTrue(sources[0].requirement_met)
 
 
 if __name__ == "__main__":

@@ -9,6 +9,7 @@ from typing import Any
 from utils.network_utils import normalize_text
 
 from .models import EvidenceFact
+from .aggregation_models import AggregationDerivation
 from utils.canonical_answer_value import CanonicalAnswerValueParser
 from .completeness_contract import (
     AbsenceCheck,
@@ -26,6 +27,7 @@ class TaskFactStore:
         self._completeness_contracts: dict[str, CompletenessContract] = {}
         self._absence_checks: dict[str, AbsenceCheck] = {}
         self._set_difference_derivations: dict[str, SetDifferenceDerivation] = {}
+        self._aggregation_derivations: dict[str, AggregationDerivation] = {}
         self._lock = RLock()
         self._revision = 0
         self._value_parser = CanonicalAnswerValueParser()
@@ -140,6 +142,29 @@ class TaskFactStore:
         with self._lock:
             return list(self._set_difference_derivations.values())
 
+    def add_aggregation_derivation(self, derivation: AggregationDerivation) -> bool:
+        if not derivation.derivation_id or derivation.grounding_status != "grounded":
+            return False
+        if not derivation.completeness_contract_ids or not all(
+            (
+                contract := self._completeness_contracts.get(contract_id)
+            ) is not None
+            and contract.complete
+            for contract_id in derivation.completeness_contract_ids
+        ):
+            return False
+        with self._lock:
+            if derivation.derivation_id in self._aggregation_derivations:
+                return False
+            self._aggregation_derivations[derivation.derivation_id] = derivation
+            self._revision += 1
+        self.add(derivation.to_fact())
+        return True
+
+    def aggregation_derivations(self) -> list[AggregationDerivation]:
+        with self._lock:
+            return list(self._aggregation_derivations.values())
+
     def by_entity(self, entity: str) -> list[EvidenceFact]:
         key = normalize_text(entity).casefold()
         if not key:
@@ -180,6 +205,9 @@ class TaskFactStore:
                 store.add_set_difference_derivation(
                     SetDifferenceDerivation.from_dict(item)
                 )
+        for item in list((value or {}).get("aggregation_derivations") or []):
+            if isinstance(item, dict):
+                store.add_aggregation_derivation(AggregationDerivation.from_dict(item))
         store._revision = max(
             store._revision,
             int((value or {}).get("revision", 0) or 0),
@@ -192,6 +220,7 @@ class TaskFactStore:
         completeness_contracts = self.completeness_contracts()
         absence_checks = self.absence_checks()
         set_difference_derivations = self.set_difference_derivations()
+        aggregation_derivations = self.aggregation_derivations()
         return {
             "revision": self.revision,
             "facts": [fact.to_dict() for fact in facts],
@@ -227,6 +256,10 @@ class TaskFactStore:
             "set_difference_derivations": [
                 item.to_dict() for item in set_difference_derivations
             ],
+            "aggregation_derivations": [
+                item.to_dict() for item in aggregation_derivations
+            ],
+            "aggregation_derivation_count": len(aggregation_derivations),
             "negative_fact_count": sum(fact.polarity == "negative" for fact in facts),
             "explicit_negative_count": sum(
                 fact.qualifiers.get("negation_type") == "explicit_negative"

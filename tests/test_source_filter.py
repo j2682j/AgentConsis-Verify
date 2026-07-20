@@ -94,6 +94,58 @@ class SourceSafetyFilterTests(unittest.TestCase):
         self.assertFalse(source.blocked)
         self.assertIn("question_semantic_echo", source.filter_reasons)
 
+    def test_arxiv_abstract_and_pdf_share_document_identity(self):
+        sources = [
+            SearchSourceCandidate(
+                source_id="S1",
+                query_id="Q1",
+                title="Paper abstract",
+                url="https://arxiv.org/abs/2401.01234",
+                snippet="An academic paper abstract about a target phenomenon.",
+                source_kind="academic",
+                required_content="pdf_text",
+            ),
+            SearchSourceCandidate(
+                source_id="S2",
+                query_id="Q1",
+                title="Paper PDF",
+                url="https://arxiv.org/pdf/2401.01234.pdf",
+                snippet="The PDF version of the same academic paper.",
+                source_kind="academic",
+                required_content="pdf_text",
+            ),
+        ]
+
+        filtered = SourceFilter(min_sources=0).filter_sources(
+            sources,
+            question="What does the paper report?",
+        )
+
+        self.assertEqual(len(filtered), 1)
+        self.assertEqual(sources[1].block_reason, "duplicate_document")
+
+    def test_distinct_academic_documents_are_not_lost_to_web_domain_limit(self):
+        topics = ["quantum optics", "marine biology", "urban planning", "ancient history"]
+        sources = [
+            SearchSourceCandidate(
+                source_id=f"S{index}",
+                query_id="Q1",
+                title=f"Paper {index}",
+                url=f"https://arxiv.org/abs/2401.0000{index}",
+                snippet=f"A study of {topics[index - 1]} with unique methods and findings.",
+                source_kind="academic",
+                required_content="pdf_text",
+            )
+            for index in range(1, 5)
+        ]
+
+        filtered = SourceFilter(
+            min_sources=0,
+            max_urls_per_domain=1,
+        ).filter_sources(sources, question="Compare the four papers.")
+
+        self.assertEqual(len(filtered), 4)
+
 
 if __name__ == "__main__":
     unittest.main()

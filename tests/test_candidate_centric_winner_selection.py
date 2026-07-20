@@ -180,6 +180,50 @@ class CandidateCentricWinnerSelectionTests(unittest.TestCase):
         self.assertEqual(support.status, "no_support")
         self.assertEqual(support.step_results[0].status, "unsupported")
 
+    def test_junk_page_chrome_evidence_is_not_promoted_to_support(self) -> None:
+        target = summary(
+            "a1",
+            [run("a1", 1, "Paris", "step 1. The evidence identifies Paris.")],
+            answer="Paris",
+            confidence=1.0,
+        )
+        evidence = {
+            "tool_usage": [
+                {
+                    "tool_name": "search",
+                    "ok": True,
+                    "raw_result": {
+                        "evidence_items": [
+                            {
+                                "evidence_id": "E1",
+                                "title": "Shopping bag",
+                                "text": (
+                                    "Home Help Contact My account 0 items "
+                                    "Paris scented candle - add to cart"
+                                ),
+                                "direct_contracts": [
+                                    {
+                                        "goal_id": "G1",
+                                        "answer_span": "Paris",
+                                        "context": "Paris scented candle - add to cart",
+                                        "answer_requirement": "the capital of France",
+                                    }
+                                ],
+                            }
+                        ]
+                    },
+                }
+            ]
+        }
+
+        support = EvidenceSupportChecker().check_agent(
+            target=target,
+            reasoning_steps=[(1, "The evidence identifies Paris.")],
+            evidence=evidence,
+        )
+
+        self.assertEqual(support.status, "no_support")
+
     def test_critical_step_floor_exposes_low_answer_step(self) -> None:
         target = summary(
             "a1",
@@ -402,6 +446,140 @@ class CandidateCentricWinnerSelectionTests(unittest.TestCase):
 
         self.assertIsNotNone(selection.winner)
         self.assertEqual(selection.winner.compressed_answer, "Paris")
+
+    def test_average_verifier_probability_breaks_tie_when_critical_scores_match(
+        self,
+    ) -> None:
+        configs = [
+            AgentConfig(agent_id="a1", model_name="test-model"),
+            AgentConfig(agent_id="a2", model_name="test-model"),
+        ]
+        results = [
+            summary(
+                "a1",
+                [run("a1", 1, "Paris", "step 1. Paris.")],
+                answer="Paris",
+                confidence=1.0,
+            ),
+            summary(
+                "a2",
+                [run("a2", 1, "Lyon", "step 1. Lyon.")],
+                answer="Lyon",
+                confidence=1.0,
+            ),
+        ]
+        network = Network("Which city?", configs)
+        candidates = network.answer_candidate_clusterer.cluster(results)
+        verifier_results = [
+            VerifierScoreByReasoning(
+                verifier_id="versa_prm",
+                target_agent_id=agent_id,
+                verifier_score=reward,
+                metadata={
+                    "candidate_key": answer.lower(),
+                    "target_run_index": 1,
+                    "evidence_support": {
+                        "status": "no_support",
+                        "priority": 1,
+                    },
+                    "process_verification": {
+                        "critical_step_floor": 0.90,
+                        "critical_step_geometric_mean": 0.90,
+                    },
+                },
+            )
+            for agent_id, answer, reward in (
+                ("a1", "Paris", 0.95),
+                ("a2", "Lyon", 0.80),
+            )
+        ]
+
+        selection = network.final_winner_selector.select(
+            stage1_results=results,
+            candidates=candidates,
+            verifier_results=verifier_results,
+            evidence={"routing": {"primary_route": "factual_search"}},
+        )
+
+        self.assertEqual(selection.status, "answerable")
+        self.assertIsNotNone(selection.winner)
+        self.assertEqual(selection.winner.compressed_answer, "Paris")
+        versa_gate = next(
+            item for item in selection.gate_trace if item.gate_name == "versa_verification"
+        )
+        self.assertEqual(versa_gate.metadata.get("tie_break_depth"), 2)
+
+    def test_weak_bridge_evidence_does_not_eliminate_unsupported_rivals(self) -> None:
+        configs = [
+            AgentConfig(agent_id="a1", model_name="test-model"),
+            AgentConfig(agent_id="a2", model_name="test-model"),
+        ]
+        results = [
+            summary(
+                "a1",
+                [run("a1", 1, "Paris", "step 1. Paris.")],
+                answer="Paris",
+                confidence=1.0,
+            ),
+            summary(
+                "a2",
+                [run("a2", 1, "Lyon", "step 1. Lyon.")],
+                answer="Lyon",
+                confidence=1.0,
+            ),
+        ]
+        network = Network("Which city?", configs)
+        candidates = network.answer_candidate_clusterer.cluster(results)
+        verifier_results = [
+            VerifierScoreByReasoning(
+                verifier_id="versa_prm",
+                target_agent_id="a1",
+                verifier_score=0.90,
+                metadata={
+                    "candidate_key": "paris",
+                    "target_run_index": 1,
+                    "evidence_support": {
+                        "status": "tool_intermediate_supported",
+                        "priority": 4,
+                    },
+                    "process_verification": {
+                        "critical_step_floor": 0.90,
+                        "critical_step_geometric_mean": 0.90,
+                    },
+                },
+            ),
+            VerifierScoreByReasoning(
+                verifier_id="versa_prm",
+                target_agent_id="a2",
+                verifier_score=0.90,
+                metadata={
+                    "candidate_key": "lyon",
+                    "target_run_index": 1,
+                    "evidence_support": {
+                        "status": "no_support",
+                        "priority": 1,
+                    },
+                    "process_verification": {
+                        "critical_step_floor": 0.90,
+                        "critical_step_geometric_mean": 0.90,
+                    },
+                },
+            ),
+        ]
+
+        selection = network.final_winner_selector.select(
+            stage1_results=results,
+            candidates=candidates,
+            verifier_results=verifier_results,
+            evidence={"routing": {"primary_route": "factual_search"}},
+        )
+
+        evidence_gate = next(
+            item for item in selection.gate_trace if item.gate_name == "evidence_support"
+        )
+        survivor_keys = {item.candidate_key for item in evidence_gate.survivors}
+        self.assertEqual(survivor_keys, {"paris", "lyon"})
+        self.assertTrue(evidence_gate.metadata.get("weak_signal_not_eliminating"))
 
     def test_network_does_not_call_model_for_unresolved_selection(self) -> None:
         configs = [

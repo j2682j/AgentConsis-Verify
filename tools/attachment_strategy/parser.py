@@ -43,6 +43,7 @@ class AttachmentStrategyParser:
             expected_answer=str(data.get("expected_answer") or "").strip(),
             needs_search=bool(data.get("needs_search", False)),
             missing_inputs=self._string_list(data.get("missing_inputs") or [])[:6],
+            next_capability=str(data.get("next_capability") or "").strip().lower(),
         )
 
     def _string_list(self, value: Any) -> list[str]:

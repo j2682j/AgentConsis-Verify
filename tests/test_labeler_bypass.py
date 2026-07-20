@@ -14,6 +14,7 @@ from tools.search_result_builder.evidence import (
 )
 from tools.search_result_builder.retrieval_control import IterativeRetrievalControl
 from tools.search_result_builder.query import SearchIntentPlan
+from tools.evidence.fact_extraction import SemanticExtractionResult
 
 
 class _SemanticEmbedder:
@@ -85,6 +86,15 @@ class _UnboundAnswerSupportClassifier:
             ],
             diagnostics={"success": True},
         )
+
+
+class _EmptySemanticFactExtractor:
+    model_name = "fake-extractor"
+    max_units_per_call = 8
+
+    def extract_batch(self, **kwargs):
+        del kwargs
+        return SemanticExtractionResult(diagnostics={"success": True})
 
 
 class LabelerBypassTests(unittest.TestCase):
@@ -169,6 +179,7 @@ class LabelerBypassTests(unittest.TestCase):
             retriever=_Retriever(),
             bypass_labeler=True,
             span_role_classifier=_UnboundAnswerSupportClassifier(),
+            semantic_fact_extractor=_EmptySemanticFactExtractor(),
             max_iter=1,
             top_k=1,
             min_retrieval_score=0.0,

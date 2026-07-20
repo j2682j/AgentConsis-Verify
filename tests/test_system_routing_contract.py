@@ -18,6 +18,7 @@ class SystemRoutingContractTests(unittest.TestCase):
         self.assertTrue(decision.use_attachment)
         self.assertFalse(decision.use_search)
         self.assertFalse(decision.search_allowed)
+        self.assertEqual(decision.search_policy, "deferred")
         self.assertEqual(decision.task_type, "attachment_deterministic_solver")
 
     def test_factual_question_without_attachment_uses_search_first(self):
@@ -29,6 +30,7 @@ class SystemRoutingContractTests(unittest.TestCase):
         self.assertEqual(decision.initial_route, "search_first")
         self.assertTrue(decision.use_search)
         self.assertTrue(decision.search_allowed)
+        self.assertEqual(decision.search_policy, "immediate")
         self.assertEqual(decision.task_type, "factual_search")
 
     def test_code_question_uses_deterministic_first(self):
@@ -41,6 +43,7 @@ class SystemRoutingContractTests(unittest.TestCase):
         self.assertTrue(decision.use_deterministic_solver)
         self.assertFalse(decision.use_search)
         self.assertFalse(decision.search_allowed)
+        self.assertEqual(decision.search_policy, "deferred")
 
 
 if __name__ == "__main__":

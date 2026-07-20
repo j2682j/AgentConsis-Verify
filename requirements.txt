@@ -1,0 +1,73 @@
+# SCP runtime dependencies
+# Tested with Python 3.12.10 on Windows and NVIDIA CUDA 12.8.
+
+# PyTorch CUDA wheels. For a CPU-only installation, remove this line and
+# replace torch==2.11.0+cu128 with the matching CPU build.
+--extra-index-url https://download.pytorch.org/whl/cu128
+
+# Core clients and configuration
+python-dotenv==1.2.2
+requests==2.32.5
+openai==1.109.1
+
+# Local model inference, VersaPRM, Labeler, Filter, and embeddings
+torch==2.11.0+cu128
+transformers==5.5.0
+accelerate==1.14.0
+peft==0.19.1
+safetensors==0.7.0
+sentencepiece==0.2.1
+sentence-transformers==5.3.0
+huggingface-hub==1.23.0
+tiktoken==0.12.0
+numpy==2.4.3
+tqdm==4.67.3
+rich==14.3.3
+
+# Dense retrieval and NLP
+faiss-cpu==1.14.3
+spacy==3.8.14
+en-core-web-sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl
+en-core-web-md @ https://github.com/explosion/spacy-models/releases/download/en_core_web_md-3.8.0/en_core_web_md-3.8.0-py3-none-any.whl
+
+# Search backends and full-page extraction
+beautifulsoup4==4.14.3
+lxml==6.1.1
+trafilatura==2.1.0
+readability-lxml>=0.8.1,<0.9
+markdownify==1.2.2
+playwright==1.61.0
+ddgs==9.13.0
+tavily-python==0.7.23
+google-search-results==2.4.2
+
+# GAIA dataset loading and tabular data
+pandas==2.3.3
+pyarrow==23.0.1
+
+# PDF, Office, image, spreadsheet, and chess attachments
+pypdf==6.10.2
+PyPDF2==3.0.1
+PyMuPDF==1.28.0
+python-docx==1.2.0
+python-pptx==1.0.2
+openpyxl==3.1.5
+xlrd==2.0.2
+Pillow==10.4.0
+CairoSVG==2.9.0
+python-chess==1.999
+
+# Video, audio, and transcript evidence
+yt-dlp==2026.6.9
+youtube-transcript-api==1.2.4
+faster-whisper==1.2.1
+
+# Tests
+pytest==9.1.1
+
+# Post-install and non-Python prerequisites:
+#   python -m playwright install chromium
+#   Ollama with the configured SLM and qwen3-vl models
+#   SearXNG service for the local search backend
+#   FFmpeg/ffprobe for video and audio processing
+#   Stockfish for chess-engine-backed handlers

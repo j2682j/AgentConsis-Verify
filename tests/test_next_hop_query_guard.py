@@ -112,6 +112,20 @@ class NextHopQueryGuardTest(unittest.TestCase):
         self.assertEqual(result.query, "")
         self.assertIn("fallback_duplicate", result.reason)
 
+    def test_rejects_original_question_as_next_hop_without_intent(self) -> None:
+        question = "How many studio albums were released?"
+        result = self.guard.validate(
+            original_question=question,
+            current_query="artist discography studio albums",
+            proposed_next_query=question,
+            intent_plan=None,
+            useful_spans=[],
+            seen_query_keys=set(),
+        )
+        self.assertFalse(result.accepted)
+        self.assertEqual(result.query, "")
+        self.assertIn("same_as_original_question", result.reason)
+
 
 if __name__ == "__main__":
     unittest.main()

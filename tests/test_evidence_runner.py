@@ -133,6 +133,70 @@ class EvidenceRunnerSelectionTests(unittest.TestCase):
 
         self.assertEqual(items, [])
 
+    def test_web_retrieval_adds_unverified_references_when_strict_layer_is_empty(self):
+        runner = EvidenceRunner(question="test question")
+        output = {
+            "question": "test question",
+            "generated_queries": ["test query"],
+            "salient_spans": ["test"],
+            "web_searches": [
+                {
+                    "query": "test query",
+                    "backend": "searxng",
+                    "result_count": 1,
+                }
+            ],
+            "corpus_path": "corpus.jsonl",
+            "embedding_path": "embeddings",
+            "corpus_record_count": 1,
+            "retrieval": {
+                "stop_reason": "goal_incomplete_no_viable_recovery",
+                "rounds": [
+                    {
+                        "round_index": 1,
+                        "documents": [
+                            {
+                                "document_id": "D1",
+                                "title": "Retrieved page",
+                                "text": (
+                                    "This retrieved passage contains potentially useful context "
+                                    "but did not produce a grounded direct evidence contract."
+                                ),
+                                "url": "https://example.com/reference",
+                                "retrieval_score": 0.87,
+                            }
+                        ],
+                    }
+                ],
+                "searched_queries": ["test query"],
+            },
+            "diagnostics": {"filtered_source_count": 1},
+        }
+
+        references = runner._web_retrieval_unverified_references(
+            output,
+            evidence_items=[],
+        )
+        raw_result = runner._web_retrieval_raw_result(
+            output_dict=output,
+            evidence_items=[],
+            unverified_references=references,
+        )
+
+        self.assertEqual(raw_result["evidence_items"], [])
+        self.assertEqual(len(raw_result["unverified_references"]), 1)
+        self.assertFalse(raw_result["unverified_references"][0]["verified"])
+        self.assertIn("Unverified References:", raw_result["summary"])
+        self.assertIn("Source Title: Retrieved page", raw_result["summary"])
+        self.assertNotIn("https://example.com/reference", raw_result["summary"])
+        self.assertTrue(
+            raw_result["diagnostics"]["best_effort_evidence"]["triggered"]
+        )
+        self.assertIn(
+            "evidence_conversion_empty",
+            raw_result["diagnostics"]["pipeline_failure_stage"],
+        )
+
     def test_web_retrieval_raw_result_exports_blocked_source_details(self):
         runner = EvidenceRunner(question="test question")
         output = {

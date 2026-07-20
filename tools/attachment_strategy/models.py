@@ -27,6 +27,7 @@ class AttachmentStrategy:
     expected_answer: str = ""
     needs_search: bool = False
     missing_inputs: list[str] = field(default_factory=list)
+    next_capability: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

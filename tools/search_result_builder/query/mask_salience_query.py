@@ -123,12 +123,26 @@ Use direct_fetch when the question supplies the exact URL. Preserve URLs exactly
                             "enum": ["search", "direct_fetch", "browser"],
                         },
                         "source_hint": {"type": "string"},
+                        "required_content": {
+                            "type": "string",
+                            "enum": [
+                                "html_text",
+                                "full_page",
+                                "pdf_text",
+                                "pdf_figure",
+                                "transcript",
+                                "temporal_video",
+                                "visual",
+                                "collection_records",
+                            ],
+                        },
                     },
                     "required": [
                         "query",
                         "source_kind",
                         "access_mode",
                         "source_hint",
+                        "required_content",
                     ],
                     "additionalProperties": False,
                 },
@@ -155,6 +169,19 @@ Use direct_fetch when the question supplies the exact URL. Preserve URLs exactly
                             "type": "string",
                             "enum": ["passage", "full_document", "collection"],
                         },
+                        "required_content": {
+                            "type": "string",
+                            "enum": [
+                                "html_text",
+                                "full_page",
+                                "pdf_text",
+                                "pdf_figure",
+                                "transcript",
+                                "temporal_video",
+                                "visual",
+                                "collection_records",
+                            ],
+                        },
                     },
                     "required": [
                         "subject",
@@ -163,11 +190,12 @@ Use direct_fetch when the question supplies the exact URL. Preserve URLs exactly
                         "source_kind",
                         "polarity",
                         "verification_scope",
+                        "required_content",
                     ],
                     "additionalProperties": False,
                 },
                 "minItems": 1,
-                "maxItems": 3,
+                "maxItems": 6,
             },
         },
         "required": ["queries", "relation_goals"],
@@ -199,7 +227,8 @@ Rules:
 - Use browser only for rendered or interactive collection pages.
 - Do not treat an answer format or placeholder as a known search fact.
 - Leave source_hint empty unless the question names or supplies a source.
-- Split the information need into at most 3 ordered relation goals.
+- Split the information need into at most 6 ordered relation goals.
+- Set required_content to the actual content needed, not merely the page type.
 - A later goal that depends on the previous result must use an empty subject.
 - For "Who RELATION TARGET?", TARGET is the relation subject and person is the goal target.
 - Never use Who, What, Which, When, or Where as a relation subject or target entity.
@@ -212,7 +241,7 @@ Rules:
 - Do not guess or include a final answer.
 
 Return exactly this JSON shape:
-{{"queries": [{{"query": "...", "source_kind": "web|video|academic|collection", "access_mode": "search|direct_fetch|browser", "source_hint": "..."}}], "relation_goals": [{{"subject": "...", "relation": "...", "target": "...", "source_kind": "web|video|academic|collection", "polarity": "positive|negative", "verification_scope": "passage|full_document|collection"}}]}}"""
+{{"queries": [{{"query": "...", "source_kind": "web|video|academic|collection", "access_mode": "search|direct_fetch|browser", "source_hint": "...", "required_content": "html_text|full_page|pdf_text|pdf_figure|transcript|temporal_video|visual|collection_records"}}], "relation_goals": [{{"subject": "...", "relation": "...", "target": "...", "source_kind": "web|video|academic|collection", "polarity": "positive|negative", "verification_scope": "passage|full_document|collection", "required_content": "html_text|full_page|pdf_text|pdf_figure|transcript|temporal_video|visual|collection_records"}}]}}"""
 
     def __init__(
         self,
@@ -667,6 +696,7 @@ Return exactly this JSON shape:
                 source_kind="video",
                 access_mode="direct_fetch",
                 source_hint=video_url,
+                required_content="temporal_video",
             ),
         )
 

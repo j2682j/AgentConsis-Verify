@@ -15,7 +15,11 @@ from score.answer_candidate_clusterer import AnswerCandidateClusterer
 from score.answer_requirement_gate import AnswerRequirementGate
 from score.answer_requirement_contract import TaskAnswerRequirementContract
 from score.answer_validator import AnswerValidator
-from score.evidence_support_level import EvidenceSupportLevel, support_level_for_status
+from score.evidence_support_level import (
+    EvidenceSupportLevel,
+    is_strong_support_level,
+    support_level_for_status,
+)
 from score.evidence_answer_resolver import EvidenceAnswerResolver
 from score.gate_result import CandidateGateDecision, GateResult
 
@@ -462,6 +466,33 @@ class FinalWinnerSelector:
                 },
             )
 
+        if not is_strong_support_level(best_bucket):
+            # A weak/indirect signal (bridge_evidence) is often a single matched
+            # tool value from a low-quality source. It should not by itself
+            # eliminate rivals that simply have no signal yet; carry it forward
+            # as a soft hint for the consensus/consistency gates instead.
+            for item in candidates:
+                item.metadata["weak_support_bucket"] = buckets[item.candidate_key]
+            decisions = [
+                self._decision(
+                    item,
+                    "unknown",
+                    "weak_support_bucket_not_eliminating",
+                    {"support_bucket": buckets[item.candidate_key]},
+                )
+                for item in candidates
+            ]
+            return GateResult(
+                gate_name="evidence_support",
+                survivors=list(candidates),
+                decisions=decisions,
+                metadata={
+                    "gate_strength": "soft",
+                    "best_bucket": best_bucket,
+                    "weak_signal_not_eliminating": True,
+                },
+            )
+
         survivors = [
             item
             for item in candidates
@@ -640,11 +671,25 @@ class FinalWinnerSelector:
             candidates,
             lambda item: item.critical_step_floor,
         )
+        tie_break_depth = 0
         if len(survivors) > 1:
             survivors = self._filter_max(
                 survivors,
                 lambda item: item.critical_step_geometric_mean,
             )
+            tie_break_depth = 1
+        if len(survivors) > 1:
+            survivors = self._filter_max(
+                survivors,
+                lambda item: item.average_verifier_probability,
+            )
+            tie_break_depth = 2
+        if len(survivors) > 1:
+            survivors = self._filter_max(
+                survivors,
+                lambda item: item.selected_agent_answer_frequency,
+            )
+            tie_break_depth = 3
         result = self._gate_from_survivors(
             gate_name="versa_verification",
             candidates=candidates,
@@ -655,11 +700,14 @@ class FinalWinnerSelector:
                 item.candidate_key: {
                     "critical_step_floor": item.critical_step_floor,
                     "critical_step_geometric_mean": item.critical_step_geometric_mean,
+                    "average_verifier_probability": item.average_verifier_probability,
+                    "selected_agent_answer_frequency": item.selected_agent_answer_frequency,
                 }
                 for item in candidates
             },
             hard=False,
         )
+        result.metadata["tie_break_depth"] = tie_break_depth
         if len(survivors) > 1:
             result.terminal_status = "unresolved_exact_tie"
             result.terminal_reason = "versa_could_not_separate_surviving_candidates"

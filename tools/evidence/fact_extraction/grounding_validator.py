@@ -4,6 +4,7 @@ from dataclasses import replace
 import re
 
 from utils.network_utils import normalize_text
+from ..span_alignment import EvidenceSpanAligner
 
 from .models import (
     EvidenceFact,
@@ -27,8 +28,14 @@ class FactGroundingValidator:
 
     _WORD_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9'_-]*")
 
-    def __init__(self, *, max_evidence_spans: int = 2) -> None:
+    def __init__(
+        self,
+        *,
+        max_evidence_spans: int = 2,
+        span_aligner: EvidenceSpanAligner | None = None,
+    ) -> None:
         self.max_evidence_spans = max(1, int(max_evidence_spans))
+        self.span_aligner = span_aligner or EvidenceSpanAligner()
 
     def validate(self, fact: EvidenceFact, *, source_text: str) -> EvidenceFact:
         context = normalize_text(source_text)
@@ -57,26 +64,60 @@ class FactGroundingValidator:
                 grounding_status="invalid",
             )
 
-        grounded_spans = [span for span in spans if self._contains(context, span)]
+        alignments = [self.span_aligner.align(span, context) for span in spans]
+        grounded_spans = [item.aligned_span for item in alignments if item.valid]
+        alignment_metadata = {
+            "evidence_alignment": ";".join(item.method for item in alignments),
+            "evidence_alignment_overlap": ";".join(
+                f"{item.token_overlap:.6f}" for item in alignments
+            ),
+        }
+        aligned_refs = list(fact.evidence_refs)
+        aligned_refs.extend(
+            FactEvidenceRef(
+                source_id=fact.source_id,
+                unit_id=fact.source_id,
+                text=item.aligned_span,
+                document_id=fact.source_id,
+                start_offset=item.start_offset,
+                end_offset=item.end_offset,
+            )
+            for item in alignments
+            if item.valid
+        )
         if len(grounded_spans) != len(spans):
             return replace(
                 fact,
                 role=role,
                 polarity=polarity,
+                qualifiers={**fact.qualifiers, **alignment_metadata},
                 evidence_spans=grounded_spans,
+                evidence_refs=aligned_refs,
                 context=context,
-                grounding_status="invalid",
+                grounding_status=(
+                    "ambiguous"
+                    if any(item.ambiguous for item in alignments)
+                    else "invalid"
+                ),
             )
 
         support_text = normalize_text(" ".join(grounded_spans))
         subject_grounded = self._entity_grounded(fact.subject, support_text, context)
         object_grounded = self._entity_grounded(fact.object, support_text, context)
-        status = "grounded" if subject_grounded and object_grounded else "ambiguous"
+        status = (
+            "grounded"
+            if subject_grounded
+            and object_grounded
+            and not any(item.ambiguous for item in alignments)
+            else "ambiguous"
+        )
         return replace(
             fact,
             role=role,
             polarity=polarity,
+            qualifiers={**fact.qualifiers, **alignment_metadata},
             evidence_spans=grounded_spans,
+            evidence_refs=aligned_refs,
             context=context,
             grounding_status=status,
         )
@@ -112,15 +153,15 @@ class FactGroundingValidator:
                 invalid_ref = True
                 continue
             source_text = normalize_text(unit.text)
-            evidence_text = normalize_text(ref.text)
-            start = source_text.casefold().find(evidence_text.casefold())
-            if not evidence_text or start < 0:
+            alignment = self.span_aligner.align(ref.text, source_text)
+            if not alignment.valid:
                 invalid_ref = True
                 continue
             metadata = dict(unit.metadata or {})
             refs.append(
                 replace(
                     ref,
+                    text=alignment.aligned_span,
                     document_id=(
                         normalize_text(ref.document_id)
                         or normalize_text(str(metadata.get("document_id") or unit.unit_id))
@@ -130,8 +171,8 @@ class FactGroundingValidator:
                         normalize_text(ref.section)
                         or normalize_text(str(metadata.get("section") or ""))
                     ),
-                    start_offset=start,
-                    end_offset=start + len(evidence_text),
+                    start_offset=alignment.start_offset,
+                    end_offset=alignment.end_offset,
                 )
             )
 

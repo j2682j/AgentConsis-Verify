@@ -63,6 +63,7 @@ class SystemRoutingDecision:
     use_calculator: bool = False
     initial_route: str = "agent_direct"
     search_allowed: bool = False
+    search_policy: str = "fallback"
     has_attachment: bool = False
     attachment_type: str | None = None
     task_type: str = "system_contract"
@@ -108,6 +109,7 @@ class SystemRoutingDecision:
             "calculator_expression": None,
             "initial_route": self.initial_route,
             "search_allowed": self.search_allowed,
+            "search_policy": self.search_policy,
             "has_attachment": self.has_attachment,
             "attachment_type": self.attachment_type,
             "task_type": self.task_type,
@@ -222,15 +224,21 @@ class SystemRoutingContract:
         "truth table",
     }
     PUZZLE_TERMS = {
+        "checksum",
         "choose",
         "ejected",
         "equivalent",
+        "modulo",
         "odds",
         "puzzle",
         "ramp",
+        "transposed",
         "translate",
     }
     PUZZLE_PHRASES = {
+        "adjacent columns",
+        "alternate weight",
+        "check digit",
         "maximize your odds",
         "which ball should you choose",
         "pick one of",
@@ -327,6 +335,7 @@ class SystemRoutingContract:
             decision.use_attachment = True
             decision.initial_route = "attachment_first"
             decision.search_allowed = False
+            decision.search_policy = "deferred"
             decision.task_type = "attachment_evidence"
             decision.trigger_terms.append(attachment_type_clean or "attachment")
             decision.routing_reasons.append("attachment is present; first-round attachment evidence is required")
@@ -335,6 +344,7 @@ class SystemRoutingContract:
             decision.task_type = "function_calling"
             decision.initial_route = "agent_direct"
             decision.search_allowed = False
+            decision.search_policy = "forbidden"
             decision.tool_policy = {
                 "prefer": [],
                 "optional": [],
@@ -382,6 +392,7 @@ class SystemRoutingContract:
         if closed_world_hits or puzzle_hits:
             decision.initial_route = "deterministic_first"
             decision.search_allowed = False
+            decision.search_policy = "forbidden"
             decision.use_deterministic_solver = True
             decision.trigger_terms.extend((closed_world_hits + puzzle_hits)[:8])
             decision.routing_reasons.append(
@@ -407,6 +418,7 @@ class SystemRoutingContract:
             decision.use_python_solver = bool(python_hits)
             decision.initial_route = "deterministic_first"
             decision.search_allowed = False
+            decision.search_policy = "deferred"
             decision.trigger_terms.extend((python_hits + code_hits)[:8])
             decision.routing_reasons.append(
                 "question contains deterministic/code signals before factual search: "
@@ -426,6 +438,7 @@ class SystemRoutingContract:
             decision.use_deterministic_solver = True
             decision.initial_route = "deterministic_first"
             decision.search_allowed = False
+            decision.search_policy = "deferred"
             decision.trigger_terms.extend((code_hits + strong_search_hits)[:8])
             decision.routing_reasons.append(
                 "question mixes code/deterministic and lookup signals; deterministic handling is tried before search"
@@ -440,6 +453,7 @@ class SystemRoutingContract:
             decision.use_search = True
             decision.initial_route = "search_first"
             decision.search_allowed = True
+            decision.search_policy = "immediate"
             decision.trigger_terms.extend(strong_search_hits[:8])
             decision.routing_reasons.append(
                 "question contains factual lookup signals: " + ", ".join(strong_search_hits[:6])
@@ -458,18 +472,22 @@ class SystemRoutingContract:
             decision.task_type = "hybrid_search_and_solver"
             decision.initial_route = "search_first"
             decision.search_allowed = True
+            decision.search_policy = "immediate"
         elif decision.use_search:
             decision.task_type = "factual_search"
             decision.initial_route = "search_first"
             decision.search_allowed = True
+            decision.search_policy = "immediate"
         elif decision.use_python_solver:
             decision.task_type = "deterministic_solver"
             decision.initial_route = "deterministic_first"
             decision.search_allowed = False
+            decision.search_policy = "deferred"
         elif decision.use_attachment:
             decision.task_type = "attachment_evidence"
             decision.initial_route = "attachment_first"
             decision.search_allowed = False
+            decision.search_policy = "deferred"
 
         self._write_tool_policy(decision)
 

@@ -6,7 +6,7 @@ from typing import Any, Iterable
 
 from utils.network_utils import normalize_text
 
-from .source_requirement import SOURCE_KINDS
+from .source_requirement import REQUIRED_CONTENT_TYPES, SOURCE_KINDS
 
 
 GOAL_STATES = frozenset({"pending", "active", "resolved", "blocked"})
@@ -40,6 +40,7 @@ class RelationGoal:
     source_kind: str = "web"
     polarity: str = "positive"
     verification_scope: str = "passage"
+    required_content: str = "html_text"
     state: str = "pending"
     resolved_values: list[str] = field(default_factory=list)
     evidence_ids: list[str] = field(default_factory=list)
@@ -75,6 +76,11 @@ class RelationGoal:
         ).lower()
         if verification_scope not in VERIFICATION_SCOPES:
             verification_scope = "passage"
+        required_content = normalize_text(
+            str(data.get("required_content") or "html_text")
+        ).lower()
+        if required_content not in REQUIRED_CONTENT_TYPES:
+            required_content = "html_text"
         state = normalize_text(str(data.get("state") or default_state)).lower()
         if state not in GOAL_STATES:
             state = default_state
@@ -86,6 +92,7 @@ class RelationGoal:
             source_kind=source_kind,
             polarity=polarity,
             verification_scope=verification_scope,
+            required_content=required_content,
             state=state,
             resolved_values=_dedupe(data.get("resolved_values") or []),
             evidence_ids=_dedupe(data.get("evidence_ids") or []),
@@ -149,7 +156,7 @@ class RelationPlan:
     def from_dict(cls, value: dict[str, Any] | None) -> "RelationPlan":
         data = dict(value or {})
         goals: list[RelationGoal] = []
-        for index, item in enumerate(list(data.get("goals") or [])[:3], start=1):
+        for index, item in enumerate(list(data.get("goals") or [])[:6], start=1):
             if not isinstance(item, dict):
                 continue
             goal = RelationGoal.from_dict(item, goal_id=f"G{index}")
@@ -179,7 +186,7 @@ class RelationPlan:
     def from_specs(cls, values: Iterable[dict[str, Any]]) -> "RelationPlan":
         goals: list[RelationGoal] = []
         seen: set[tuple[str, str, str]] = set()
-        for item in list(values)[:3]:
+        for item in list(values)[:6]:
             if not isinstance(item, dict):
                 continue
             goal = RelationGoal.from_dict(

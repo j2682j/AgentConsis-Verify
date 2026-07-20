@@ -101,6 +101,9 @@ class NextHopQueryComposer:
         *,
         relation_plan: RelationPlan,
         constraints: list[str] | None = None,
+        answer_requirement: str = "",
+        original_question: str = "",
+        seen_query_keys: set[str] | None = None,
         max_requests: int = 2,
     ) -> list[RelationHopRequest]:
         """Compose independent next-hop branches from the active relation goal."""
@@ -131,6 +134,13 @@ class NextHopQueryComposer:
             retained_constraints.append(cleaned)
         output: list[RelationHopRequest] = []
         seen: set[str] = set()
+        blocked_keys = {
+            self._match_key(value)
+            for value in set(seen_query_keys or set())
+            if self._match_key(value)
+        }
+        original_key = self._match_key(original_question)
+        requirement = self._searchable_relation_target(answer_requirement)
         for subject in subjects:
             searchable_target = self._searchable_relation_target(goal.target)
             query = self._clean_query(
@@ -140,13 +150,20 @@ class NextHopQueryComposer:
                             subject,
                             goal.relation,
                             searchable_target,
+                            requirement,
                             *retained_constraints,
                         ]
                     )
                 )
             )
-            key = query.casefold()
-            if not query or key in seen:
+            key = self._match_key(query)
+            if (
+                not query
+                or not key
+                or key in seen
+                or key in blocked_keys
+                or (original_key and key == original_key)
+            ):
                 continue
             seen.add(key)
             output.append(
@@ -158,6 +175,7 @@ class NextHopQueryComposer:
                         source_requirement=SourceRequirement(
                             source_kind=goal.source_kind,
                             access_mode="search",
+                            required_content=goal.required_content,
                         ),
                     ),
                 )

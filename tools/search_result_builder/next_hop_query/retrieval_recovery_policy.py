@@ -41,10 +41,12 @@ class RetrievalRecoveryPolicy:
         max_top_k: int = 64,
         max_candidate_pool_size: int = 120,
         max_source_requests: int = 3,
+        max_expand_attempts: int = 1,
     ) -> None:
         self.max_top_k = max(1, max_top_k)
         self.max_candidate_pool_size = max(1, max_candidate_pool_size)
         self.max_source_requests = max(1, max_source_requests)
+        self.max_expand_attempts = max(0, int(max_expand_attempts))
 
     def decide(
         self,
@@ -77,6 +79,7 @@ class RetrievalRecoveryPolicy:
                             source_kind=full_document_goal.source_kind,
                             access_mode=access_mode,
                             source_hint=url,
+                            required_content=full_document_goal.required_content,
                         ),
                     )
                     for url in urls[: self.max_source_requests]
@@ -99,10 +102,14 @@ class RetrievalRecoveryPolicy:
             max(candidate_pool_size + 1, candidate_pool_size * 2),
         )
         expand_fingerprint = f"expand:{expanded_top_k}:{expanded_pool}"
+        expand_attempts = sum(
+            str(fingerprint).startswith("expand:") for fingerprint in attempted
+        )
         if (
             len(corpus) > top_k
             and
             (expanded_top_k > top_k or expanded_pool > candidate_pool_size)
+            and expand_attempts < self.max_expand_attempts
             and expand_fingerprint not in attempted
         ):
             return RetrievalRecoveryDecision(
@@ -123,6 +130,7 @@ class RetrievalRecoveryPolicy:
                 source_requirement=SourceRequirement(
                     source_kind=active.source_kind if active is not None else "web",
                     access_mode="search",
+                    required_content=(active.required_content if active is not None else "html_text"),
                 ),
             )
             return RetrievalRecoveryDecision(

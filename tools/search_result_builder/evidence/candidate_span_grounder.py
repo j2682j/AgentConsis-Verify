@@ -5,6 +5,7 @@ import re
 from typing import Any
 
 from utils.network_utils import normalize_text
+from tools.evidence.span_alignment import EvidenceSpanAligner
 
 from .span_role_classifier import CandidateSpan
 
@@ -300,8 +301,10 @@ class CandidateSpanGrounder:
         self,
         *,
         expander: CandidateSpanExpander | None = None,
+        span_aligner: EvidenceSpanAligner | None = None,
     ) -> None:
         self.expander = expander or CandidateSpanExpander()
+        self.span_aligner = span_aligner or EvidenceSpanAligner()
 
     def expand_candidates(
         self,
@@ -341,6 +344,8 @@ class CandidateSpanGrounder:
                 text=expanded or original,
                 local_context=context,
                 source_title=source_title,
+                source_id=candidate.source_id,
+                source_type=candidate.source_type,
             )
             output_candidates.append(expanded_candidate)
             grounded_spans.append(
@@ -382,23 +387,10 @@ class CandidateSpanGrounder:
         )
 
     def _ground(self, span: str, context: str) -> tuple[int, int, str]:
-        if not span or not context:
-            return -1, -1, "empty"
-        index = context.find(span)
-        if index >= 0:
-            return index, index + len(span), "exact"
-        index = context.casefold().find(span.casefold())
-        if index >= 0:
-            return index, index + len(span), "case_insensitive"
-
-        normalized_span = self._normalize_for_match(span)
-        if not normalized_span:
-            return -1, -1, "unmatched"
-        for match in re.finditer(r"[A-Za-z0-9][A-Za-z0-9'._-]*", context):
-            token = match.group(0)
-            if self._normalize_for_match(token) == normalized_span:
-                return match.start(), match.end(), "token_normalized"
-        return -1, -1, "unmatched"
+        alignment = self.span_aligner.align(span, context)
+        if alignment.valid:
+            return alignment.start_offset, alignment.end_offset, alignment.method
+        return -1, -1, alignment.reason or "unmatched"
 
     def _normalize_span(self, text: str) -> str:
         cleaned = normalize_text(text)
@@ -406,10 +398,6 @@ class CandidateSpanGrounder:
         cleaned = self._EDGE_PUNCT_RE.sub("", cleaned).strip()
         cleaned = re.sub(r"\s+([,.;:!?])", r"\1", cleaned)
         return normalize_text(cleaned)
-
-    def _normalize_for_match(self, text: str) -> str:
-        return re.sub(r"[^a-z0-9]+", "", normalize_text(text).casefold())
-
 
 __all__ = [
     "CandidateSpanExpander",

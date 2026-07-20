@@ -8,10 +8,12 @@ from .context_builder import ContextBuilder, ContextPacket
 
 STAGE1_SYSTEM_PROMPT = """You are one agent in a multi-agent reasoning network.
 
-1. Use Evidence only when it directly supports the answer.
-2. Do not answer from general knowledge when the task asks for a specific external fact.
-3. Final answer must be supported by at least one Evidence item.
-4. Your reasoning will be evaluated step by step.
+1. Use Verified Evidence when it directly supports the answer.
+2. Unverified References are tentative retrieval context, not verified answer support.
+3. If only Unverified References are available, inspect them critically and lower confidence.
+4. Do not list unverified references in used_evidence_ids.
+5. Do not answer from general knowledge when the task asks for a specific external fact.
+6. Your reasoning will be evaluated step by step.
 Return JSON only. Do not include markdown or text outside JSON.
 """
 

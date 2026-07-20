@@ -45,6 +45,28 @@ def support_level_for_status(status: str) -> EvidenceSupportLevel:
     )
 
 
+_STRONG_LEVELS = {
+    EvidenceSupportLevel.DIRECT_EVIDENCE.value,
+    EvidenceSupportLevel.VERIFIED_DERIVED.value,
+    EvidenceSupportLevel.TRUSTED_TOOL_FINAL.value,
+}
+
+
+def is_strong_support_level(level: EvidenceSupportLevel | str) -> bool:
+    """Return True only for support levels reliable enough to hard-eliminate rivals.
+
+    BRIDGE_EVIDENCE is intentionally excluded: it is often a single weak or
+    indirect signal (for example one matched intermediate tool value) and
+    should not by itself outrank candidates that simply lack any signal yet.
+    """
+
+    try:
+        normalized = EvidenceSupportLevel(level)
+    except ValueError:
+        return False
+    return normalized.value in _STRONG_LEVELS
+
+
 def support_level_rank(level: EvidenceSupportLevel | str) -> int:
     """Return the ordinal rank without introducing a weighted support score."""
 
@@ -69,6 +91,7 @@ def compare_support_levels(
 __all__ = [
     "EvidenceSupportLevel",
     "compare_support_levels",
+    "is_strong_support_level",
     "support_level_for_status",
     "support_level_rank",
 ]

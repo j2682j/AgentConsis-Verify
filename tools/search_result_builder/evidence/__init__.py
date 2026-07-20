@@ -3,6 +3,7 @@ from .answer_role_compatibility import (
     AnswerRoleCompatibilityResult,
 )
 from .answer_candidate import AnswerCandidate, EvidenceAnswerExtractor
+from .best_effort_reference import BestEffortReferenceSelector
 from .candidate_span_quality_gate import (
     CandidateSpanQualityGate,
     CandidateSpanQualityResult,
@@ -54,6 +55,7 @@ from .span_role_classifier import (
 
 __all__ = [
     "AnswerCandidate",
+    "BestEffortReferenceSelector",
     "AnswerRoleCompatibilityGate",
     "AnswerRoleCompatibilityResult",
     "CandidateSpanQualityGate",

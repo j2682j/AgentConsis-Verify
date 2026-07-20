@@ -1,4 +1,6 @@
 from .attachment_fact_extractor import AttachmentFactExtractor, render_attachment_facts
+from .aggregation_deriver import AggregationFactDeriver
+from .aggregation_models import AggregationDerivation
 from .gift_assignment_deriver import GiftAssignmentFactDeriver
 from .answer_bound_validator import AnswerBoundFactValidator
 from .context_assembler import CrossContextAssembler, CrossContextWindow
@@ -43,6 +45,8 @@ from .set_difference_deriver import SetDifferenceFactDeriver
 
 __all__ = [
     "EvidenceFact",
+    "AggregationDerivation",
+    "AggregationFactDeriver",
     "FactEvidenceRef",
     "AttachmentFactExtractor",
     "AbsenceCheck",

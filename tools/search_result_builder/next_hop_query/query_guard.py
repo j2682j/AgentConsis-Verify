@@ -156,6 +156,7 @@ class NextHopQueryGuard:
 
         reject_reason = self._reject_reason(
             proposed=proposed,
+            original_question=original_question,
             current_query=current_query,
             intent_plan=intent_plan,
             coverage=coverage,
@@ -176,6 +177,9 @@ class NextHopQueryGuard:
             )
 
         selected = fallback if fallback else proposed
+        if self._query_key(selected) == self._query_key(original_question):
+            selected = ""
+            reject_reason = f"{reject_reason}; fallback_same_as_original"
         if selected and self._is_duplicate_query(selected, seen_query_keys or set()):
             selected = ""
             reject_reason = f"{reject_reason}; fallback_duplicate"
@@ -244,6 +248,7 @@ class NextHopQueryGuard:
         self,
         *,
         proposed: str,
+        original_question: str,
         current_query: str,
         intent_plan: SearchIntentPlan | None,
         coverage: float,
@@ -252,6 +257,8 @@ class NextHopQueryGuard:
     ) -> str:
         if not proposed:
             return "empty_query"
+        if self._query_key(proposed) == self._query_key(original_question):
+            return "same_as_original_question"
         if self._is_duplicate_query(proposed, seen_query_keys):
             return "duplicate_query"
         if self._query_key(proposed) == self._query_key(current_query):
@@ -393,7 +400,12 @@ class NextHopQueryGuard:
         return bool(key and key in seen_query_keys)
 
     def _query_key(self, query: str) -> str:
-        return normalize_text(query).casefold().strip(" \"'`.,;:-")
+        return re.sub(
+            r"[^\w]+",
+            " ",
+            normalize_text(query).casefold(),
+            flags=re.UNICODE,
+        ).strip()
 
     def _keywords(self, text: str) -> list[str]:
         tokens = re.findall(r"[A-Za-z0-9][A-Za-z0-9'_-]{1,}", normalize_text(text).casefold())

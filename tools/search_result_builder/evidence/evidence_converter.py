@@ -36,6 +36,9 @@ class EvidenceConversionDiagnostics:
     dropped_duplicates: int
     grounded_fact_count: int = 0
     answer_bound_fact_count: int = 0
+    direct_fact_count: int = 0
+    promoted_contract_count: int = 0
+    orphan_direct_fact_count: int = 0
     rejection_reasons: dict[str, int] = field(default_factory=dict)
 
 
@@ -106,6 +109,9 @@ class EvidenceConverter:
             dropped_duplicates=0,
             grounded_fact_count=0,
             answer_bound_fact_count=0,
+            direct_fact_count=0,
+            promoted_contract_count=0,
+            orphan_direct_fact_count=0,
             rejection_reasons={},
         )
 
@@ -134,6 +140,9 @@ class EvidenceConverter:
         dropped_duplicates = 0
         grounded_fact_count = 0
         answer_bound_fact_count = 0
+        direct_fact_count = 0
+        promoted_contract_count = 0
+        orphan_direct_fact_count = 0
         rejection_reasons: Counter[str] = Counter()
         order = 0
 
@@ -146,12 +155,21 @@ class EvidenceConverter:
                 if document.get("duplicate"):
                     rejection_reasons["duplicate_document"] += 1
                     continue
-                grounded, answer_bound = self._collect_document_facts(
+                (
+                    grounded,
+                    answer_bound,
+                    direct_facts,
+                    promoted_contracts,
+                    orphan_direct_facts,
+                ) = self._collect_document_facts(
                     document,
                     fact_store=fact_store,
                 )
                 grounded_fact_count += grounded
                 answer_bound_fact_count += answer_bound
+                direct_fact_count += direct_facts
+                promoted_contract_count += promoted_contracts
+                orphan_direct_fact_count += orphan_direct_facts
                 order += 1
                 candidate = self._candidate_from_document(
                     document,
@@ -203,6 +221,9 @@ class EvidenceConverter:
             dropped_duplicates=dropped_duplicates,
             grounded_fact_count=grounded_fact_count,
             answer_bound_fact_count=answer_bound_fact_count,
+            direct_fact_count=direct_fact_count,
+            promoted_contract_count=promoted_contract_count,
+            orphan_direct_fact_count=orphan_direct_fact_count,
             rejection_reasons=dict(rejection_reasons),
         )
         return evidence_items
@@ -212,7 +233,7 @@ class EvidenceConverter:
         document: dict[str, Any],
         *,
         fact_store: TaskFactStore | None,
-    ) -> tuple[int, int]:
+    ) -> tuple[int, int, int, int, int]:
         grounded: list[EvidenceFact] = []
         answer_bound = 0
         for value in list(document.get("semantic_facts") or []):
@@ -229,7 +250,38 @@ class EvidenceConverter:
                 answer_bound += 1
         if fact_store is not None:
             fact_store.extend(grounded)
-        return len(grounded), answer_bound
+        contracts = [
+            item
+            for item in list(document.get("direct_contracts") or [])
+            if isinstance(item, dict)
+        ]
+        contract_fact_ids = {
+            normalize_text(str(item.get("fact_id") or ""))
+            for item in contracts
+            if normalize_text(str(item.get("fact_id") or ""))
+        }
+        direct_facts = [
+            fact
+            for fact in grounded
+            if fact.role == "ANSWER_SUPPORT"
+            and fact.qualifiers.get("answer_binding") == "direct"
+        ]
+        promoted_contract_count = sum(
+            normalize_text(str(item.get("contract_method") or ""))
+            == "grounded_answer_value_promotion"
+            for item in contracts
+        )
+        orphan_direct_count = sum(
+            bool(fact.fact_id and fact.fact_id not in contract_fact_ids)
+            for fact in direct_facts
+        )
+        return (
+            len(grounded),
+            answer_bound,
+            len(direct_facts),
+            promoted_contract_count,
+            orphan_direct_count,
+        )
 
     def _document_rejection_reason(self, document: dict[str, Any]) -> str:
         text = normalize_text(document.get("text", ""))
@@ -247,6 +299,16 @@ class EvidenceConverter:
                 if isinstance(item, dict)
                 and normalize_text(item.get("grounding_status")) == "grounded"
             ]
+            if any(
+                normalize_text(str(item.get("role") or "")).upper()
+                == "ANSWER_SUPPORT"
+                and normalize_text(
+                    str(dict(item.get("qualifiers") or {}).get("answer_binding") or "")
+                )
+                == "direct"
+                for item in facts
+            ):
+                return "orphan_direct_fact"
             return "bridge_only" if facts else "no_grounded_fact"
         if not any(
             normalize_text(item.get("answer_span", ""))

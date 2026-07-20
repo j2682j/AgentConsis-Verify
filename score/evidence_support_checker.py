@@ -66,6 +66,24 @@ class EvidenceSupportChecker:
         "deterministic_solver",
         "python_calculator",
     }
+    _JUNK_CONTENT_MARKERS = (
+        "shopping bag",
+        "add to cart",
+        "add to basket",
+        "checkout",
+        "my account",
+        "borlabs cookie",
+        "cookie consent",
+        "cookie policy",
+        "accept cookies",
+        "sign in",
+        "log in",
+        "forgot password",
+        "register here",
+    )
+    _NUMERIC_SHAPE_RE = re.compile(
+        r"^[-+]?\d[\d,]*(?:\.\d+)?(?:\s*(?:,|;|and)\s*[-+]?\d[\d,]*(?:\.\d+)?)*$"
+    )
 
     def __init__(
         self,
@@ -456,6 +474,9 @@ class EvidenceSupportChecker:
             text = str(evidence_item.get("text") or "").strip()
             if not text:
                 continue
+            title = str(evidence_item.get("title") or "")
+            if self._looks_like_junk_content(title, text):
+                continue
             direct_contracts = [
                 dict(contract)
                 for contract in list(evidence_item.get("direct_contracts") or [])
@@ -831,6 +852,10 @@ class EvidenceSupportChecker:
             and final_answer
             and not any(self._answers_equivalent(final_answer, value) for value in trusted_finals)
             and self._value_mentioned(final_answer, step_text)
+            and any(
+                self._answer_shapes_comparable(final_answer, value)
+                for value in trusted_finals
+            )
         ):
             return StepSupportResult(
                 step_index=step_index,
@@ -939,6 +964,10 @@ class EvidenceSupportChecker:
             and not trusted_final_conflict
             and final_answer
             and not any(self._answers_equivalent(final_answer, value) for value in trusted_finals)
+            and any(
+                self._answer_shapes_comparable(final_answer, value)
+                for value in trusted_finals
+            )
         ):
             return "contradicted"
         supporting_text_records = [
@@ -1212,6 +1241,33 @@ class EvidenceSupportChecker:
         if 0 < len(compact) <= 160:
             return self.answer_validator.clean(compact)
         return ""
+
+    def _answer_shapes_comparable(self, candidate: str, trusted_value: str) -> bool:
+        """A trusted tool final may only contradict a candidate of the same shape.
+
+        A numeric extraction such as "5, 7" must not overrule a sentence or
+        name answer: when the shapes differ, the tool clearly answered a
+        different sub-question, so disagreement is not evidence of error.
+        """
+
+        return self._is_numeric_shape(candidate) == self._is_numeric_shape(trusted_value)
+
+    def _is_numeric_shape(self, value: str) -> bool:
+        text = normalize_for_exact(str(value or "")).strip()
+        if not text:
+            return False
+        return bool(self._NUMERIC_SHAPE_RE.fullmatch(text.replace("$", "").rstrip("%")))
+
+    def _looks_like_junk_content(self, title: str, text: str) -> bool:
+        """Reject page-chrome text (shopping carts, cookie banners, login walls)
+
+        that slipped through corpus extraction so it cannot be promoted to a
+        supported evidence status ahead of candidates that simply lack any
+        signal yet.
+        """
+
+        lowered = f"{title} {text[:500]}".casefold()
+        return any(marker in lowered for marker in self._JUNK_CONTENT_MARKERS)
 
     def _string_list(self, value: Any) -> list[str]:
         if isinstance(value, str):

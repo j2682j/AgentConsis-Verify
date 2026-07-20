@@ -74,6 +74,12 @@ class SearchSourceCandidate:
     source_kind: str = "web"
     access_mode: str = "search"
     source_hint: str = ""
+    required_content: str = "html_text"
+    transport_ok: bool = False
+    content_extracted: bool = False
+    requirement_met: bool = False
+    acquisition_state: str = "pending"
+    missing_content: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -122,8 +128,38 @@ class EvidenceItem:
     cleaning_reasons: list[str] = field(default_factory=list)
 
 
+@dataclass(frozen=True)
+class UnverifiedReference:
+    """A retrieved passage exposed to Stage1 without verification authority."""
+
+    reference_id: str
+    source_id: str
+    title: str
+    text: str
+    url: str = ""
+    retrieval_score: float = 0.0
+    retrieval_round: int = 0
+    source_type: str = "passage"
+    fallback_reason: str = "strict_evidence_empty"
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "reference_id": self.reference_id,
+            "source_id": self.source_id,
+            "title": self.title,
+            "text": self.text,
+            "url": self.url,
+            "retrieval_score": self.retrieval_score,
+            "retrieval_round": self.retrieval_round,
+            "source_type": self.source_type,
+            "fallback_reason": self.fallback_reason,
+            "verified": False,
+        }
+
+
 __all__ = [
     "EvidenceItem",
     "SearchSignals",
     "SearchSourceCandidate",
+    "UnverifiedReference",
 ]

@@ -45,7 +45,7 @@ class SemanticFactExtractor:
             model_name
             or os.getenv("SEMANTIC_FACT_EXTRACTOR_MODEL")
             or os.getenv("SPAN_ROLE_CLASSIFIER_MODEL")
-            or "qwen3:1.7b"
+            or "qwen3:4b"
         )
         self.llm_client = llm_client or LLMClient(provider="ollama")
         self.grounding_validator = grounding_validator or FactGroundingValidator()
@@ -64,6 +64,7 @@ class SemanticFactExtractor:
         answer_requirement: str = "",
         current_goal: str = "",
         units: list[SemanticSourceUnit],
+        keep_alive: int | str = 0,
     ) -> SemanticExtractionResult:
         selected = self._dedupe_units(units)[: self.max_units_per_call]
         started = time.perf_counter()
@@ -107,7 +108,7 @@ class SemanticFactExtractor:
                 ),
                 think=False,
                 json_format=self.json_schema(),
-                keep_alive=0,
+                keep_alive=keep_alive,
             )
             parsed = self._parse_response(response.content)
             facts, rejected = self._normalize_and_ground(
@@ -280,10 +281,20 @@ class SemanticFactExtractor:
             for raw_fact in list(raw_unit.get("facts") or []):
                 if not isinstance(raw_fact, dict):
                     continue
-                role = normalize_text(str(raw_fact.get("role") or "CONTEXT")).upper()
+                requested_role = normalize_text(unit.requested_role).upper()
+                role = (
+                    requested_role
+                    if requested_role in {"ANSWER_SUPPORT", "BRIDGE", "CONTEXT"}
+                    else normalize_text(str(raw_fact.get("role") or "CONTEXT")).upper()
+                )
+                raw_qualifiers = dict(raw_fact.get("qualifiers") or {})
                 fact = EvidenceFact.from_dict(
                     {
                         **raw_fact,
+                        "qualifiers": {
+                            **raw_qualifiers,
+                            "source_unit_id": unit.unit_id,
+                        },
                         "fact_id": self._fact_id(unit, raw_fact),
                         "role": role,
                         "goal_id": unit.goal_id,

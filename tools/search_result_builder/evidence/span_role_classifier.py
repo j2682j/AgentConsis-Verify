@@ -7,14 +7,6 @@ import re
 from typing import Any
 
 from core.llm_client import LLMClient
-from tools.evidence.fact_extraction import (
-    AnswerBoundFactValidator,
-    DirectEvidencePromoter,
-    EvidenceFact,
-    FactGroundingValidator,
-    GroundedAnswerValue,
-    PromotionDiagnostic,
-)
 from utils.network_utils import normalize_text
 
 
@@ -67,10 +59,7 @@ class SpanRoleResult:
     text: str
     role: str
     goal_id: str = ""
-    semantic_facts: list[EvidenceFact] = field(default_factory=list)
     model_role: str = ""
-    grounded_answer_values: list[GroundedAnswerValue] = field(default_factory=list)
-    promotion_diagnostics: list[PromotionDiagnostic] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -123,30 +112,19 @@ class SpanRoleClassifier:
         llm_client: LLMClient | None = None,
         max_spans_per_call: int = 15,
         max_context_chars: int = 300,
-        max_tokens: int = 768,
-        grounding_validator: FactGroundingValidator | None = None,
-        answer_bound_validator: AnswerBoundFactValidator | None = None,
-        direct_evidence_promoter: DirectEvidencePromoter | None = None,
+        max_tokens: int = 512,
+        max_retries: int = 1,
     ) -> None:
         self.model_name = (
             model_name
             or os.getenv("SPAN_ROLE_CLASSIFIER_MODEL")
-            or "qwen3:1.7b"
+            or "qwen3:4b"
         )
         self.llm_client = llm_client or LLMClient(provider="ollama")
         self.max_spans_per_call = max(1, max_spans_per_call)
         self.max_context_chars = max(80, max_context_chars)
         self.max_tokens = max(64, max_tokens)
-        self.grounding_validator = grounding_validator or FactGroundingValidator()
-        self.answer_bound_validator = (
-            answer_bound_validator or AnswerBoundFactValidator()
-        )
-        self.direct_evidence_promoter = (
-            direct_evidence_promoter
-            or DirectEvidencePromoter(
-                answer_bound_validator=self.answer_bound_validator,
-            )
-        )
+        self.max_retries = max(0, max_retries)
 
     def classify_batch(
         self,
@@ -158,6 +136,7 @@ class SpanRoleClassifier:
         next_goal: str = "",
         relation_goals: list[dict[str, str]] | None = None,
         spans: list[CandidateSpan],
+        keep_alive: int | str = 0,
     ) -> SpanRoleBatchResult:
         """
         批次分類候選 spans。
@@ -178,7 +157,7 @@ class SpanRoleClassifier:
             "model": self.model_name,
             "candidate_count": len(candidates),
             "max_spans_per_call": self.max_spans_per_call,
-            "keep_alive": 0,
+            "keep_alive": keep_alive,
             "success": False,
         }
         if not candidates:
@@ -195,119 +174,128 @@ class SpanRoleClassifier:
             relation_goals=relation_goals,
             spans=candidates,
         )
-        try:
-            response = self.llm_client.ollama_native_chat(
-                model=self.model_name,
-                messages=[
-                    {
-                        "role": "system",
-                        "content": (
-                            "You classify evidence spans. Return JSON only. "
-                            "Do not explain. Do not include reasoning."
-                        ),
-                    },
-                    {"role": "user", "content": prompt},
-                ],
-                temperature=0,
-                max_tokens=self.max_tokens,
-                think=False,
-                json_format=self._json_schema(
-                    [candidate.id for candidate in candidates]
-                ),
-                keep_alive=0,
-            )
-            parsed = self._parse_response(response.content)
-            valid_goal_ids = (
-                {
-                    normalize_text(str(goal.get("goal_id", "")))
-                    for goal in list(relation_goals or [])
-                    if normalize_text(str(goal.get("goal_id", "")))
-                }
-                if relation_goals
-                else None
-            )
-            results = self._normalize_results(
-                parsed,
-                candidates,
-                valid_goal_ids=valid_goal_ids,
-                question=question,
-                answer_requirement=answer_requirement,
-                answer_target=answer_target,
-            )
-            if len(results) != len(candidates):
-                diagnostics.update(
-                    {
-                        "success": False,
-                        "error": (
-                            "incomplete_span_role_response:"
-                            f" expected={len(candidates)} actual={len(results)}"
-                        ),
-                        "raw_response": response.content[:1000],
-                        "prompt_tokens": response.prompt_tokens,
-                        "completion_tokens": response.completion_tokens,
-                    }
+        valid_goal_ids = (
+            {
+                normalize_text(str(goal.get("goal_id", "")))
+                for goal in list(relation_goals or [])
+                if normalize_text(str(goal.get("goal_id", "")))
+            }
+            if relation_goals
+            else None
+        )
+
+        best_results: list[SpanRoleResult] = []
+        best_updates: dict[str, Any] = {}
+        best_parsed: Any = []
+        attempts = max(1, self.max_retries + 1)
+        for attempt in range(1, attempts + 1):
+            try:
+                response = self.llm_client.ollama_native_chat(
+                    model=self.model_name,
+                    messages=[
+                        {
+                            "role": "system",
+                            "content": (
+                                "You classify evidence spans. Return JSON only. "
+                                "Do not explain. Do not include reasoning."
+                            ),
+                        },
+                        {"role": "user", "content": prompt},
+                    ],
+                    temperature=0,
+                    max_tokens=self.max_tokens,
+                    think=False,
+                    json_format=self._json_schema(
+                        [candidate.id for candidate in candidates]
+                    ),
+                    keep_alive=keep_alive,
                 )
-                return SpanRoleBatchResult(diagnostics=diagnostics)
-            diagnostics.update(
-                {
-                    "success": True,
+                parsed = self._parse_response(response.content)
+                results = self._normalize_results(
+                    parsed,
+                    candidates,
+                    valid_goal_ids=valid_goal_ids,
+                )
+                complete = len(results) == len(candidates)
+                updates: dict[str, Any] = {
+                    "success": complete,
+                    "attempt_count": attempt,
                     "raw_response": response.content[:1000],
-                    "answer_support_count": sum(
-                        1 for result in results if result.role == ANSWER_SUPPORT
-                    ),
-                    "bridge_count": sum(
-                        1 for result in results if result.role == BRIDGE
-                    ),
-                    "noise_count": sum(
-                        1 for result in results if result.role == NOISE
-                    ),
-                    "semantic_fact_count": sum(
-                        len(result.semantic_facts) for result in results
-                    ),
-                    "grounded_fact_count": sum(
-                        fact.grounding_status == "grounded"
-                        for result in results
-                        for fact in result.semantic_facts
-                    ),
-                    "direct_bound_fact_count": sum(
-                        fact.qualifiers.get("answer_binding") == "direct"
-                        for result in results
-                        for fact in result.semantic_facts
-                    ),
-                    "demoted_answer_fact_count": sum(
-                        fact.qualifiers.get("original_role") == ANSWER_SUPPORT
-                        for result in results
-                        for fact in result.semantic_facts
-                    ),
-                    "promotion_attempted_count": sum(
-                        bool(result.promotion_diagnostics) for result in results
-                    ),
-                    "promotion_accepted_count": sum(
-                        len(result.grounded_answer_values) for result in results
-                    ),
-                    "promotion_rejected_count": sum(
-                        not item.accepted
-                        for result in results
-                        for item in result.promotion_diagnostics
-                    ),
-                    "goal_assignment_counts": self._goal_assignment_counts(results),
-                    "invalid_goal_assignment_count": self._invalid_goal_assignment_count(
-                        parsed,
-                        valid_goal_ids=valid_goal_ids,
-                    ),
                     "prompt_tokens": response.prompt_tokens,
                     "completion_tokens": response.completion_tokens,
                 }
-            )
-            return SpanRoleBatchResult(results=results, diagnostics=diagnostics)
-        except Exception as exc:
-            diagnostics.update(
-                {
-                    "success": False,
-                    "error": f"{type(exc).__name__}: {exc}",
-                }
-            )
+                if not complete:
+                    updates["error"] = (
+                        "incomplete_span_role_response:"
+                        f" expected={len(candidates)} actual={len(results)}"
+                    )
+                if len(results) > len(best_results):
+                    best_results = results
+                    best_updates = updates
+                    best_parsed = parsed
+                if complete:
+                    break
+            except Exception as exc:
+                if not best_results:
+                    best_updates = {
+                        "success": False,
+                        "attempt_count": attempt,
+                        "error": f"{type(exc).__name__}: {exc}",
+                    }
+                continue
+
+        if not best_results:
+            diagnostics.update(best_updates)
             return SpanRoleBatchResult(diagnostics=diagnostics)
+
+        if len(best_results) != len(candidates):
+            best_updates["partial"] = True
+            best_updates.setdefault(
+                "error",
+                (
+                    "incomplete_span_role_response:"
+                    f" expected={len(candidates)} actual={len(best_results)}"
+                ),
+            )
+
+        diagnostics.update(
+            {
+                **best_updates,
+                "answer_support_count": sum(
+                    1 for result in best_results if result.role == ANSWER_SUPPORT
+                ),
+                "bridge_count": sum(
+                    1 for result in best_results if result.role == BRIDGE
+                ),
+                "noise_count": sum(
+                    1 for result in best_results if result.role == NOISE
+                ),
+                "goal_assignment_counts": self._goal_assignment_counts(best_results),
+                "invalid_goal_assignment_count": self._invalid_goal_assignment_count(
+                    best_parsed,
+                    valid_goal_ids=valid_goal_ids,
+                ),
+            }
+        )
+        return SpanRoleBatchResult(results=best_results, diagnostics=diagnostics)
+
+    def unload(self) -> dict[str, Any]:
+        try:
+            self.llm_client.ollama_native_chat(
+                model=self.model_name,
+                messages=[{"role": "user", "content": ""}],
+                temperature=0,
+                max_tokens=1,
+                think=False,
+                keep_alive=0,
+            )
+            return {"model": self.model_name, "unloaded": True, "warning": ""}
+        except Exception as exc:
+            return {
+                "model": self.model_name,
+                "unloaded": False,
+                "warning": f"{type(exc).__name__}: {exc}",
+            }
 
     def _prompt(
         self,
@@ -352,13 +340,9 @@ class SpanRoleClassifier:
                 "ANSWER_SUPPORT = directly supports the original question's final answer.",
                 "BRIDGE = fills the active goal and is needed by the next goal.",
                 "NOISE = irrelevant, page chrome, navigation, login, captcha, or generic text.",
-                "For ANSWER_SUPPORT and BRIDGE, extract explicit subject-relation-object facts.",
-                "Copy one or two exact evidence_spans from Context; never paraphrase them.",
                 "ANSWER_SUPPORT means the fact object itself is a final answer value for Answer Requirement.",
                 "A clue, entity, row, date, or intermediate value is BRIDGE, even when it is relevant.",
                 "For count, maximum, minimum, list, or calculated questions, an individual item is not ANSWER_SUPPORT unless Context explicitly states the requested aggregate result.",
-                "When Context states an explicit relation, ANSWER_SUPPORT and BRIDGE must contain at least one fact.",
-                "Use an empty facts array when no explicit relation can be grounded.",
                 goal_rule,
                 "For NOISE, goal_id must be an empty string.",
                 "",
@@ -390,41 +374,8 @@ class SpanRoleClassifier:
                         "enum": [ANSWER_SUPPORT, BRIDGE, NOISE],
                     },
                     "goal_id": {"type": "string"},
-                    "facts": {
-                        "type": "array",
-                        "items": {
-                            "type": "object",
-                            "properties": {
-                                "subject": {"type": "string"},
-                                "relation": {"type": "string"},
-                                "object": {"type": "string"},
-                                "qualifiers": {
-                                    "type": "object",
-                                    "additionalProperties": {"type": "string"},
-                                },
-                                "polarity": {
-                                    "type": "string",
-                                    "enum": ["positive", "negative"],
-                                },
-                                "evidence_spans": {
-                                    "type": "array",
-                                    "items": {"type": "string"},
-                                    "maxItems": 2,
-                                },
-                            },
-                            "required": [
-                                "subject",
-                                "relation",
-                                "object",
-                                "qualifiers",
-                                "polarity",
-                                "evidence_spans",
-                            ],
-                            "additionalProperties": False,
-                        },
-                    },
                 },
-                "required": ["id", "role", "goal_id", "facts"],
+                "required": ["id", "role", "goal_id"],
                 "additionalProperties": False,
             },
         }
@@ -483,9 +434,6 @@ class SpanRoleClassifier:
         candidates: list[CandidateSpan],
         *,
         valid_goal_ids: set[str] | None = None,
-        question: str = "",
-        answer_requirement: str = "",
-        answer_target: str = "",
     ) -> list[SpanRoleResult]:
         if isinstance(parsed, dict):
             if "id" in parsed and "role" in parsed:
@@ -521,101 +469,17 @@ class SpanRoleClassifier:
             elif valid_goal_ids is None:
                 goal_id = ""
             candidate = candidate_by_id[span_id]
-            semantic_facts = self._semantic_facts(
-                item=item,
-                candidate=candidate,
-                role=role,
-                goal_id=goal_id,
-                question=question,
-                answer_requirement=answer_requirement,
-                answer_target=answer_target,
-            )
-            grounded_answer_values: list[GroundedAnswerValue] = []
-            promotion_diagnostics: list[PromotionDiagnostic] = []
-            if role == ANSWER_SUPPORT and not any(
-                self.answer_bound_validator.is_direct(fact)
-                for fact in semantic_facts
-            ):
-                promotion = self.direct_evidence_promoter.promote(
-                    model_role=model_role,
-                    candidate_span=candidate.text,
-                    context=candidate.local_context,
-                    question=question,
-                    answer_requirement=answer_requirement,
-                    answer_target=answer_target,
-                    source_id=candidate.source_id or f"span:{candidate.id}",
-                    source_title=candidate.source_title,
-                    document_id=candidate.source_id,
-                    goal_id=goal_id,
-                    semantic_facts=semantic_facts,
-                )
-                grounded_answer_values = list(promotion.promoted_values)
-                promotion_diagnostics = list(promotion.diagnostics)
-                if grounded_answer_values:
-                    semantic_facts = [*semantic_facts, *promotion.promoted_facts]
-                else:
-                    role = BRIDGE if semantic_facts else NOISE
-                    if role == NOISE:
-                        goal_id = ""
             results.append(
                 SpanRoleResult(
                     id=span_id,
                     text=candidate.text,
                     role=role,
                     goal_id=goal_id,
-                    semantic_facts=semantic_facts,
                     model_role=model_role,
-                    grounded_answer_values=grounded_answer_values,
-                    promotion_diagnostics=promotion_diagnostics,
                 )
             )
             seen.add(span_id)
         return results
-
-    def _semantic_facts(
-        self,
-        *,
-        item: dict[str, Any],
-        candidate: CandidateSpan,
-        role: str,
-        goal_id: str,
-        question: str = "",
-        answer_requirement: str = "",
-        answer_target: str = "",
-    ) -> list[EvidenceFact]:
-        if role == NOISE:
-            return []
-        source_id = candidate.source_id or f"span:{candidate.id}"
-        facts: list[EvidenceFact] = []
-        for index, raw_fact in enumerate(list(item.get("facts") or []), start=1):
-            if not isinstance(raw_fact, dict):
-                continue
-            fact = EvidenceFact.from_dict(
-                {
-                    **raw_fact,
-                    "fact_id": f"{source_id}:F{index}",
-                    "role": role,
-                    "goal_id": goal_id,
-                    "context": candidate.local_context,
-                    "source_id": source_id,
-                    "source_type": candidate.source_type,
-                    "source_title": candidate.source_title,
-                    "extraction_method": "span_role_semantic_model",
-                }
-            )
-            grounded = self.grounding_validator.validate(
-                fact,
-                source_text=candidate.local_context,
-            )
-            facts.append(
-                self.answer_bound_validator.bind(
-                    grounded,
-                    question=question,
-                    answer_requirement=answer_requirement,
-                    answer_target=answer_target,
-                )
-            )
-        return facts
 
     def _goal_lines(
         self,

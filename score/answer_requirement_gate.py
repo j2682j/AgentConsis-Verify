@@ -192,6 +192,10 @@ class AnswerRequirementGate:
         return lead.group(1).strip() if lead else ""
 
     def _expected_type(self, answer_role: str, requirement: str) -> str:
+        directive = self._explicit_format_directive(requirement)
+        if directive != "unknown":
+            return directive
+
         role = self._normalize_type(answer_role)
         if role != "unknown":
             return role
@@ -213,6 +217,38 @@ class AnswerRequirementGate:
             return "place"
         if re.search(r"\b(?:what|which) (?:date|year|month|day)\b", text):
             return "date"
+        return "unknown"
+
+    def _explicit_format_directive(self, requirement: str) -> str:
+        """Detect output-format instructions stated by the task itself.
+
+        An explicit directive is the task's own ground truth about the answer
+        shape, so it must outrank the classifier-derived answer_role — a
+        misclassified role (for example "boolean" from a polite "Could you
+        please..." opener) otherwise hard-rejects every valid candidate.
+        """
+
+        text = normalize_text(requirement).casefold()
+        if not text:
+            return "unknown"
+        if re.search(
+            r"\b(?:ioc|country|nation|airport|station|iata|icao)\s+(?:country\s+)?code\b"
+            r"|\bcode\s+as\s+your\s+answer\b",
+            text,
+        ):
+            return "text"
+        if re.search(
+            r"\bcomma[\s-]separated\s+list\b"
+            r"|\bformat\s+your\s+(?:response|answer)\s+as\s+a\s+(?:comma[\s-]separated\s+)?list\b"
+            r"|\blist\s+all\s+(?:of\s+)?the\b",
+            text,
+        ):
+            return "list"
+        if re.search(
+            r"\bhow\s+long\b.{0,80}?\bin\s+(?:years|months|weeks|days|hours|minutes|seconds)\b",
+            text,
+        ):
+            return "number"
         return "unknown"
 
     def _normalize_type(self, value: str) -> str:

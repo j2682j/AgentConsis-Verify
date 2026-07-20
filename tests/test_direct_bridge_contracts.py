@@ -195,6 +195,120 @@ class EvidenceRoleContractTests(unittest.TestCase):
         self.assertFalse(items[0]["valid_for_next_hop"])
         self.assertEqual(items[0]["selection_reason"], "direct_evidence_contract")
 
+    def test_grounded_direct_fact_is_promoted_without_span_finalizer_authority(self) -> None:
+        context = "Therefore, the fish bag has a capacity of 0.1777 m3."
+        plan = RelationPlan.from_specs(
+            [
+                {
+                    "subject": "fish bag",
+                    "relation": "capacity",
+                    "target": "measurement",
+                }
+            ]
+        )
+        fact = EvidenceFact(
+            fact_id="F-volume",
+            subject="fish bag",
+            relation="capacity",
+            object="0.1777 m3",
+            qualifiers={"answer_binding": "direct"},
+            role="ANSWER_SUPPORT",
+            goal_id="G1",
+            evidence_spans=[context],
+            context=context,
+            source_id="D-volume",
+            source_type="web",
+            source_title="Paper",
+            grounding_status="grounded",
+        )
+        contracts = EvidenceRoleContractBuilder().build_from_grounded_facts(
+            question="What is the volume of the fish bag in m3?",
+            answer_requirement="volume of the fish bag in m3",
+            answer_target="fish bag capacity",
+            relation_plan=plan,
+            document_id="D-volume",
+            source_title="Paper",
+            url="https://example.test/paper",
+            text=context,
+            facts=[fact],
+        )
+        self.assertEqual(len(contracts.direct), 1)
+        self.assertEqual(contracts.direct[0].fact_id, "F-volume")
+        self.assertEqual(contracts.direct[0].answer_span, "0.1777 m3")
+
+        converter = EvidenceConverter()
+        items = converter.convert_web_retrieval_output(
+            {
+                "retrieval": {
+                    "rounds": [
+                        {
+                            "round_index": 1,
+                            "query": "fish bag capacity",
+                            "documents": [
+                                {
+                                    "document_id": "D-volume",
+                                    "title": "Paper",
+                                    "text": context,
+                                    "url": "https://example.test/paper",
+                                    "semantic_facts": [fact.to_dict()],
+                                    "direct_contracts": [
+                                        contracts.direct[0].to_dict()
+                                    ],
+                                }
+                            ],
+                        }
+                    ]
+                }
+            }
+        )
+        self.assertEqual(items[0]["matched_terms"], ["0.1777 m3"])
+        self.assertEqual(converter.last_diagnostics.direct_fact_count, 1)
+        self.assertEqual(converter.last_diagnostics.orphan_direct_fact_count, 0)
+
+    def test_converter_reports_orphan_direct_fact(self) -> None:
+        context = "The fish bag has a capacity of 0.1777 m3."
+        fact = EvidenceFact(
+            fact_id="F-orphan",
+            subject="fish bag",
+            relation="capacity",
+            object="0.1777 m3",
+            qualifiers={"answer_binding": "direct"},
+            role="ANSWER_SUPPORT",
+            goal_id="G1",
+            evidence_spans=[context],
+            context=context,
+            source_id="D1",
+            source_type="web",
+            grounding_status="grounded",
+        )
+        converter = EvidenceConverter()
+        items = converter.convert_web_retrieval_output(
+            {
+                "retrieval": {
+                    "rounds": [
+                        {
+                            "round_index": 1,
+                            "query": "fish bag capacity",
+                            "documents": [
+                                {
+                                    "document_id": "D1",
+                                    "text": context,
+                                    "semantic_facts": [fact.to_dict()],
+                                    "direct_contracts": [],
+                                }
+                            ],
+                        }
+                    ]
+                }
+            }
+        )
+        self.assertEqual(items, [])
+        self.assertEqual(converter.last_diagnostics.orphan_direct_fact_count, 1)
+        self.assertEqual(
+            converter.last_diagnostics.rejection_reasons,
+            {"orphan_direct_fact": 1},
+        )
+
     def test_label_sequence_tag_does_not_authorize_final_evidence(self) -> None:
         validator = LabelContractValidator()
         for tag in (CONTINUE_TAG, FINISH_TAG):

@@ -210,6 +210,11 @@ class AttachmentStrategyExecutor:
                     "allowed_handlers": allowed_handler_capabilities,
                 },
                 "status": strategy_status,
+                "missing_inputs": list(strategy.missing_inputs),
+                "next_capability": (
+                    strategy.next_capability
+                    or ("search" if strategy.needs_search else "")
+                ),
                 "error": strategy_error or (
                     "invalid_strategy_json"
                     if strategy_status == "invalid_output"
@@ -327,6 +332,22 @@ class AttachmentStrategyExecutor:
                 "capability_status_counts": capability_status_counts,
                 "needs_search": bool(
                     (revised_strategy.needs_search if revised_strategy else strategy.needs_search)
+                ),
+                "next_capability": (
+                    (
+                        revised_strategy.next_capability
+                        if revised_strategy
+                        else strategy.next_capability
+                    )
+                    or (
+                        "search"
+                        if (
+                            revised_strategy.needs_search
+                            if revised_strategy
+                            else strategy.needs_search
+                        )
+                        else ""
+                    )
                 ),
                 "handler_count": int(bool(strategy.required_handler)),
                 "parse_status": str(profile.get("parse_status") or "failed"),
@@ -502,6 +523,7 @@ class AttachmentStrategyExecutor:
                     "next_action_hint": (
                         "Provide unambiguous typed attachment inputs or continue with Stage1 reasoning."
                     ),
+                    "next_capability": strategy.next_capability or "attachment",
                     "evidence_valid": False,
                     "error": "planned handler did not pass capability preflight",
                 }
@@ -542,6 +564,7 @@ class AttachmentStrategyExecutor:
                 "raw_result": result.to_dict(),
                 "missing_inputs": list(result.missing_inputs or []),
                 "next_action_hint": result.next_action_hint,
+                "next_capability": result.next_capability,
                 "evidence_valid": bool(trust.trusted),
                 "error": result.error or None,
             }

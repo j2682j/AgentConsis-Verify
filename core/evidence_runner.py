@@ -17,7 +17,13 @@ from tools.evidence.fact_extraction import (
     TaskFactCollector,
     TaskFactStore,
 )
+from tools.evidence.evidence_readiness import (
+    EvidenceReadiness,
+    EvidenceReadinessEvaluator,
+    EvidenceReadinessStatus,
+)
 from tools.search_result_builder.evidence import (
+    BestEffortReferenceSelector,
     EvidenceConverter,
     EvidenceSelectionContract,
     SpanBuilder,
@@ -76,6 +82,8 @@ class EvidenceRunner:
         semantic_fact_extractor: SemanticFactExtractor | None = None,
         fact_store: TaskFactStore | None = None,
         fact_collector: TaskFactCollector | None = None,
+        evidence_readiness_evaluator: EvidenceReadinessEvaluator | None = None,
+        best_effort_reference_selector: BestEffortReferenceSelector | None = None,
     ) -> None:
         self.question = question
         self.attachment = attachment or {}
@@ -105,6 +113,12 @@ class EvidenceRunner:
         self.semantic_fact_extractor = semantic_fact_extractor
         self.fact_store = fact_store or TaskFactStore()
         self.fact_collector = fact_collector or TaskFactCollector()
+        self.evidence_readiness_evaluator = (
+            evidence_readiness_evaluator or EvidenceReadinessEvaluator()
+        )
+        self.best_effort_reference_selector = (
+            best_effort_reference_selector or BestEffortReferenceSelector()
+        )
 
     def run(self) -> dict[str, Any]:
         """
@@ -118,6 +132,13 @@ class EvidenceRunner:
         """
         routing = self._route_stage1_tools()
         routing["primary_route"] = self._primary_route_from_routing(routing)
+        route_transitions: list[dict[str, Any]] = [
+            {
+                "from": "task_received",
+                "to": routing["primary_route"],
+                "reason": "system_routing_contract",
+            }
+        ]
         tool_usage: list[dict[str, Any]] = []
         attachment_result = self._resolve_attachment_result()
         search_result = self.search_result.strip()
@@ -168,11 +189,16 @@ class EvidenceRunner:
                     else None
                 ),
                 "needs_search": bool(strategy_result.metadata.get("needs_search")),
+                "next_capability": (
+                    active_strategy.next_capability
+                    or ("search" if active_strategy.needs_search else "")
+                ),
                 "final_answer_candidate": strategy_result.final_answer_candidate,
             }
             if strategy_result.metadata.get("needs_search"):
                 routing["use_search"] = True
                 routing["search_allowed"] = True
+                routing["search_policy"] = "deferred"
         search_deferred = self._should_defer_search(
             primary_route=str(routing.get("primary_route", "")),
             routing=routing,
@@ -230,6 +256,8 @@ class EvidenceRunner:
                 tool_usage=solver_usage,
                 attachment_result=attachment_result,
                 search_result=search_result,
+                allow_search=str(routing.get("search_policy") or "fallback").lower()
+                != "forbidden",
             )
             if retry_usage:
                 if any(item.get("tool_name") == "attachment_reader" for item in retry_usage):
@@ -238,30 +266,65 @@ class EvidenceRunner:
                     search_result = self._last_output_for_tool(retry_usage, "search") or search_result
                 tool_usage.extend(retry_usage)
 
+        self._collect_facts(tool_usage)
+        readiness = self._evaluate_readiness(
+            routing=routing,
+            tool_usage=tool_usage,
+            attachment_result=attachment_result,
+            search_result=search_result,
+            solver_result=solver_result,
+        )
+        route_transitions.append(
+            {
+                "from": routing["primary_route"],
+                "to": readiness.status.value,
+                "reason": readiness.reason,
+            }
+        )
+
         if search_deferred and not search_result.strip():
-            if self._non_search_tools_are_sufficient(
-                primary_route=str(routing.get("primary_route", "")),
-                attachment_result=attachment_result,
-                solver_result=solver_result,
-                tool_usage=tool_usage,
-                routing=routing,
-            ):
+            search_policy = str(routing.get("search_policy") or "fallback").lower()
+            if readiness.is_sufficient:
                 search_skip_reason = "non_search_direct_evidence_sufficient"
-            elif self._deferred_search_is_required(
-                primary_route=str(routing.get("primary_route", "")),
-                routing=routing,
-                tool_usage=tool_usage,
+            elif (
+                readiness.status == EvidenceReadinessStatus.NEEDS_EXTERNAL
+                and readiness.next_capability == "search"
+                and search_policy != "forbidden"
             ):
                 search_text, search_usage = self._build_search_evidence()
                 search_result = search_text
                 tool_usage.extend(search_usage)
+                self._collect_facts(search_usage)
                 search_skip_reason = ""
+                route_transitions.append(
+                    {
+                        "from": readiness.status.value,
+                        "to": "search",
+                        "reason": "readiness_requested_search",
+                    }
+                )
+                readiness = self._evaluate_readiness(
+                    routing=routing,
+                    tool_usage=tool_usage,
+                    attachment_result=attachment_result,
+                    search_result=search_result,
+                    solver_result=solver_result,
+                )
+                route_transitions.append(
+                    {
+                        "from": "search",
+                        "to": readiness.status.value,
+                        "reason": readiness.reason,
+                    }
+                )
             else:
-                search_skip_reason = "primary_route_deferred_search_not_required"
+                search_skip_reason = "readiness_did_not_request_search"
 
         deterministic_gap = self._deterministic_gap_from_usage(tool_usage)
         if deterministic_gap:
             routing["deterministic_tool_gap"] = deterministic_gap
+        routing["route_transitions"] = route_transitions[:6]
+        routing["final_evidence_state"] = readiness.to_dict()
         routing["search_decision"] = self._search_decision_trace(
             primary_route=str(routing.get("primary_route", "")),
             search_allowed=routing.get("search_allowed"),
@@ -277,6 +340,7 @@ class EvidenceRunner:
             "answer_requirement": attachment_answer_requirement.strip(),
             "routing": routing,
             "tool_usage": tool_usage,
+            "evidence_readiness": readiness.to_dict(),
             "attachment_profile": dict(
                 attachment_strategy_metadata.get("attachment_profile") or {}
             ),
@@ -298,6 +362,34 @@ class EvidenceRunner:
         self._attach_search_contract_state(bundle)
         bundle["fact_store"] = self.fact_store.to_dict()
         return bundle
+
+    def _collect_facts(self, tool_usage: list[dict[str, Any]]) -> None:
+        """Collect newly available tool facts before readiness evaluation."""
+
+        self.fact_collector.collect_many(
+            self.fact_store,
+            list(tool_usage or []),
+            question=self.question,
+            source_scope="evidence_prepare",
+        )
+
+    def _evaluate_readiness(
+        self,
+        *,
+        routing: dict[str, Any],
+        tool_usage: list[dict[str, Any]],
+        attachment_result: str,
+        search_result: str,
+        solver_result: str,
+    ) -> EvidenceReadiness:
+        return self.evidence_readiness_evaluator.evaluate(
+            fact_store=self.fact_store,
+            tool_usage=tool_usage,
+            routing=routing,
+            attachment_result=attachment_result,
+            search_result=search_result,
+            solver_result=solver_result,
+        )
 
     def _attach_search_contract_state(self, bundle: dict[str, Any]) -> None:
         """將搜尋階段的 final intent/relation state 提升到共用 evidence bundle。"""
@@ -372,42 +464,6 @@ class EvidenceRunner:
         if not routing.get("use_search"):
             return True
         return primary_route in {"attachment", "deterministic", "media", "unknown"}
-
-    def _deferred_search_is_required(
-        self,
-        *,
-        primary_route: str,
-        routing: dict[str, Any],
-        tool_usage: list[dict[str, Any]],
-    ) -> bool:
-        if self._attachment_strategy_needs_search(routing):
-            return routing.get("search_allowed") is not False
-        if primary_route in {"factual_search", "hybrid"}:
-            return routing.get("search_allowed") is not False
-        if self._deterministic_gap_requires_search(tool_usage):
-            return True
-        return bool(
-            routing.get("use_search")
-            and routing.get("search_allowed") is not False
-            and primary_route not in {"attachment", "deterministic", "media"}
-        )
-
-    def _non_search_tools_are_sufficient(
-        self,
-        *,
-        primary_route: str,
-        attachment_result: str,
-        solver_result: str,
-        tool_usage: list[dict[str, Any]],
-        routing: dict[str, Any] | None = None,
-    ) -> bool:
-        if self._attachment_strategy_needs_search(routing or {}):
-            return False
-        if self._has_trusted_deterministic_final(tool_usage) or solver_result.strip():
-            return True
-        if primary_route in {"attachment", "media"} and attachment_result.strip():
-            return not self._deterministic_gap_requires_search(tool_usage)
-        return False
 
     def _has_trusted_deterministic_final(self, tool_usage: list[dict[str, Any]]) -> bool:
         for item in reversed(tool_usage):
@@ -492,6 +548,7 @@ class EvidenceRunner:
         executed: set[str] | None = None,
         handler_name: str = "",
         handler_plan: dict[str, Any] | None = None,
+        allow_search: bool = True,
     ) -> tuple[str, list[dict[str, Any]]]:
         gap = self._deterministic_gap_from_usage(tool_usage)
         if not gap or solver_result.strip():
@@ -516,6 +573,7 @@ class EvidenceRunner:
 
         if (
             not updated_search.strip()
+            and allow_search
             and "search" not in executed
             and missing & self._SEARCH_GAP_INPUTS
         ):
@@ -740,9 +798,14 @@ class EvidenceRunner:
                 output_dict,
                 contract=contract,
             )
+            unverified_references = self._web_retrieval_unverified_references(
+                output_dict,
+                evidence_items=evidence_items,
+            )
             answer_candidates: list[dict[str, Any]] = []
             summary = self._render_web_retrieval_evidence(
                 evidence_items,
+                unverified_references=unverified_references,
                 answer_candidates=answer_candidates,
                 contract=contract,
             )
@@ -753,6 +816,7 @@ class EvidenceRunner:
                 "raw_result": self._web_retrieval_raw_result(
                     output_dict=output_dict,
                     evidence_items=evidence_items,
+                    unverified_references=unverified_references,
                     answer_candidates=answer_candidates,
                     contract=contract,
                 ),
@@ -860,6 +924,18 @@ class EvidenceRunner:
             must_include=must_include,
         )
 
+    def _web_retrieval_unverified_references(
+        self,
+        output_dict: dict[str, Any],
+        *,
+        evidence_items: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        references = self.best_effort_reference_selector.select(
+            output_dict,
+            strict_evidence_items=evidence_items,
+        )
+        return [reference.to_dict() for reference in references]
+
     def _contract_plan_sources(
         self,
         diagnostics: dict[str, Any],
@@ -903,6 +979,7 @@ class EvidenceRunner:
     def _render_web_retrieval_evidence(
         self,
         evidence_items: list[dict[str, Any]],
+        unverified_references: list[dict[str, Any]] | None = None,
         answer_candidates: list[dict[str, Any]] | None = None,
         contract: EvidenceSelectionContract | None = None,
     ) -> str:
@@ -917,18 +994,35 @@ class EvidenceRunner:
         """
         lines = ["Evidence:"]
         lines.extend(self._render_answer_requirement_lines(contract))
-        if not evidence_items:
+        if evidence_items:
+            for index, item in enumerate(evidence_items, start=1):
+                lines.extend(
+                    [
+                        f"[E{index}]",
+                        f"Source Title: {item.get('title') or item.get('source_id') or 'Unknown'}",
+                        f"Evidence: {item.get('text', '')}",
+                    ]
+                )
+        else:
             lines.append("None")
-            return "\n".join(lines)
 
-        for index, item in enumerate(evidence_items, start=1):
+        references = list(unverified_references or [])
+        if references:
             lines.extend(
                 [
-                    f"[E{index}]",
-                    f"Source Title: {item.get('title') or item.get('source_id') or 'Unknown'}",
-                    f"Evidence: {item.get('text', '')}",
+                    "",
+                    "Unverified References:",
+                    "These retrieved passages may be incomplete or irrelevant and are not verified answer support.",
                 ]
             )
+            for index, item in enumerate(references, start=1):
+                lines.extend(
+                    [
+                        f"Reference {index}:",
+                        f"Source Title: {item.get('title') or item.get('source_id') or 'Unknown'}",
+                        f"Content: {item.get('text', '')}",
+                    ]
+                )
         candidates = list(answer_candidates or [])
         if candidates:
             lines.extend(["", "Candidate Answers:"])
@@ -958,6 +1052,7 @@ class EvidenceRunner:
         *,
         output_dict: dict[str, Any],
         evidence_items: list[dict[str, Any]],
+        unverified_references: list[dict[str, Any]] | None = None,
         answer_candidates: list[dict[str, Any]] | None = None,
         contract: EvidenceSelectionContract | None = None,
     ) -> dict[str, Any]:
@@ -991,6 +1086,7 @@ class EvidenceRunner:
             )
             or 0
         )
+        references = list(unverified_references or [])
         diagnostics = {
             **dict(output_dict.get("diagnostics") or {}),
             "initial_web_preprocessing": {
@@ -1070,6 +1166,18 @@ class EvidenceRunner:
             "evidence_conversion": self._dataclass_to_dict(
                 self.evidence_converter.last_diagnostics,
             ),
+            "best_effort_evidence": {
+                "enabled": True,
+                "triggered": bool(references),
+                "fallback_reason": (
+                    "strict_evidence_empty" if references else ""
+                ),
+                "strict_evidence_count": len(evidence_items),
+                "unverified_reference_count": len(references),
+                "selected_reference_ids": [
+                    str(item.get("reference_id") or "") for item in references
+                ],
+            },
             "evidence_selection_contract": (
                 contract.to_dict() if contract else {}
             ),
@@ -1093,6 +1201,11 @@ class EvidenceRunner:
                 "retrieval_query_count": len(searched_queries),
                 "source_count": source_count,
                 "evidence_count": len(evidence_items),
+                "strict_evidence_count": len(evidence_items),
+                "unverified_reference_count": len(references),
+                "stage1_search_context_empty": not bool(
+                    evidence_items or references
+                ),
                 "answer_candidate_count": len(answer_candidates or []),
                 "blocked_source_count": blocked_source_count,
                 "corpus_record_count": output_dict.get(
@@ -1113,9 +1226,12 @@ class EvidenceRunner:
             "web_searches": web_searches,
             "sources": [],
             "evidence_items": evidence_items,
+            "verified_evidence_items": evidence_items,
+            "unverified_references": references,
             "answer_candidates": list(answer_candidates or []),
             "summary": self._render_web_retrieval_evidence(
                 evidence_items,
+                unverified_references=references,
                 answer_candidates=answer_candidates,
                 contract=contract,
             ),
@@ -1393,6 +1509,7 @@ class EvidenceRunner:
                     "raw_result": payload,
                     "missing_inputs": list(result.missing_inputs or []),
                     "next_action_hint": next_action_hint,
+                    "next_capability": result.next_capability,
                     "evidence_valid": evidence_valid,
                     "error": result.error or None,
                 }

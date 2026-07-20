@@ -270,6 +270,7 @@ class Stage1SearchAccessState:
     def blocked_result(self, decision: SearchGateDecision) -> dict[str, Any]:
         if decision.cached_result is not None:
             return dict(decision.cached_result)
+        retry_hint = self._retry_hint(decision)
         return {
             "ok": False,
             "tool_name": "search",
@@ -277,15 +278,38 @@ class Stage1SearchAccessState:
             "output_text": "",
             "raw_result": {"stage1_search_gate": self.snapshot()},
             "error_code": decision.reason,
-            "error_message": f"search request blocked: {decision.reason}",
+            "error_message": f"search request blocked: {decision.reason}. {retry_hint}",
             "error": f"search request blocked: {decision.reason}",
             "retryable": False,
-            "retry_hint": "Use the prepared evidence or choose a non-search tool.",
+            "retry_hint": retry_hint,
             "evidence_valid": bool(decision.use_existing_evidence),
             "cache_hit": False,
             "duplicate_request": bool(decision.use_existing_evidence),
             "search_gate_reason": decision.reason,
         }
+
+    @staticmethod
+    def _retry_hint(decision: SearchGateDecision) -> str:
+        if decision.reason == "missing_information_required":
+            return (
+                'Retry the same search now with tool_args including exactly this key: '
+                '"missing_information": "<the one specific fact still missing>". '
+                "Do not resend the request without that key."
+            )
+        if decision.reason == "empty_refinement_query":
+            return (
+                'Retry with a non-empty "input" query string, and include '
+                '"missing_information": "<the one specific fact still missing>" in tool_args.'
+            )
+        if decision.reason in {"query_already_prepared", "shared_stage1_search_result"}:
+            return "This query is already covered by Search_Result; read it instead of searching again."
+        if decision.reason == "trusted_direct_evidence_available":
+            return "A trusted answer is already available; use it or a non-search tool instead of searching."
+        if decision.reason == "refinement_budget_exhausted":
+            return "No search refinements remain; answer from the existing evidence or use a non-search tool."
+        if decision.reason == "query_inflight":
+            return "That query is already running; wait for its result or use a non-search tool."
+        return "Use the prepared evidence or choose a non-search tool."
 
     def _block(
         self,

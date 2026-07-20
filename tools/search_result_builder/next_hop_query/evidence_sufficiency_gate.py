@@ -262,10 +262,14 @@ class EvidenceSufficiencyGate:
         min_semantic_terms: int = 2,
         min_semantic_score: float = 0.80,
         context_window: int = 120,
+        min_hard_coverage_typed: float = 0.6,
+        min_hard_coverage_default: float = 0.5,
     ) -> None:
         self.min_semantic_terms = max(1, min_semantic_terms)
         self.min_semantic_score = max(0.0, min(1.0, min_semantic_score))
         self.context_window = max(40, context_window)
+        self.min_hard_coverage_typed = max(0.0, min(1.0, min_hard_coverage_typed))
+        self.min_hard_coverage_default = max(0.0, min(1.0, min_hard_coverage_default))
 
     def assess(
         self,
@@ -803,8 +807,8 @@ class EvidenceSufficiencyGate:
         if not constraints.hard:
             return 0.0
         if answer_role in {"number", "volume", "duration", "distance"}:
-            return 0.6
-        return 0.5
+            return self.min_hard_coverage_typed
+        return self.min_hard_coverage_default
 
     def _best_failed_binding(
         self,
@@ -885,6 +889,11 @@ class EvidenceSufficiencyGate:
             return "text_span"
         if "zip code" in lowered or "zipcode" in lowered or "five-digit" in lowered:
             return "zip_code"
+        if re.search(
+            r"\bin the form\b|\bformat(?:ted)?\s+(?:your|the)\s+(?:response|answer)\b",
+            lowered,
+        ):
+            return "short_phrase"
         if "m^3" in lowered or "cubic meter" in lowered or "cubic metre" in lowered or "volume" in lowered:
             return "volume"
         if any(term in lowered for term in ("hour", "minute", "second", "duration", "how long")):
@@ -893,9 +902,17 @@ class EvidenceSufficiencyGate:
             return "distance"
         if re.search(r"\bhow many\b|\bnumber of\b|\bcount\b|\bhighest number\b", lowered):
             return "number"
-        if re.search(r"\bwhen\b|\bwhat date\b|\bwhich year\b|\bwhat year\b", lowered):
+        if re.search(
+            r"^when\b|\bwhen\s+(?:did|was|were|is|are|will|does|do|has|have|had|should|shall|would|could|can)\b"
+            r"|\bwhat date\b|\bwhich year\b|\bwhat year\b",
+            lowered,
+        ):
             return "date"
-        if re.search(r"\bwhere\b|\bwhich country\b|\bwhich city\b|\bwhich place\b", lowered):
+        if re.search(
+            r"^where\b|\bwhere\s+(?:is|was|were|are|did|do|does|can|could|would|should|will|has|have)\b"
+            r"|\bwhich country\b|\bwhich city\b|\bwhich place\b",
+            lowered,
+        ):
             return "location"
         if re.search(r"\btitle\b|\bname of\b|\bcalled\b", lowered):
             return "title"

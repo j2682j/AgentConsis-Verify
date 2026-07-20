@@ -31,6 +31,22 @@ class SourceFilter:
         "tiktok.com",
         "linkedin.com",
     )
+    ACADEMIC_DOMAIN_MARKERS = (
+        "scholar.google.com",
+        "doi.org",
+        "sciencedirect.com",
+        "link.springer.com",
+        "onlinelibrary.wiley.com",
+        "tandfonline.com",
+        "journals.plos.org",
+        "researchgate.net",
+        "ncbi.nlm.nih.gov",
+        "semanticscholar.org",
+        "jstor.org",
+        "arxiv.org",
+        "biorxiv.org",
+        "core.ac.uk",
+    )
     BENCHMARK_LEAK_MARKERS = (
         "assistants/gaia",
         "agentscope",
@@ -162,6 +178,7 @@ class SourceFilter:
         filtered: list[SearchSourceCandidate] = []
         soft_blocked: list[SearchSourceCandidate] = []
         seen_urls: set[str] = set()
+        seen_document_ids: set[str] = set()
         seen_fingerprints: list[str] = []
         domain_counts: dict[str, int] = {}
 
@@ -175,6 +192,12 @@ class SourceFilter:
                 continue
             if canonical_url:
                 seen_urls.add(canonical_url)
+            document_id = self._canonical_document_identity(source, canonical_url)
+            if document_id and document_id in seen_document_ids:
+                self._mark_blocked(source, "duplicate_document")
+                continue
+            if document_id:
+                seen_document_ids.add(document_id)
 
             safety_reason = self._source_safety_block_reason(
                 source,
@@ -205,7 +228,12 @@ class SourceFilter:
             if self._is_question_semantic_echo(source, question):
                 self._append_reason(source, "question_semantic_echo")
 
-            if domain and domain_counts.get(domain, 0) >= self.max_urls_per_domain:
+            if source.source_kind == "web" and self._is_academic_domain(domain):
+                source.source_kind = "academic"
+                self._append_reason(source, "domain_reclassified:academic")
+
+            domain_limit = self._domain_limit(source)
+            if domain and domain_counts.get(domain, 0) >= domain_limit:
                 self._mark_blocked(source, "domain_result_limit")
                 if self._is_soft_block(source.block_reason):
                     soft_blocked.append(source)
@@ -268,6 +296,14 @@ class SourceFilter:
             - str: 移除 fragment 與追蹤參數後的 canonical URL。
         """
         return self._canonical_url(url)
+
+    def canonical_document_identity(self, source: SearchSourceCandidate) -> str:
+        """Return an identity shared by alternate URLs for the same document."""
+
+        return self._canonical_document_identity(
+            source,
+            self._canonical_url(source.url),
+        )
 
     def _reset_source_marks(self, source: SearchSourceCandidate) -> None:
         source.blocked = False
@@ -548,6 +584,39 @@ class SourceFilter:
                 "",
             )
         )
+
+    def _canonical_document_identity(
+        self,
+        source: SearchSourceCandidate,
+        canonical_url: str,
+    ) -> str:
+        parsed = urlparse(canonical_url or source.url)
+        domain = parsed.netloc.casefold().removeprefix("www.")
+        path = parsed.path.casefold().rstrip("/")
+        if "arxiv.org" in domain:
+            match = re.search(r"/(?:abs|pdf)/([^/?]+?)(?:\.pdf)?$", path)
+            if match:
+                return f"arxiv:{match.group(1)}"
+        doi_match = re.search(r"10\.\d{4,9}/[^\s?#]+", canonical_url, re.IGNORECASE)
+        if doi_match:
+            return "doi:" + doi_match.group(0).rstrip("./").casefold()
+        return canonical_url.casefold()
+
+    def _is_academic_domain(self, domain: str) -> bool:
+        if not domain:
+            return False
+        return any(marker in domain for marker in self.ACADEMIC_DOMAIN_MARKERS)
+
+    def _domain_limit(self, source: SearchSourceCandidate) -> int:
+        if source.source_kind in {"academic", "collection"}:
+            return self.max_urls_per_domain + 3
+        if source.required_content in {
+            "pdf_text",
+            "pdf_figure",
+            "collection_records",
+        }:
+            return self.max_urls_per_domain + 3
+        return self.max_urls_per_domain
 
     def _source_domain(
         self,

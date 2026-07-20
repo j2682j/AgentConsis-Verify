@@ -275,6 +275,37 @@ class PageContentFetcherTests(unittest.TestCase):
         self.assertIn("static article", result.content)
         mock_browser.assert_not_called()
 
+    def test_content_requirement_state_distinguishes_pdf_from_html(self):
+        html = """
+        <html><body><article>
+        This is a sufficiently long ordinary HTML article. It contains useful
+        information, but it is not the requested PDF text document.
+        </article></body></html>
+        """
+        source = SearchSourceCandidate(
+            source_id="S1",
+            query_id="Q1",
+            title="HTML landing page",
+            url="https://example.com/paper",
+            should_fetch_full_page=True,
+            source_kind="academic",
+            required_content="pdf_text",
+        )
+
+        with patch(
+            "tools.search_result_builder.source_analyze.seer.page_content_fetcher.requests.get",
+            return_value=FakeResponse(html),
+        ):
+            PageContentFetcher(max_workers=1, min_content_chars=60).fetch_sources(
+                [source],
+                max_pages=1,
+            )
+
+        self.assertTrue(source.content_extracted)
+        self.assertFalse(source.requirement_met)
+        self.assertEqual(source.acquisition_state, "content_extracted")
+        self.assertEqual(source.missing_content, ["pdf_text"])
+
 
 if __name__ == "__main__":
     unittest.main()

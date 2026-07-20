@@ -4,6 +4,7 @@ from dataclasses import asdict, dataclass, field
 from typing import Any, Iterable
 
 from utils.network_utils import normalize_text
+from tools.evidence.fact_extraction.models import EvidenceFact
 from tools.evidence.fact_extraction.fact_goal_binding_validator import (
     FactGoalBindingValidator,
 )
@@ -207,6 +208,150 @@ class EvidenceRoleContractBuilder:
         return EvidenceRoleContracts(
             direct=direct,
             bridge=bridge,
+            unsupported=unsupported,
+        )
+
+    def build_from_grounded_facts(
+        self,
+        *,
+        question: str,
+        answer_requirement: str,
+        answer_target: str,
+        relation_plan: RelationPlan | None,
+        document_id: str,
+        source_title: str,
+        url: str,
+        text: str,
+        facts: Iterable[EvidenceFact | dict[str, Any]],
+    ) -> EvidenceRoleContracts:
+        """Promote already grounded, answer-bound facts into direct contracts.
+
+        This entry point is intentionally independent from span finalization. A
+        semantic extractor may recover a precise answer value even when the
+        classifier span is wider than the value or the finalizer rejects that
+        wider span. The fact still has to pass grounding, answer binding, and
+        relation-goal binding before it receives evidence authority.
+        """
+
+        source_text = normalize_text(text)
+        requirement = (
+            normalize_text(answer_requirement)
+            or normalize_text(answer_target)
+            or normalize_text(question)
+        )
+        plan = relation_plan or RelationPlan()
+        goals = {goal.goal_id: goal for goal in plan.goals}
+        direct: list[DirectEvidenceContract] = []
+        unsupported: list[RejectedEvidenceSpan] = []
+        seen: set[tuple[str, str, str]] = set()
+
+        for value in facts:
+            fact = value if isinstance(value, EvidenceFact) else EvidenceFact.from_dict(value)
+            span = normalize_text(fact.object).strip(" \"'`.,;:")
+            if (
+                fact.grounding_status != "grounded"
+                or fact.role != "ANSWER_SUPPORT"
+                or fact.qualifiers.get("answer_binding") != "direct"
+            ):
+                continue
+            if not span:
+                unsupported.append(
+                    RejectedEvidenceSpan(
+                        "",
+                        "ANSWER_SUPPORT",
+                        document_id,
+                        "direct_fact_object_empty",
+                        fact.goal_id,
+                    )
+                )
+                continue
+
+            goal_id = normalize_text(fact.goal_id)
+            matching_goal = goals.get(goal_id)
+            if plan.goals and matching_goal is None:
+                unsupported.append(
+                    RejectedEvidenceSpan(
+                        span,
+                        "ANSWER_SUPPORT",
+                        document_id,
+                        "direct_fact_goal_unbound",
+                        goal_id,
+                    )
+                )
+                continue
+            if matching_goal is not None:
+                binding = self.fact_goal_binding_validator.validate(
+                    fact=fact,
+                    goal=matching_goal,
+                    effective_subjects=self.fact_goal_binding_validator.effective_subjects(
+                        plan,
+                        matching_goal,
+                    ),
+                    answer_role=(
+                        matching_goal.target
+                        if matching_goal == plan.goals[-1]
+                        else ""
+                    ),
+                )
+                if not binding.bound:
+                    unsupported.append(
+                        RejectedEvidenceSpan(
+                            span,
+                            "ANSWER_SUPPORT",
+                            document_id,
+                            f"direct_fact_{binding.status}",
+                            goal_id,
+                        )
+                    )
+                    continue
+
+            grounded_span = self._restore_source_span(source_text, span)
+            if not grounded_span:
+                unsupported.append(
+                    RejectedEvidenceSpan(
+                        span,
+                        "ANSWER_SUPPORT",
+                        document_id,
+                        "direct_fact_value_not_grounded",
+                        goal_id,
+                    )
+                )
+                continue
+            context = self._fact_context(fact.to_dict(), source_text)
+            if not context:
+                context = self._grounded_context(source_text, grounded_span)
+            if not context:
+                unsupported.append(
+                    RejectedEvidenceSpan(
+                        grounded_span,
+                        "ANSWER_SUPPORT",
+                        document_id,
+                        "direct_fact_context_not_grounded",
+                        goal_id,
+                    )
+                )
+                continue
+
+            key = (goal_id, grounded_span.casefold(), fact.fact_id)
+            if key in seen:
+                continue
+            seen.add(key)
+            direct.append(
+                DirectEvidenceContract(
+                    goal_id=goal_id,
+                    answer_span=grounded_span,
+                    context=context,
+                    document_id=normalize_text(document_id),
+                    source_title=normalize_text(source_title),
+                    url=normalize_text(url),
+                    answer_requirement=requirement,
+                    **self._fact_contract_fields(fact.to_dict()),
+                )
+            )
+
+        return EvidenceRoleContracts(
+            direct=direct,
+            bridge=[],
             unsupported=unsupported,
         )
 
@@ -444,6 +589,16 @@ class EvidenceRoleContractBuilder:
         if candidate and candidate.casefold() in source_text.casefold():
             return candidate
         return normalize_text(fallback)
+
+    @staticmethod
+    def _restore_source_span(source_text: str, span: str) -> str:
+        cleaned = normalize_text(span)
+        if not source_text or not cleaned:
+            return ""
+        index = source_text.casefold().find(cleaned.casefold())
+        if index < 0:
+            return ""
+        return source_text[index : index + len(cleaned)]
 
     def _fact_context(self, fact: dict[str, Any], source_text: str) -> str:
         fact_context = normalize_text(str(fact.get("context") or ""))

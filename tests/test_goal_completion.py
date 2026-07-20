@@ -159,6 +159,53 @@ class FullDocumentVerifierTests(unittest.TestCase):
 
 
 class GoalCompletionEvaluatorTests(unittest.TestCase):
+    def test_special_content_requirement_must_be_met_before_sufficient(self) -> None:
+        plan = RelationPlan.from_specs(
+            [
+                {
+                    "subject": "paper",
+                    "relation": "reports value",
+                    "target": "measurement",
+                    "source_kind": "academic",
+                    "required_content": "pdf_text",
+                }
+            ]
+        )
+        plan = plan.replace_goal(
+            plan.goals[0].replace(
+                state="resolved",
+                resolved_values=["0.1777 m3"],
+                evidence_ids=["D1"],
+            )
+        )
+        document = SimpleNamespace(
+            document_id="D1",
+            text="The landing page reports 0.1777 m3.",
+            required_content="pdf_text",
+            acquisition_state="content_extracted",
+            direct_contracts=[
+                {
+                    "goal_id": "G1",
+                    "answer_span": "0.1777 m3",
+                    "fact_id": "F1",
+                    "subject": "paper",
+                    "relation": "reports value",
+                    "object": "0.1777 m3",
+                    "grounding_status": "grounded",
+                    "document_id": "D1",
+                }
+            ],
+        )
+
+        result = GoalCompletionEvaluator().evaluate(
+            relation_plan=plan,
+            documents=[document],
+            answer_gate_sufficient=True,
+        )
+
+        self.assertFalse(result.sufficient)
+        self.assertEqual(result.unresolved_goal_ids, ["G1"])
+
     def test_relation_completion_also_requires_direct_evidence(self) -> None:
         plan = RelationPlan.from_specs(
             [

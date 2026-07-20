@@ -17,6 +17,7 @@ from .full_document_verifier import (
     FullDocumentVerifier,
     NegativeVerificationResult,
 )
+from .content_requirement import ContentAcquisitionState, ContentRequirementVerifier
 
 __all__ = [
     "CONTINUE_TAG",
@@ -33,4 +34,6 @@ __all__ = [
     "DocumentVerification",
     "FullDocumentVerifier",
     "NegativeVerificationResult",
+    "ContentAcquisitionState",
+    "ContentRequirementVerifier",
 ]

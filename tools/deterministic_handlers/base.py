@@ -58,6 +58,7 @@ class HandlerResult:
     semantic_role: str = ""
     supporting_inputs: list[str] = field(default_factory=list)
     output_schema_version: str = SCHEMA_VERSION
+    next_capability: str = ""
 
     @property
     def ok(self) -> bool:
@@ -87,6 +88,7 @@ class HandlerResult:
                 if best_missing
                 else ""
             ),
+            next_capability="handler" if best_missing else "agent",
         )
 
     @classmethod
@@ -107,6 +109,7 @@ class HandlerResult:
             error="missing required deterministic handler inputs",
             next_action_hint=next_action_hint,
             input_summary=input_summary or {},
+            next_capability=cls._capability_for_missing(missing_inputs),
         )
 
     @classmethod
@@ -133,7 +136,33 @@ class HandlerResult:
                 "No deterministic handler is registered for this task role; "
                 "do not use a generic handler as fallback."
             ),
+            next_capability="agent",
         )
+
+    @staticmethod
+    def _capability_for_missing(missing_inputs: list[str]) -> str:
+        values = {str(value or "").strip().lower() for value in missing_inputs}
+        if values & {
+            "source_text",
+            "date_values",
+            "numbers",
+            "matching_text",
+            "connected_path",
+            "external_fact",
+        }:
+            return "search"
+        if values & {
+            "table_rows",
+            "grid",
+            "candidate_words",
+            "edges",
+            "list_items",
+            "quoted_or_inline_text",
+            "two_coordinate_pairs",
+            "attachment_content",
+        }:
+            return "attachment"
+        return "handler" if values else ""
 
 
 class DeterministicHandler(Protocol):

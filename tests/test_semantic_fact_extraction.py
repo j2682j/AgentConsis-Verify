@@ -125,7 +125,7 @@ class SemanticFactExtractionTests(unittest.TestCase):
         self.assertFalse(client.calls[0]["think"])
         self.assertEqual(client.calls[0]["keep_alive"], 0)
 
-    def test_span_classifier_parses_fact_without_second_model_call(self) -> None:
+    def test_span_classifier_only_returns_role_assignment(self) -> None:
         classifier = SpanRoleClassifier()
         results = classifier._normalize_results(
             [
@@ -133,18 +133,6 @@ class SemanticFactExtractionTests(unittest.TestCase):
                     "id": "1",
                     "role": "ANSWER_SUPPORT",
                     "goal_id": "",
-                    "facts": [
-                        {
-                            "subject": "Dimond Center",
-                            "relation": "has floor area",
-                            "object": "728,000 square feet",
-                            "qualifiers": {"answer_binding": "direct"},
-                            "polarity": "positive",
-                            "evidence_spans": [
-                                "The Dimond Center has 728,000 square feet of floor area."
-                            ],
-                        }
-                    ],
                 }
             ],
             [
@@ -159,8 +147,43 @@ class SemanticFactExtractionTests(unittest.TestCase):
             ],
         )
         self.assertEqual(results[0].role, ANSWER_SUPPORT)
-        self.assertEqual(len(results[0].semantic_facts), 1)
-        self.assertEqual(results[0].semantic_facts[0].grounding_status, "grounded")
+        self.assertFalse(hasattr(results[0], "semantic_facts"))
+
+    def test_span_classifier_uses_qwen4b_and_unloads_after_call(self) -> None:
+        client = FakeLLMClient(
+            json.dumps(
+                {
+                    "spans": [
+                        {
+                            "id": "1",
+                            "role": "ANSWER_SUPPORT",
+                            "goal_id": "",
+                        }
+                    ]
+                }
+            )
+        )
+        classifier = SpanRoleClassifier(
+            model_name="qwen3:4b",
+            llm_client=client,
+        )
+        classifier.classify_batch(
+            question="How large is the Dimond Center?",
+            answer_requirement="floor area",
+            spans=[
+                CandidateSpan(
+                    id="1",
+                    text="728,000 square feet",
+                    local_context=(
+                        "The Dimond Center has 728,000 square feet of floor area."
+                    ),
+                )
+            ],
+        )
+
+        self.assertEqual(client.calls[0]["model"], "qwen3:4b")
+        self.assertFalse(client.calls[0]["think"])
+        self.assertEqual(client.calls[0]["keep_alive"], 0)
 
     def test_contract_uses_grounded_fact_object(self) -> None:
         text = "The Dimond Center has 728,000 square feet of floor area."

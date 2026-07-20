@@ -534,7 +534,9 @@ class QuestionRoleExtractor:
             scores["date"] += 0.08
         if lowered.startswith("which"):
             scores["choice"] += 0.08
-        if lowered.startswith(("whether", "can ", "could ", "is ", "are ", "was ", "were ")):
+        if lowered.startswith(("whether", "can ", "could ", "is ", "are ", "was ", "were ")) and not re.match(
+            r"^(?:can|could)\s+you\b", lowered
+        ):
             scores["boolean"] += 0.06
         if any(term in lowered for term in ["highest number", "number of", "count", "total"]):
             scores["count"] += 0.06

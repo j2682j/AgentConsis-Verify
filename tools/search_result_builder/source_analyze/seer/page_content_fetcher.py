@@ -17,6 +17,7 @@ except Exception:
     markdownify = None  # type: ignore
 
 from ...config import SearchSourceCandidate
+from ..content_requirement import ContentRequirementVerifier
 
 logger = logging.getLogger(__name__)
 
@@ -80,6 +81,8 @@ class PageFetchResult:
     truncated: bool = False
     original_char_count: int = 0
     final_url: str = ""
+    transport_ok: bool = False
+    content_extracted: bool = False
 
 
 @dataclass(frozen=True)
@@ -136,6 +139,8 @@ def _page_fetch_result(
         truncated=bool(scope["truncated"]),
         original_char_count=int(scope["original_char_count"]),
         final_url=str(final_url or "").strip(),
+        transport_ok=bool((status_code and status_code < 400) or text),
+        content_extracted=bool(str(text or "").strip()),
     )
 
 
@@ -385,7 +390,10 @@ def _extract_pdf_text(content: bytes) -> tuple[str, str] | None:
 
     try:
         document = fitz.open(stream=content, filetype="pdf")
-        pages = [page.get_text("text") for page in document]
+        pages = [
+            f"[PDF Page {index}]\n{page.get_text('text')}"
+            for index, page in enumerate(document, start=1)
+        ]
         return _normalize_extracted_text("\n\n".join(pages)), "pdf_pymupdf"
     except Exception as exc:
         logger.debug("PyMuPDF PDF extraction failed: %s", exc)
@@ -798,6 +806,7 @@ class PageContentFetcher:
     def __init__(self, *, max_workers: int = 4, min_content_chars: int = 160) -> None:
         self.max_workers = max(1, max_workers)
         self.min_content_chars = max(1, min_content_chars)
+        self.requirement_verifier = ContentRequirementVerifier()
 
     def fetch_sources(
         self,
@@ -839,11 +848,15 @@ class PageContentFetcher:
                     result = future.result()
                 except Exception as exc:
                     source.filter_reasons.append(f"full_page_fetch_error:{type(exc).__name__}")
+                    source.acquisition_state = "failed"
+                    source.missing_content = [source.required_content]
                     continue
 
                 content = result.content if result is not None else None
                 if result is None:
                     source.filter_reasons.append("full_page_fetch_failed")
+                    source.acquisition_state = "failed"
+                    source.missing_content = [source.required_content]
                     continue
                 source.filter_reasons.append(f"fetch_status:{result.status_code}")
                 if result.content_type:
@@ -854,7 +867,29 @@ class PageContentFetcher:
                 for trace_item in result.trace[:12]:
                     source.filter_reasons.append(f"fetch_trace:{trace_item}")
 
+                state = self.requirement_verifier.verify(
+                    required_content=source.required_content,
+                    content=str(content or ""),
+                    method=result.method,
+                    content_type=result.content_type,
+                    status_code=result.status_code,
+                    content_complete=result.is_complete,
+                    source_kind=source.source_kind,
+                )
+                source.transport_ok = state.transport_ok
+                source.content_extracted = state.content_extracted
+                source.requirement_met = state.requirement_met
+                source.acquisition_state = state.state
+                source.missing_content = list(state.missing_content)
+                source.filter_reasons.append(f"required_content:{state.required_content}")
+                source.filter_reasons.append(f"acquisition_state:{state.state}")
+
                 if not self._is_usable_content(source, content, result=result):
+                    source.requirement_met = False
+                    source.acquisition_state = (
+                        "content_extracted" if source.content_extracted else "failed"
+                    )
+                    source.missing_content = [source.required_content]
                     source.filter_reasons.append("low_quality_full_page")
                     continue
 
@@ -873,6 +908,9 @@ class PageContentFetcher:
                 )
                 source.filter_reasons.append(
                     f"fetch_truncated:{str(result.truncated).lower()}"
+                )
+                source.filter_reasons.append(
+                    f"requirement_met:{str(state.requirement_met).lower()}"
                 )
                 fetched_count += 1
 

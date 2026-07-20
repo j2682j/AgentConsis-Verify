@@ -11,10 +11,13 @@ from typing import Any, Callable, Iterable
 from utils.network_utils import normalize_text
 from tools.evidence.fact_extraction import (
     AbsenceCheck,
+    AggregationDerivation,
     CompletenessContract,
     CrossContextAssembler,
     CrossContextFactExtractor,
+    DirectEvidencePromoter,
     EvidenceFact,
+    SemanticFactExtractor,
     SemanticSourceUnit,
     TaskFactStore,
 )
@@ -98,6 +101,8 @@ class RetrievedDocumentTrace:
     content_complete: bool = False
     content_truncated: bool = False
     original_content_chars: int = 0
+    required_content: str = "html_text"
+    acquisition_state: str = "pending"
     label: str = ""
     sequence_tag: str = ""
     useful_tokens: list[str] = field(default_factory=list)
@@ -183,6 +188,7 @@ class IterativeRetrievalResult:
     completeness_contracts: list[dict[str, Any]] = field(default_factory=list)
     absence_checks: list[dict[str, Any]] = field(default_factory=list)
     set_difference_derivations: list[dict[str, Any]] = field(default_factory=list)
+    aggregation_derivations: list[dict[str, Any]] = field(default_factory=list)
 
 
 @dataclass
@@ -211,6 +217,7 @@ class WebSearchTrace:
     source_hint: str = ""
     actual_acquirer: str = ""
     fallback_used: bool = False
+    required_content: str = "html_text"
 
 
 @dataclass
@@ -272,10 +279,12 @@ class IterativeRetrievalControl:
         sufficiency_gate: EvidenceSufficiencyGate | None = None,
         evidence_utility_gate: Any | None = None,
         evidence_contract_builder: EvidenceRoleContractBuilder | None = None,
+        direct_evidence_promoter: DirectEvidencePromoter | None = None,
         span_grounder: CandidateSpanGrounder | None = None,
         span_quality_gate: CandidateSpanQualityGate | None = None,
         span_finalizer: RoleAwareSpanFinalizer | None = None,
         span_role_classifier: SpanRoleClassifier | None = None,
+        semantic_fact_extractor: SemanticFactExtractor | None = None,
         cross_context_assembler: CrossContextAssembler | None = None,
         cross_context_fact_extractor: CrossContextFactExtractor | None = None,
         labeler_input_builder: LabelerInputBuilder | None = None,
@@ -315,10 +324,16 @@ class IterativeRetrievalControl:
         self.evidence_contract_builder = (
             evidence_contract_builder or EvidenceRoleContractBuilder()
         )
+        self.direct_evidence_promoter = (
+            direct_evidence_promoter or DirectEvidencePromoter()
+        )
         self.span_grounder = span_grounder or CandidateSpanGrounder()
         self.span_quality_gate = span_quality_gate or CandidateSpanQualityGate()
         self.span_finalizer = span_finalizer or RoleAwareSpanFinalizer()
         self.span_role_classifier = span_role_classifier or SpanRoleClassifier()
+        self.semantic_fact_extractor = (
+            semantic_fact_extractor or SemanticFactExtractor()
+        )
         self.cross_context_assembler = (
             cross_context_assembler or CrossContextAssembler()
         )
@@ -652,6 +667,11 @@ class IterativeRetrievalControl:
                             if current_intent_plan is not None
                             else []
                         ),
+                        answer_requirement=self._answer_requirement(
+                            current_intent_plan
+                        ),
+                        original_question=initial_query,
+                        seen_query_keys=seen_query_keys,
                         max_requests=self.max_relation_branches,
                     )
                     requests = [item.request for item in relation_requests]
@@ -781,6 +801,12 @@ class IterativeRetrievalControl:
                 documents=observed_documents,
                 corpus_documents=self.retriever.passage_map.values(),
                 answer_gate_sufficient=answer_gate_satisfied,
+                fact_store=self._observed_fact_store(
+                    documents=observed_documents,
+                    rounds=rounds,
+                ),
+                question=initial_query,
+                answer_requirement=self._answer_requirement(current_intent_plan),
             )
             current_relation_plan = goal_completion.relation_plan
             if current_intent_plan is not None:
@@ -1089,6 +1115,12 @@ class IterativeRetrievalControl:
             ]
             if isinstance(fact, dict)
         )
+        for corpus_item in self.retriever.passage_map.values():
+            for item in list(corpus_item.get("completeness_contracts") or []):
+                if isinstance(item, dict):
+                    task_fact_store.add_completeness_contract(
+                        CompletenessContract.from_dict(item)
+                    )
         for round_trace in rounds:
             goal_metadata = round_trace.filter_metadata.get("goal_completion")
             if not isinstance(goal_metadata, dict):
@@ -1104,6 +1136,11 @@ class IterativeRetrievalControl:
                 for item in list(result.get("absence_checks") or []):
                     if isinstance(item, dict):
                         task_fact_store.add_absence_check(AbsenceCheck.from_dict(item))
+            for item in list(goal_metadata.get("aggregation_derivations") or []):
+                if isinstance(item, dict):
+                    task_fact_store.add_aggregation_derivation(
+                        AggregationDerivation.from_dict(item)
+                    )
         return IterativeRetrievalResult(
             initial_query=initial_query,
             final_query=final_query,
@@ -1127,7 +1164,43 @@ class IterativeRetrievalControl:
                 item.to_dict()
                 for item in task_fact_store.set_difference_derivations()
             ],
+            aggregation_derivations=[
+                item.to_dict() for item in task_fact_store.aggregation_derivations()
+            ],
         )
+
+    def _observed_fact_store(
+        self,
+        *,
+        documents: list[RetrievedDocumentTrace],
+        rounds: list[RetrievalRoundTrace],
+    ) -> TaskFactStore:
+        store = TaskFactStore()
+        store.extend(
+            EvidenceFact.from_dict(item)
+            for document in documents
+            for item in document.semantic_facts
+            if isinstance(item, dict)
+        )
+        for corpus_item in self.retriever.passage_map.values():
+            for value in list(corpus_item.get("completeness_contracts") or []):
+                if isinstance(value, dict):
+                    store.add_completeness_contract(
+                        CompletenessContract.from_dict(value)
+                    )
+        for previous_round in rounds:
+            metadata = previous_round.filter_metadata.get("goal_completion")
+            if not isinstance(metadata, dict):
+                continue
+            for result in list(metadata.get("negative_verifications") or []):
+                if not isinstance(result, dict):
+                    continue
+                for value in list(result.get("completeness_contracts") or []):
+                    if isinstance(value, dict):
+                        store.add_completeness_contract(
+                            CompletenessContract.from_dict(value)
+                        )
+        return store
 
     def _load_external_sources(self, requests: list[SearchQueryRequest]) -> int:
         if self.external_source_loader is None or not requests:
@@ -1265,8 +1338,30 @@ class IterativeRetrievalControl:
         ]
         if not decision.viable or not next_queries:
             return None
-        for query in next_queries:
-            seen_query_keys.discard(self._query_key(query))
+        query_reuse_allowed = decision.action in {
+            "expand_retrieval",
+            "direct_fetch",
+            "browser",
+        }
+        if query_reuse_allowed:
+            for query in next_queries:
+                seen_query_keys.discard(self._query_key(query))
+        elif any(self._query_key(query) in seen_query_keys for query in next_queries):
+            round_trace.filter_metadata["goal_recovery_rejected"] = {
+                "action": decision.action,
+                "reason": "repeated_query_without_retrieval_change",
+                "queries": list(next_queries),
+            }
+            return None
+        round_trace.filter_metadata["goal_recovery_query_reuse"] = {
+            "allowed": query_reuse_allowed,
+            "action": decision.action,
+            "reason": (
+                "retrieval_state_changed"
+                if query_reuse_allowed
+                else "new_query_required"
+            ),
+        }
         round_trace.next_queries = list(next_queries)
         round_trace.next_query = next_queries[0]
         round_trace.stop_reason = f"goal_recovery:{decision.action}"
@@ -1407,8 +1502,6 @@ class IterativeRetrievalControl:
         intent_plan: SearchIntentPlan | None,
         seen_query_keys: set[str],
     ) -> str:
-        if intent_plan is None:
-            return normalize_text(result.query)
         useful_spans = list(result.kept_evidence_tokens or [])
         if not str(result.metadata.get("method", "")).startswith("external_"):
             useful_spans.extend(round_trace.useful_tokens or [])
@@ -1515,6 +1608,12 @@ class IterativeRetrievalControl:
             content_truncated=bool(document.get("content_truncated", False)),
             original_content_chars=int(
                 document.get("original_content_chars", 0) or 0
+            ),
+            required_content=(
+                normalize_text(document.get("required_content", "")) or "html_text"
+            ),
+            acquisition_state=(
+                normalize_text(document.get("acquisition_state", "")) or "pending"
             ),
         )
 
@@ -1747,13 +1846,14 @@ class IterativeRetrievalControl:
             next_goal=self._relation_goal_text(intent_plan, active=False),
             relation_goals=self._relation_goal_options(intent_plan),
             spans=candidates,
+            keep_alive=0,
         )
         diagnostics = dict(result.diagnostics)
         round_trace.filter_metadata = {
             **round_trace.filter_metadata,
             "span_role_classifier": diagnostics,
         }
-        if not diagnostics.get("success"):
+        if not result.results:
             for trace in round_trace.documents:
                 self._retain_grounded_spans(
                     trace,
@@ -1768,7 +1868,10 @@ class IterativeRetrievalControl:
                 }
             return
 
+        candidate_by_id = {candidate.id: candidate for candidate in candidates}
         by_trace_index: dict[int, list[dict[str, Any]]] = {}
+        extraction_units: list[SemanticSourceUnit] = []
+        role_item_by_unit_id: dict[str, dict[str, Any]] = {}
         for role_result in result.results:
             mapped = candidate_map.get(role_result.id)
             if mapped is None:
@@ -1781,8 +1884,7 @@ class IterativeRetrievalControl:
                 and role_result.model_role == ANSWER_SUPPORT
             ):
                 effective_role = BRIDGE
-            by_trace_index.setdefault(trace_index, []).append(
-                {
+            role_item = {
                     "id": role_result.id,
                     "text": span_text,
                     "role": effective_role,
@@ -1793,17 +1895,58 @@ class IterativeRetrievalControl:
                         else ""
                     ),
                     "goal_id": role_result.goal_id,
-                    "semantic_facts": [
-                        fact.to_dict() for fact in role_result.semantic_facts
-                    ],
-                    "grounded_answer_values": [
-                        item.to_dict() for item in role_result.grounded_answer_values
-                    ],
-                    "promotion_diagnostics": [
-                        item.to_dict() for item in role_result.promotion_diagnostics
-                    ],
+                    "semantic_facts": [],
                 }
+            by_trace_index.setdefault(trace_index, []).append(role_item)
+            candidate = candidate_by_id.get(role_result.id)
+            if candidate is None or effective_role == "NOISE":
+                continue
+            unit_id = f"SPAN-{role_result.id}"
+            extraction_units.append(
+                SemanticSourceUnit(
+                    unit_id=unit_id,
+                    text=candidate.local_context,
+                    source_id=candidate.source_id or f"span:{role_result.id}",
+                    source_type=candidate.source_type,
+                    source_title=candidate.source_title,
+                    candidate_span=candidate.text,
+                    requested_role=effective_role,
+                    goal_id=role_result.goal_id,
+                    metadata={"answer_target": self._answer_target(intent_plan)},
+                )
             )
+            role_item_by_unit_id[unit_id] = role_item
+
+        extraction_batches: list[dict[str, Any]] = []
+        extracted_facts: list[EvidenceFact] = []
+        batch_size = max(1, self.semantic_fact_extractor.max_units_per_call)
+        for start in range(0, len(extraction_units), batch_size):
+            batch = extraction_units[start : start + batch_size]
+            is_last = start + batch_size >= len(extraction_units)
+            extraction = self.semantic_fact_extractor.extract_batch(
+                question=question,
+                answer_requirement=self._answer_requirement(intent_plan),
+                current_goal=self._relation_goal_text(intent_plan, active=True),
+                units=batch,
+                keep_alive=(0 if is_last else "2m"),
+            )
+            extraction_batches.append(extraction.to_dict())
+            extracted_facts.extend(extraction.facts)
+        for fact in extracted_facts:
+            unit_id = normalize_text(fact.qualifiers.get("source_unit_id", ""))
+            role_item = role_item_by_unit_id.get(unit_id)
+            if role_item is not None:
+                role_item["semantic_facts"].append(fact.to_dict())
+        round_trace.filter_metadata["semantic_fact_extractor"] = {
+            "model": self.semantic_fact_extractor.model_name,
+            "input_count": len(extraction_units),
+            "batch_count": len(extraction_batches),
+            "fact_count": len(extracted_facts),
+            "grounded_count": sum(
+                fact.grounding_status == "grounded" for fact in extracted_facts
+            ),
+            "batches": [item.get("diagnostics", {}) for item in extraction_batches],
+        }
 
         for trace_index, trace in enumerate(round_trace.documents):
             if trace.duplicate or trace_index in by_trace_index:
@@ -1837,12 +1980,6 @@ class IterativeRetrievalControl:
                 finalized_item["model_role"] = str(
                     role_items[index].get("model_role") or ""
                 )
-                finalized_item["grounded_answer_values"] = list(
-                    role_items[index].get("grounded_answer_values") or []
-                )
-                finalized_item["promotion_diagnostics"] = list(
-                    role_items[index].get("promotion_diagnostics") or []
-                )
             answer_support = self._dedupe_tokens(
                 item.finalized_text
                 for item in finalization.finalized
@@ -1875,18 +2012,50 @@ class IterativeRetrievalControl:
                 text=trace.text,
                 span_assignments=finalized_items,
             )
-            trace.direct_contracts = [item.to_dict() for item in contracts.direct]
-            trace.bridge_contracts = [item.to_dict() for item in contracts.bridge]
-            trace.rejected_contracts = [
-                item.to_dict() for item in contracts.unsupported
-            ]
-            trace.semantic_facts = [
-                fact
+            semantic_facts = [
+                EvidenceFact.from_dict(fact)
                 for item in role_items
                 for fact in list(item.get("semantic_facts") or [])
+                if isinstance(fact, dict)
             ]
+            promoted_facts, promotion_diagnostics = self._promote_document_facts(
+                trace=trace,
+                question=question,
+                intent_plan=intent_plan,
+                role_items=role_items,
+                finalized_items=finalized_items,
+            )
+            all_facts = self._dedupe_facts([*semantic_facts, *promoted_facts])
+            fact_contracts = self.evidence_contract_builder.build_from_grounded_facts(
+                question=question,
+                answer_requirement=self._answer_requirement(intent_plan),
+                answer_target=self._answer_target(intent_plan),
+                relation_plan=(
+                    intent_plan.relation_plan if intent_plan is not None else None
+                ),
+                document_id=trace.document_id,
+                source_title=trace.title,
+                url=trace.url,
+                text=trace.text,
+                facts=all_facts,
+            )
+            trace.direct_contracts = self._dedupe_contracts(
+                [
+                    *[item.to_dict() for item in contracts.direct],
+                    *[item.to_dict() for item in fact_contracts.direct],
+                ],
+                span_key="answer_span",
+            )
+            trace.bridge_contracts = [item.to_dict() for item in contracts.bridge]
+            trace.rejected_contracts = [
+                *[item.to_dict() for item in contracts.unsupported],
+                *[item.to_dict() for item in fact_contracts.unsupported],
+            ]
+            trace.semantic_facts = [fact.to_dict() for fact in all_facts]
             trace.answer_support_spans = [
-                item.answer_span for item in contracts.direct
+                normalize_text(str(item.get("answer_span") or ""))
+                for item in trace.direct_contracts
+                if normalize_text(str(item.get("answer_span") or ""))
             ]
             trace.bridge_spans = [item.bridge_span for item in contracts.bridge]
             answer_support = list(trace.answer_support_spans)
@@ -1923,6 +2092,14 @@ class IterativeRetrievalControl:
                         1 for item in role_items if item.get("role") == "NOISE"
                     ),
                     "contracts": contracts.to_dict(),
+                    "fact_promotion": {
+                        "promoted_fact_count": len(promoted_facts),
+                        "promoted_contract_count": len(fact_contracts.direct),
+                        "diagnostics": promotion_diagnostics,
+                        "fact_contract_rejections": [
+                            item.to_dict() for item in fact_contracts.unsupported
+                        ],
+                    },
                 },
             }
 
@@ -1951,6 +2128,10 @@ class IterativeRetrievalControl:
                 "contracts_by_goal": self._contract_counts_by_goal(
                     round_trace.documents
                 ),
+                "orphan_direct_fact_count": sum(
+                    self._orphan_direct_fact_count(trace)
+                    for trace in round_trace.documents
+                ),
             },
         }
         fact_store = TaskFactStore()
@@ -1961,6 +2142,121 @@ class IterativeRetrievalControl:
             if isinstance(fact, dict)
         )
         round_trace.filter_metadata["semantic_fact_store"] = fact_store.to_dict()
+
+    def _promote_document_facts(
+        self,
+        *,
+        trace: RetrievedDocumentTrace,
+        question: str,
+        intent_plan: SearchIntentPlan | None,
+        role_items: list[dict[str, Any]],
+        finalized_items: list[dict[str, Any]],
+    ) -> tuple[list[EvidenceFact], list[dict[str, object]]]:
+        promoted: list[EvidenceFact] = []
+        diagnostics: list[dict[str, object]] = []
+        for index, role_item in enumerate(role_items):
+            model_role = normalize_text(
+                str(role_item.get("model_role") or role_item.get("role") or "")
+            ).upper()
+            if model_role != ANSWER_SUPPORT:
+                continue
+            finalized = finalized_items[index] if index < len(finalized_items) else {}
+            candidate_span = normalize_text(
+                str(
+                    finalized.get("finalized_text")
+                    or role_item.get("text")
+                    or ""
+                )
+            )
+            semantic_facts = [
+                EvidenceFact.from_dict(value)
+                for value in list(role_item.get("semantic_facts") or [])
+                if isinstance(value, dict)
+            ]
+            goal_id = normalize_text(str(role_item.get("goal_id") or ""))
+            if not goal_id:
+                goal_id = next(
+                    (
+                        fact.goal_id
+                        for fact in semantic_facts
+                        if normalize_text(fact.goal_id)
+                    ),
+                    "",
+                )
+            result = self.direct_evidence_promoter.promote(
+                model_role=model_role,
+                candidate_span=candidate_span,
+                context=trace.text,
+                question=question,
+                answer_requirement=self._answer_requirement(intent_plan),
+                answer_target=self._answer_target(intent_plan),
+                source_id=trace.document_id,
+                source_title=trace.title,
+                document_id=trace.document_id,
+                goal_id=goal_id,
+                semantic_facts=semantic_facts,
+            )
+            promoted.extend(result.promoted_facts)
+            diagnostics.extend(item.to_dict() for item in result.diagnostics)
+        return self._dedupe_facts(promoted), diagnostics
+
+    @staticmethod
+    def _dedupe_facts(facts: Iterable[EvidenceFact]) -> list[EvidenceFact]:
+        output: list[EvidenceFact] = []
+        seen: set[tuple[str, ...]] = set()
+        for fact in facts:
+            key = (
+                normalize_text(fact.fact_id).casefold(),
+                normalize_text(fact.goal_id).casefold(),
+                normalize_text(fact.subject).casefold(),
+                normalize_text(fact.relation).casefold(),
+                normalize_text(fact.object).casefold(),
+            )
+            if key in seen:
+                continue
+            output.append(fact)
+            seen.add(key)
+        return output
+
+    @staticmethod
+    def _dedupe_contracts(
+        contracts: Iterable[dict[str, Any]],
+        *,
+        span_key: str,
+    ) -> list[dict[str, Any]]:
+        output: list[dict[str, Any]] = []
+        seen: set[tuple[str, str]] = set()
+        for contract in contracts:
+            goal_id = normalize_text(str(contract.get("goal_id") or ""))
+            span = normalize_text(str(contract.get(span_key) or ""))
+            key = (goal_id.casefold(), span.casefold())
+            if not span or key in seen:
+                continue
+            output.append(dict(contract))
+            seen.add(key)
+        return output
+
+    @staticmethod
+    def _orphan_direct_fact_count(trace: RetrievedDocumentTrace) -> int:
+        contract_fact_ids = {
+            normalize_text(str(item.get("fact_id") or ""))
+            for item in trace.direct_contracts
+            if normalize_text(str(item.get("fact_id") or ""))
+        }
+        return sum(
+            1
+            for value in trace.semantic_facts
+            if isinstance(value, dict)
+            and normalize_text(str(value.get("grounding_status") or "")) == "grounded"
+            and normalize_text(str(value.get("role") or "")).upper()
+            == ANSWER_SUPPORT
+            and normalize_text(
+                str(dict(value.get("qualifiers") or {}).get("answer_binding") or "")
+            )
+            == "direct"
+            and normalize_text(str(value.get("fact_id") or ""))
+            not in contract_fact_ids
+        )
 
     def _mark_span_quality_rejected(
         self,
@@ -2537,7 +2833,12 @@ class IterativeRetrievalControl:
         )
 
     def _query_key(self, query: str) -> str:
-        return normalize_text(query).casefold().strip(" \"'`.,;:-")
+        return re.sub(
+            r"[^\w]+",
+            " ",
+            normalize_text(query).casefold(),
+            flags=re.UNICODE,
+        ).strip()
 
     def _is_duplicate_query(
         self,
@@ -2832,6 +3133,7 @@ class WebRetrievalControl:
                     "requested_source_kind": trace.requested_source_kind,
                     "requested_access_mode": trace.requested_access_mode,
                     "source_hint": trace.source_hint,
+                    "required_content": trace.required_content,
                     "actual_acquirer": trace.actual_acquirer,
                     "fallback_used": trace.fallback_used,
                     "result_count": trace.result_count,
@@ -3030,6 +3332,7 @@ class WebRetrievalControl:
                 "requested_source_kind": trace.requested_source_kind,
                 "requested_access_mode": trace.requested_access_mode,
                 "source_hint": trace.source_hint,
+                "required_content": trace.required_content,
                 "actual_acquirer": trace.actual_acquirer,
                 "fallback_used": trace.fallback_used,
                 "result_count": trace.result_count,
@@ -3191,6 +3494,7 @@ class WebRetrievalControl:
             requested_source_kind=trace.requested_source_kind,
             requested_access_mode=trace.requested_access_mode,
             source_hint=trace.source_hint,
+            required_content=trace.required_content,
             actual_acquirer=trace.actual_acquirer,
             fallback_used=trace.fallback_used,
         )
@@ -3258,6 +3562,16 @@ class WebRetrievalControl:
                 }
                 for source in blocked_sources[:20]
             ],
+            "content_requirement_counts": {
+                state: sum(
+                    1 for source in sources if source.acquisition_state == state
+                )
+                for state in {
+                    source.acquisition_state
+                    for source in sources
+                    if source.acquisition_state
+                }
+            },
         }
 
     def _fetch_diagnostics(
@@ -3295,6 +3609,19 @@ class WebRetrievalControl:
             "low_quality_full_page_count": low_quality_count,
             "method_counts": method_counts,
             "quality_counts": quality_counts,
+            "requirement_met_count": sum(
+                1 for source in sources if source.requirement_met
+            ),
+            "requirement_unmet": [
+                {
+                    "source_id": source.source_id,
+                    "required_content": source.required_content,
+                    "state": source.acquisition_state,
+                    "missing_content": list(source.missing_content),
+                }
+                for source in sources
+                if source.content_extracted and not source.requirement_met
+            ],
         }
 
     def _embed_records(

@@ -128,6 +128,7 @@ def extract_search_summary(network_summary: dict[str, Any]) -> dict[str, Any]:
                 if isinstance(round_item, dict) and str(round_item.get("query", "") or "").strip()
             ]
         evidence_items = raw_result.get("evidence_items") or []
+        unverified_references = raw_result.get("unverified_references") or []
         blocked_sources = raw_result.get("blocked_sources") or []
         sources = raw_result.get("sources") or []
         return {
@@ -144,9 +145,18 @@ def extract_search_summary(network_summary: dict[str, Any]) -> dict[str, Any]:
             "pipeline_failure_stage": diagnostics.get("pipeline_failure_stage", ""),
             "queries": queries,
             "evidence_items": evidence_items,
+            "unverified_references": unverified_references,
             "retrieval_rounds": retrieval_rounds,
             "source_count": final_counts.get("source_count", len(sources)),
             "evidence_count": final_counts.get("evidence_count", len(evidence_items)),
+            "strict_evidence_count": final_counts.get(
+                "strict_evidence_count",
+                len(evidence_items),
+            ),
+            "unverified_reference_count": final_counts.get(
+                "unverified_reference_count",
+                len(unverified_references),
+            ),
             "blocked_source_count": final_counts.get(
                 "blocked_source_count",
                 len(blocked_sources),
@@ -674,6 +684,9 @@ def write_markdown_report(results: dict[str, Any], output_path: str | Path) -> P
         if search_summary:
             search_queries = search_summary.get("queries", []) or []
             evidence_items = search_summary.get("evidence_items", []) or []
+            unverified_references = (
+                search_summary.get("unverified_references", []) or []
+            )
             retrieval_rounds = search_summary.get("retrieval_rounds", []) or []
             source_filter = search_summary.get("source_filter", {}) or {}
             full_page_fetch = search_summary.get("full_page_fetch", {}) or {}
@@ -684,6 +697,8 @@ def write_markdown_report(results: dict[str, Any], output_path: str | Path) -> P
                     "",
                     f"- Source count: {search_summary.get('source_count', 0)}",
                     f"- Evidence count: {search_summary.get('evidence_count', 0)}",
+                    f"- Strict evidence count: {search_summary.get('strict_evidence_count', 0)}",
+                    f"- Unverified reference count: {search_summary.get('unverified_reference_count', 0)}",
                     f"- Blocked source count: {search_summary.get('blocked_source_count', 0)}",
                     f"- Web search count: {search_summary.get('web_search_count', 0)}",
                     f"- Query count: {len(search_queries)}",
@@ -756,6 +771,33 @@ def write_markdown_report(results: dict[str, Any], output_path: str | Path) -> P
                         f"| {evidence_id} | "
                         f"{title} | "
                         f"{evidence_text} |"
+                    )
+                lines.append("")
+            if unverified_references:
+                lines.extend(
+                    [
+                        "Unverified references:",
+                        "",
+                        "| ID | Source Title | Reference Content |",
+                        "|---|---|---|",
+                    ]
+                )
+                for item in unverified_references[:8]:
+                    if not isinstance(item, dict):
+                        continue
+                    reference_id = short_cell(
+                        item.get("reference_id", "") or "-",
+                        24,
+                    ).replace("|", "\\|")
+                    title = short_cell(item.get("title", ""), 90).replace(
+                        "|", "\\|"
+                    )
+                    reference_text = short_cell(
+                        item.get("text", ""),
+                        220,
+                    ).replace("|", "\\|")
+                    lines.append(
+                        f"| {reference_id} | {title} | {reference_text} |"
                     )
                 lines.append("")
 

@@ -80,7 +80,7 @@ class RelationGoalResolver:
             updated_active if goal.goal_id == active.goal_id else goal
             for goal in plan.goals
         ]
-        next_goal = next((goal for goal in goals if goal.state == "pending"), None)
+        next_goal = self._next_pending_after(goals, active.goal_id)
         activated_goal_id = ""
         if next_goal is not None:
             activated_goal_id = next_goal.goal_id
@@ -178,7 +178,7 @@ class RelationGoalResolver:
             updated_active if goal.goal_id == active.goal_id else goal
             for goal in plan.goals
         ]
-        next_goal = next((goal for goal in goals if goal.state == "pending"), None)
+        next_goal = self._next_pending_after(goals, active.goal_id)
         activated_goal_id = ""
         if next_goal is not None:
             activated_goal_id = next_goal.goal_id
@@ -213,6 +213,26 @@ class RelationGoalResolver:
             output.append(cleaned)
             seen.add(key)
         return output
+
+    @staticmethod
+    def _next_pending_after(
+        goals: list[RelationGoal],
+        active_goal_id: str,
+    ) -> RelationGoal | None:
+        active_index = next(
+            (
+                index
+                for index, goal in enumerate(goals)
+                if goal.goal_id == active_goal_id
+            ),
+            -1,
+        )
+        if active_index < 0:
+            return None
+        return next(
+            (goal for goal in goals[active_index + 1 :] if goal.state == "pending"),
+            None,
+        )
 
 
 __all__ = ["RelationGoalResolver", "RelationResolution"]
