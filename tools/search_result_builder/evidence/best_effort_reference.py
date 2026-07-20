@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from hashlib import sha256
+import re
 from typing import Any
 from urllib.parse import urlsplit, urlunsplit
 
@@ -11,12 +12,42 @@ from utils.network_utils import normalize_text
 class BestEffortReferenceSelector:
     """Select compact retrieval references when strict evidence is unavailable."""
 
+    _YEAR_RE = re.compile(r"\b(?:1[5-9]\d{2}|20\d{2}|21\d{2})\b")
+    _YEAR_RANGE_RE = re.compile(
+        r"\b(?:between|from)\s+"
+        r"(?P<start>(?:1[5-9]\d{2}|20\d{2}|21\d{2}))\s+"
+        r"(?:and|to|through|until|-)\s+"
+        r"(?P<end>(?:1[5-9]\d{2}|20\d{2}|21\d{2}))\b",
+        flags=re.IGNORECASE,
+    )
+    _COMPACT_YEAR_RANGE_RE = re.compile(
+        r"\b(?P<start>(?:1[5-9]\d{2}|20\d{2}|21\d{2}))\s*[-\u2013]\s*"
+        r"(?P<end>(?:1[5-9]\d{2}|20\d{2}|21\d{2}))\b"
+    )
+    _QUOTED_PHRASE_RE = re.compile(
+        r'["\u201c\u201d]([^"\u201c\u201d]{3,160})["\u201c\u201d]'
+    )
+    _EMPTY_WIKI_ROW_RE = re.compile(
+        r"\b(?:wiki(?:tionary|pedia|books|quote|source|news|versity|voyage)|"
+        r"commons)\s*\(\s*0\s+entries\s*\)",
+        flags=re.IGNORECASE,
+    )
+    _EDIT_PLACEHOLDER_RE = re.compile(
+        r"(?:^|\s)content\s*:\s*edit(?:\s|$)",
+        flags=re.IGNORECASE,
+    )
+    _WIKIDATA_METADATA_RE = re.compile(
+        r"(?:no\s+label\s+defined|default\s+for\s+all\s+languages|"
+        r"also\s+known\s+as\s*:|property\s*:\s*p360)",
+        flags=re.IGNORECASE,
+    )
+
     def __init__(
         self,
         *,
-        max_items: int = 3,
+        max_items: int = 5,
         max_chars_per_item: int = 800,
-        max_total_chars: int = 2400,
+        max_total_chars: int = 4000,
         min_chars: int = 80,
         max_items_per_domain: int = 2,
     ) -> None:
@@ -37,6 +68,9 @@ class BestEffortReferenceSelector:
 
         retrieval = output.get("retrieval")
         retrieval = retrieval if isinstance(retrieval, dict) else {}
+        question = normalize_text(output.get("question"))
+        question_constraints = self._question_constraints(question)
+        merge_parent_record_types = bool(question_constraints[0])
         ranked: list[tuple[float, int, int, dict[str, Any]]] = []
         collection_rows: dict[str, list[tuple[float, int, dict[str, Any]]]] = {}
         for round_position, round_info in enumerate(
@@ -53,7 +87,10 @@ class BestEffortReferenceSelector:
                 if not isinstance(document, dict) or document.get("duplicate"):
                     continue
                 text = normalize_text(document.get("text"))
-                group_key = self._collection_group_key(document)
+                group_key = self._collection_group_key(
+                    document,
+                    merge_parent_record_types=merge_parent_record_types,
+                )
                 if group_key:
                     # Collection rows are typically short; keep them even
                     # below min_chars so an aggregate table stays complete.
@@ -81,7 +118,11 @@ class BestEffortReferenceSelector:
             sorted(collection_rows.items()),
             start=1,
         ):
-            merged = self._merged_collection_document(group_key, rows)
+            merged = self._merged_collection_document(
+                group_key,
+                rows,
+                question=question,
+            )
             if merged is None:
                 continue
             ranked.append(
@@ -120,7 +161,9 @@ class BestEffortReferenceSelector:
             if remaining < self.min_chars:
                 break
             per_item_limit = (
-                self.max_total_chars if is_merged_collection else self.max_chars_per_item
+                min(2400, self.max_total_chars)
+                if is_merged_collection
+                else self.max_chars_per_item
             )
             text = self._truncate(text, min(per_item_limit, remaining))
             if len(text) < self.min_chars:
@@ -155,7 +198,12 @@ class BestEffortReferenceSelector:
                 break
         return selected
 
-    def _collection_group_key(self, document: dict[str, Any]) -> str:
+    def _collection_group_key(
+        self,
+        document: dict[str, Any],
+        *,
+        merge_parent_record_types: bool = False,
+    ) -> str:
         """Group sibling collection rows extracted from one parent page."""
 
         record_type = normalize_text(document.get("record_type")).casefold()
@@ -163,20 +211,29 @@ class BestEffortReferenceSelector:
             return ""
         fields = document.get("record_fields")
         fields = fields if isinstance(fields, dict) else {}
-        parent = (
+        explicit_parent = (
             normalize_text(fields.get("parent_url"))
             or normalize_text(document.get("parent_url"))
             or normalize_text(fields.get("source"))
-            or self._domain(normalize_text(document.get("url")))
         )
-        if not parent:
+        if explicit_parent and merge_parent_record_types:
+            # Extraction passes may label sibling rows differently (for
+            # example article vs database_row). For range-constrained
+            # collection questions, the parent page defines one logical set.
+            return f"collection::{explicit_parent.casefold()}"
+        if explicit_parent:
+            return f"{record_type}::{explicit_parent.casefold()}"
+        domain = self._domain(normalize_text(document.get("url")))
+        if not domain:
             return ""
-        return f"{record_type}::{parent.casefold()}"
+        return f"{record_type}::{domain}"
 
     def _merged_collection_document(
         self,
         group_key: str,
         rows: list[tuple[float, int, dict[str, Any]]],
+        *,
+        question: str = "",
     ) -> dict[str, Any] | None:
         """Merge sibling rows into one reference so aggregates stay complete.
 
@@ -185,17 +242,46 @@ class BestEffortReferenceSelector:
         keeps every row the char budget allows.
         """
 
-        if not rows:
-            return None
-        if len(rows) == 1:
-            document = dict(rows[0][2])
-            document["_round_index"] = rows[0][1]
+        effective_rows = [
+            item
+            for item in rows
+            if not self._is_collection_placeholder(
+                normalize_text(item[2].get("text"))
+            )
+        ]
+        if len(effective_rows) == 1 and len(rows) == 1:
+            # A genuine singleton structured record is still useful as a
+            # normal reference. Only mixed groups reduced to one row by junk
+            # filtering are abandoned as incomplete collections.
+            document = dict(effective_rows[0][2])
+            document["_round_index"] = effective_rows[0][1]
             return document
-        ordered = sorted(rows, key=lambda item: -item[0])
-        best_score = ordered[0][0]
-        first_round = min(item[1] for item in rows)
+        if len(effective_rows) < 2:
+            return None
+        original_score_ordered = sorted(rows, key=lambda item: -item[0])
+        score_ordered = sorted(effective_rows, key=lambda item: -item[0])
+        constraints = self._question_constraints(question)
+        if constraints[0] or constraints[1] or constraints[2]:
+            ordered = sorted(
+                effective_rows,
+                key=lambda item: (
+                    self._constraint_priority(
+                        normalize_text(item[2].get("text")),
+                        constraints,
+                    ),
+                    -item[0],
+                    item[1],
+                ),
+            )
+        else:
+            ordered = score_ordered
+        # Filtering navigation rows must not unexpectedly move an otherwise
+        # useful collection behind unrelated references. Preserve the parent
+        # collection's original retrieval rank while filtering only its text.
+        best_score = original_score_ordered[0][0]
+        first_round = min(item[1] for item in effective_rows)
         source_title = (
-            normalize_text(ordered[0][2].get("title"))
+            normalize_text(score_ordered[0][2].get("title"))
             or group_key.split("::", 1)[-1]
         )
         lines = []
@@ -221,6 +307,67 @@ class BestEffortReferenceSelector:
             "_merged_collection": True,
             "_round_index": first_round,
         }
+
+    @classmethod
+    def _is_collection_placeholder(cls, text: str) -> bool:
+        """Reject navigation rows that contain no retrievable record content."""
+
+        value = normalize_text(text)
+        if not value:
+            return True
+        if cls._EMPTY_WIKI_ROW_RE.search(value):
+            return True
+        if cls._EDIT_PLACEHOLDER_RE.search(value):
+            return True
+        lowered = value.casefold()
+        if "wikidata" in lowered and cls._WIKIDATA_METADATA_RE.search(value):
+            return True
+        return "special:" in lowered and any(
+            marker in lowered
+            for marker in ("content link:", "/wiki/", "wikidata", "wikipedia")
+        )
+
+    @classmethod
+    def _question_constraints(
+        cls,
+        question: str,
+    ) -> tuple[list[tuple[int, int]], set[int], list[str]]:
+        text = normalize_text(question)
+        ranges: list[tuple[int, int]] = []
+        consumed_years: set[int] = set()
+        for pattern in (cls._YEAR_RANGE_RE, cls._COMPACT_YEAR_RANGE_RE):
+            for match in pattern.finditer(text):
+                start = int(match.group("start"))
+                end = int(match.group("end"))
+                lower, upper = sorted((start, end))
+                ranges.append((lower, upper))
+                consumed_years.update({start, end})
+        years = {
+            int(match.group(0))
+            for match in cls._YEAR_RE.finditer(text)
+            if int(match.group(0)) not in consumed_years
+        }
+        phrases = [
+            normalize_text(match.group(1)).casefold()
+            for match in cls._QUOTED_PHRASE_RE.finditer(text)
+            if normalize_text(match.group(1))
+        ]
+        return ranges, years, phrases
+
+    @classmethod
+    def _constraint_priority(
+        cls,
+        text: str,
+        constraints: tuple[list[tuple[int, int]], set[int], list[str]],
+    ) -> int:
+        ranges, years, phrases = constraints
+        row_years = {int(match.group(0)) for match in cls._YEAR_RE.finditer(text)}
+        if any(lower <= year <= upper for lower, upper in ranges for year in row_years):
+            return 0
+        lowered = normalize_text(text).casefold()
+        if any(phrase in lowered for phrase in phrases) or bool(row_years & years):
+            return 1
+        return 2
 
     @staticmethod
     def _truncate(text: str, max_chars: int) -> str:

@@ -6,6 +6,35 @@ from core.evidence_runner import EvidenceRunner
 
 
 class EvidenceRunnerSelectionTests(unittest.TestCase):
+    def test_reference_instruction_only_when_strict_evidence_is_empty(self):
+        runner = EvidenceRunner(question="test question")
+        references = [
+            {
+                "source_id": "R1",
+                "title": "Reference",
+                "text": "A potentially useful table row.",
+            }
+        ]
+
+        fallback_summary = runner._render_web_retrieval_evidence(
+            [],
+            unverified_references=references,
+        )
+        strict_summary = runner._render_web_retrieval_evidence(
+            [
+                {
+                    "source_id": "E1",
+                    "title": "Verified evidence",
+                    "text": "A grounded direct fact.",
+                }
+            ],
+            unverified_references=references,
+        )
+
+        instruction = "Extract the required values or rows"
+        self.assertIn(instruction, fallback_summary)
+        self.assertNotIn(instruction, strict_summary)
+
     def test_web_retrieval_evidence_exports_only_direct_contracts(self):
         runner = EvidenceRunner(question="test question")
         output = {

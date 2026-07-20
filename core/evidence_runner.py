@@ -1049,6 +1049,11 @@ class EvidenceRunner:
                     "These retrieved passages may be incomplete or irrelevant and are not verified answer support.",
                 ]
             )
+            if not evidence_items:
+                lines.append(
+                    "Extract the required values or rows from the references below before "
+                    "answering. Do not guess from memory."
+                )
             for index, item in enumerate(references, start=1):
                 lines.extend(
                     [

@@ -1178,12 +1178,23 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=2,
         help="Maximum number of EfficientRAG filter queries searched in parallel.",
     )
-    parser.set_defaults(candidate_verification_search=True)
+    parser.set_defaults(candidate_verification_search=False)
+    parser.add_argument(
+        "--enable-candidate-verification-search",
+        dest="candidate_verification_search",
+        action="store_true",
+        help=(
+            "Enable bounded candidate evidence recovery when every factual "
+            "candidate is unsupported. Off by default: an A/B run showed it "
+            "can promote wrong candidates whose text co-occurs with question "
+            "terms (opt in for controlled experiments)."
+        ),
+    )
     parser.add_argument(
         "--without-candidate-verification-search",
         dest="candidate_verification_search",
         action="store_false",
-        help="Disable bounded candidate evidence recovery when every factual candidate is unsupported.",
+        help="Explicitly disable candidate verification search (the default).",
     )
     parser.add_argument(
         "--candidate-verification-max-queries",

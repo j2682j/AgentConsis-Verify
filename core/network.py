@@ -78,7 +78,7 @@ class Network:
         enable_evidence_driven_search: bool = True,
         bypass_search_labeler: bool = False,
         max_parallel_next_hop_queries: int = 2,
-        enable_candidate_verification_search: bool = True,
+        enable_candidate_verification_search: bool = False,
         candidate_verification_max_queries: int = 5,
         candidate_verification_workers: int = 2,
         search_result: str = "",
