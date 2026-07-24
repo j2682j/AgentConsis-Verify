@@ -12,6 +12,7 @@ from .embeddings import (
 from .utils.utils import load_passages
 from .vector_index import FaissIndex
 from .vector_index.faiss_index import IndexType
+from .corpus.page_metadata import PassagePageIndex
 
 os.environ["TOKENIZERS_PARALLELISM"] = "true"
 
@@ -52,7 +53,53 @@ class Retriever(object):
         print(f"Loading passages from {passage_path}")
         passages = load_passages(passage_path)
         self.passage_map = {p["id"]: p for p in passages}
+        self.rebuild_page_index()
         print(f"Loaded {len(passages)} passages.")
+
+    def rebuild_page_index(self) -> None:
+        """
+        依目前 passage map 重建 Page 與 section 反向索引。
+
+        Args:
+         - 無。
+
+        Returns:
+         - None。
+        """
+
+        self.page_index = PassagePageIndex.build(self.passage_map.values())
+
+    def page_passages(self, page_id: str) -> list[dict]:
+        """
+        取得指定 Page 的所有 passages，並維持原始文件順序。
+
+        Args:
+         - page_id: Corpus record 的穩定 Page ID。
+
+        Returns:
+         - list[dict]: 依 passage_index 排序的 passage payloads。
+        """
+
+        ids = self.page_index.passage_ids_by_page.get(str(page_id or ""), [])
+        return [self.passage_map[item] for item in ids if item in self.passage_map]
+
+    def section_passages(self, page_id: str, section_index: int) -> list[dict]:
+        """
+        取得指定 Page section 的 passages。
+
+        Args:
+         - page_id: Corpus record 的穩定 Page ID。
+         - section_index: Page 內的 section 順序。
+
+        Returns:
+         - list[dict]: 依 passage_index 排序的 section passages。
+        """
+
+        ids = self.page_index.passage_ids_by_section.get(
+            (str(page_id or ""), int(section_index)),
+            [],
+        )
+        return [self.passage_map[item] for item in ids if item in self.passage_map]
 
     def load_embeddings(self, passage_embedding_path):
         embedding_file = sorted(glob(f"{passage_embedding_path}/passage*"))

@@ -22,6 +22,11 @@ from ..content_requirement import ContentRequirementVerifier
 logger = logging.getLogger(__name__)
 
 CHARS_PER_TOKEN = 4
+# Share of a fetched page reserved for its main article text. The page budget
+# as a whole is unchanged; this only decides how it is divided. Main text is
+# given the majority because it is where a specific fact usually sits, and the
+# sections that follow it are the ones the final length clamp trims first.
+MAIN_CONTENT_MAX_CHARS = 24_000
 REQUEST_HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -596,17 +601,23 @@ def _extract_html_text(html: str, url: str) -> _ExtractionResult | None:
             main_text, main_method = candidate
             break
     if main_text:
-        sections.append(_section("Content", [main_text], max_chars=9000))
+        # The main article text is where answers live, so it gets the bulk of
+        # the budget. It used to be capped at 9000 while Tables was allowed
+        # 12000: on a long reference page (a library changelog, a rules index)
+        # that discarded ~75% of the article, and the discarded part is where a
+        # specific fact tends to sit. Tables keep a smaller share because the
+        # collection extractor already captures tabular records separately.
+        sections.append(_section("Content", [main_text], max_chars=MAIN_CONTENT_MAX_CHARS))
         trace.append(f"main:{main_method}:{len(main_text)}")
 
     tables = _extract_tables(soup)
-    section = _section("Tables", tables, max_chars=12000)
+    section = _section("Tables", tables, max_chars=6000)
     if section:
         sections.append(section)
         trace.append(f"tables:{len(tables)}")
 
     lists = _extract_lists(soup)
-    section = _section("Lists", lists, max_chars=3500)
+    section = _section("Lists", lists, max_chars=2500)
     if section:
         sections.append(section)
         trace.append(f"lists:{len(lists)}")

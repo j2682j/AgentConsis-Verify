@@ -1,10 +1,20 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import re
 
 from core.config import EachAgentReply
 from .answer_validator import AnswerValidator
 from utils.network_utils import extract_math_answer, normalize_for_exact
+
+
+# Presentation wrappers agents put around an answer without changing it.
+# The inner-content guard keeps currency ("$5.00") from being treated as math.
+_MATH_DELIMITED_RE = re.compile(r"^\s*\$+\s*(.+?)\s*\$+\s*$", re.DOTALL)
+_LATEX_COMMAND_RE = re.compile(
+    r"^\s*\\(?:boxed|text|mathrm|mathbf|textbf)\s*\{(.+)\}\s*$", re.DOTALL
+)
+_LIST_SEPARATOR_RE = re.compile(r"\s*,\s*")
 
 
 @dataclass
@@ -75,7 +85,7 @@ class AgentAnswerAggregator:
         groups = self._group_runs(valid_runs)
         groups.sort(key=len, reverse=True)
         best_group = groups[0]
-        best_answer = self.answer_validator.clean(best_group[0].final_answer)
+        best_answer = self._representative_answer(best_group)
         answer_counts = {
             self._answer_key(group[0].final_answer): len(group)
             for group in groups
@@ -140,11 +150,51 @@ class AgentAnswerAggregator:
         math_b = extract_math_answer(answer_b)
         return bool(math_a is not None and math_b is not None and math_a == math_b)
 
+    def _representative_answer(self, group: list[EachAgentReply]) -> str:
+        """Return the group's answer without its presentation wrapper.
+
+        Runs in a group already agree, so only the wording is being chosen.
+        Prefer a run that wrote the answer plainly: an agent whose first run
+        wrote ``$\\boxed{2}$`` used to report that verbatim, which then failed
+        to cluster with another agent's plain ``2`` and split the vote.
+
+        Run order is otherwise preserved. Ranking members by anything else
+        (shortest, for instance) silently rewrites answers that only look
+        equivalent — it turned ``FF0099FF`` into ``0099FF`` and ``b, e`` into
+        ``b,e`` on saved runs.
+        """
+        for run in group:
+            raw = self.answer_validator.clean(getattr(run, "final_answer", ""))
+            if raw and self._surface_form(getattr(run, "final_answer", "")) == raw:
+                return raw
+        return self._surface_form(group[0].final_answer)
+
+    def _surface_form(self, answer: str) -> str:
+        """Strip presentation-only wrappers without changing the answer."""
+        text = self.answer_validator.clean(answer)
+        for _ in range(3):
+            before = text
+            match = _MATH_DELIMITED_RE.match(text)
+            # Only unwrap "$...$" when the content actually looks like math,
+            # so a currency amount keeps its symbol.
+            if match and ("\\" in match.group(1) or "{" in match.group(1)):
+                text = match.group(1).strip()
+            match = _LATEX_COMMAND_RE.match(text)
+            if match:
+                text = match.group(1).strip()
+            if text == before:
+                break
+        return text
+
     def _answer_key(self, answer: str) -> str:
-        cleaned = self.answer_validator.clean(answer)
+        cleaned = self._surface_form(answer)
         if not cleaned:
             return ""
-        return normalize_for_exact(cleaned).strip().lower()
+        # Separator spacing is formatting, not content: "a, b" and "a,b" are the
+        # same list, and treating them as different answers let a single
+        # differing run outvote two runs that actually agreed.
+        normalized = _LIST_SEPARATOR_RE.sub(", ", normalize_for_exact(cleaned))
+        return normalized.strip().lower()
 
 
 __all__ = ["AgentAnswerAggregation", "AgentAnswerAggregator"]

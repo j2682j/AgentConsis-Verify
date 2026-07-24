@@ -45,6 +45,17 @@ def summary(agent_id: str, answer: str, reasoning: str) -> AgentReasoningSummary
 
 
 class ExplicitFormatDirectiveTests(unittest.TestCase):
+    def test_without_abbreviations_is_not_an_absence_operation(self) -> None:
+        contract = TaskAnswerRequirementContract.build(
+            question=(
+                "Where were the specimens deposited? "
+                "Give the city name without abbreviations."
+            )
+        )
+
+        self.assertEqual(contract.selection_operation, "direct_lookup")
+        self.assertEqual(contract.scope_requirement, "not_applicable")
+
     def setUp(self) -> None:
         self.gate = AnswerRequirementGate()
 

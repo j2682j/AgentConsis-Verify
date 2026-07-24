@@ -102,6 +102,7 @@ class EvidenceFact:
     extraction_method: str = "semantic_model"
     parent_fact_ids: list[str] = field(default_factory=list)
     derivation_type: str = ""
+    derived_contract: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -148,6 +149,11 @@ class EvidenceFact:
                 if str(item).strip()
             ],
             derivation_type=str(value.get("derivation_type") or "").strip(),
+            derived_contract=(
+                dict(value.get("derived_contract") or {})
+                if isinstance(value.get("derived_contract"), dict)
+                else {}
+            ),
         )
 
 

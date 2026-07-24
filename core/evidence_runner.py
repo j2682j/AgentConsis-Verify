@@ -13,7 +13,6 @@ from tools.attachment_workspace import AttachmentWorkspace
 from tools.deterministic_handlers import DeterministicHandlerRouter, HandlerTrustGate
 from tools.evidence.fact_extraction import (
     SemanticFactExtractor,
-    SemanticSourceUnit,
     TaskFactCollector,
     TaskFactStore,
 )
@@ -22,6 +21,7 @@ from tools.evidence.evidence_readiness import (
     EvidenceReadinessEvaluator,
     EvidenceReadinessStatus,
 )
+from tools.search_result_builder.config import EvidenceTier
 from tools.search_result_builder.evidence import (
     BestEffortReferenceSelector,
     EvidenceConverter,
@@ -482,11 +482,6 @@ class EvidenceRunner:
                 return True
         return False
 
-    def _attachment_strategy_needs_search(self, routing: dict[str, Any]) -> bool:
-        loop = routing.get("attachment_strategy_loop")
-        if not isinstance(loop, dict):
-            return False
-        return bool(loop.get("needs_search"))
 
     def _deterministic_gap_requires_search(self, tool_usage: list[dict[str, Any]]) -> bool:
         gap = self._deterministic_gap_from_usage(tool_usage)
@@ -895,8 +890,8 @@ class EvidenceRunner:
         self,
         output_dict: dict[str, Any],
         *,
-        max_items: int = 5,
-        max_chars: int = 450,
+        max_items: int = 8,
+        max_chars: int = 650,
         contract: EvidenceSelectionContract | None = None,
     ) -> list[dict[str, Any]]:
         """
@@ -963,12 +958,70 @@ class EvidenceRunner:
         output_dict: dict[str, Any],
         *,
         evidence_items: list[dict[str, Any]],
+        max_references: int = 8,
     ) -> list[dict[str, Any]]:
-        references = self.best_effort_reference_selector.select(
+        """Collect read-only passages for Stage1, newest ranking first.
+
+        References are a fallback for having *no* grounded evidence, never a
+        supplement to it. When strict evidence exists it already states the
+        answer, and padding the prompt with unverified passages only dilutes
+        it — measured on saved runs, one task answered correctly from a single
+        810-character grounded item would have grown to 5.5k characters of
+        mostly irrelevant context.
+
+        The converter's relaxed passages are ranked by question-term coverage
+        and lead; the legacy best-effort selector fills any remaining slots.
+        Every entry is marked support-ineligible so the support checker and
+        fact store keep ignoring them.
+        """
+        if evidence_items:
+            return []
+        references: list[dict[str, Any]] = []
+        seen_texts: set[str] = set()
+        # Stage1 context is already truncated on most search tasks, and
+        # truncation drops whole evidence blocks. Growing the reference block
+        # therefore does not just cost tokens — it evicts other context. Cap
+        # both the per-reference length and the total so the block stays the
+        # size the previous relaxed-evidence block occupied.
+        max_reference_chars = self.evidence_converter.max_chars
+        total_budget = max_reference_chars * max_references
+        used_chars = 0
+
+        def add(payload: dict[str, Any]) -> None:
+            nonlocal used_chars
+            text = normalize_text(str(payload.get("text") or ""))
+            if len(text) > max_reference_chars:
+                text = text[:max_reference_chars].rstrip() + "..."
+            key = text.casefold()[:400]
+            if not text or key in seen_texts:
+                return
+            if used_chars + len(text) > total_budget:
+                return
+            seen_texts.add(key)
+            used_chars += len(text)
+            entry = dict(payload)
+            entry["text"] = text
+            entry["reference_id"] = f"R{len(references) + 1}"
+            entry["evidence_id"] = ""
+            entry["evidence_tier"] = EvidenceTier.RELAXED_CONTEXT.value
+            entry["support_eligible"] = False
+            entry["verification_ready"] = False
+            entry["relaxed"] = True
+            entry["verified"] = False
+            references.append(entry)
+
+        for item in list(self.evidence_converter.last_relaxed_references or []):
+            if len(references) >= max_references:
+                break
+            add(item)
+        for reference in self.best_effort_reference_selector.select(
             output_dict,
             strict_evidence_items=evidence_items,
-        )
-        return [reference.to_dict() for reference in references]
+        ):
+            if len(references) >= max_references:
+                break
+            add(reference.to_dict())
+        return references
 
     def _contract_plan_sources(
         self,
@@ -1026,10 +1079,26 @@ class EvidenceRunner:
         Returns:
             - str: 只包含 source title 與 evidence 內容的 prompt 區塊。
         """
-        lines = ["Evidence:"]
+        # Three-tier context. E-IDs may support a final answer, B-IDs only
+        # support intermediate relations, and R-IDs are reading material with
+        # no support authority. Keeping the tiers visually distinct stops an
+        # agent from citing an unverified passage as if it were evidence.
+        grounded_items = [
+            item
+            for item in evidence_items
+            if str(item.get("evidence_tier") or "")
+            != EvidenceTier.BRIDGE_GROUNDED.value
+        ]
+        bridge_items = [
+            item
+            for item in evidence_items
+            if str(item.get("evidence_tier") or "")
+            == EvidenceTier.BRIDGE_GROUNDED.value
+        ]
+        lines = ["Grounded Evidence:"]
         lines.extend(self._render_answer_requirement_lines(contract))
-        if evidence_items:
-            for index, item in enumerate(evidence_items, start=1):
+        if grounded_items:
+            for index, item in enumerate(grounded_items, start=1):
                 lines.extend(
                     [
                         f"[E{index}]",
@@ -1040,24 +1109,38 @@ class EvidenceRunner:
         else:
             lines.append("None")
 
+        if bridge_items:
+            lines.extend(["", "Grounded Bridge:"])
+            for index, item in enumerate(bridge_items, start=1):
+                lines.extend(
+                    [
+                        f"[B{index}]",
+                        f"Source Title: {item.get('title') or item.get('source_id') or 'Unknown'}",
+                        f"Bridge: {item.get('text', '')}",
+                    ]
+                )
+
         references = list(unverified_references or [])
         if references:
             lines.extend(
                 [
                     "",
                     "Unverified References:",
-                    "These retrieved passages may be incomplete or irrelevant and are not verified answer support.",
+                    "These retrieved passages are NOT verified answer support. "
+                    "Read them, but only answer from what they actually state.",
                 ]
             )
-            if not evidence_items:
+            if not grounded_items:
                 lines.append(
-                    "Extract the required values or rows from the references below before "
-                    "answering. Do not guess from memory."
+                    "No grounded evidence was found. Extract the required values "
+                    "or rows from the references below before answering. Do not "
+                    "guess from memory, and do not treat a reference as proof."
                 )
             for index, item in enumerate(references, start=1):
+                reference_id = str(item.get("reference_id") or f"R{index}")
                 lines.extend(
                     [
-                        f"Reference {index}:",
+                        f"[{reference_id}]",
                         f"Source Title: {item.get('title') or item.get('source_id') or 'Unknown'}",
                         f"Content: {item.get('text', '')}",
                     ]
@@ -1211,7 +1294,12 @@ class EvidenceRunner:
                 "fallback_reason": (
                     "strict_evidence_empty" if references else ""
                 ),
-                "strict_evidence_count": len(evidence_items),
+                "strict_evidence_count": sum(
+                    1 for item in evidence_items if not item.get("relaxed")
+                ),
+                "relaxed_evidence_count": sum(
+                    1 for item in evidence_items if item.get("relaxed")
+                ),
                 "unverified_reference_count": len(references),
                 "selected_reference_ids": [
                     str(item.get("reference_id") or "") for item in references
@@ -1240,7 +1328,26 @@ class EvidenceRunner:
                 "retrieval_query_count": len(searched_queries),
                 "source_count": source_count,
                 "evidence_count": len(evidence_items),
-                "strict_evidence_count": len(evidence_items),
+                "strict_evidence_count": sum(
+                    1
+                    for item in evidence_items
+                    if str(item.get("evidence_tier") or "")
+                    != EvidenceTier.BRIDGE_GROUNDED.value
+                ),
+                "bridge_evidence_count": sum(
+                    1
+                    for item in evidence_items
+                    if str(item.get("evidence_tier") or "")
+                    == EvidenceTier.BRIDGE_GROUNDED.value
+                ),
+                "relaxed_reference_count": len(references),
+                # Acceptance metric for the evidence trust contract: a relaxed
+                # passage must never be support-eligible. Must stay zero.
+                "support_eligible_relaxed_count": sum(
+                    1
+                    for item in references
+                    if bool(item.get("support_eligible"))
+                ),
                 "unverified_reference_count": len(references),
                 "stage1_search_context_empty": not bool(
                     evidence_items or references
@@ -1303,6 +1410,8 @@ class EvidenceRunner:
             if stop_reason:
                 return f"evidence_conversion_empty:{stop_reason}"
             return "evidence_conversion_empty"
+        if all(item.get("relaxed") for item in evidence_items):
+            return "strict_evidence_empty_relaxed_passages_used"
         return ""
 
     def _web_retrieval_blocked_sources(
@@ -1471,25 +1580,6 @@ class EvidenceRunner:
 
         return (output_text if primary_valid else ""), validated_items
 
-    def _build_solver_evidence(
-        self,
-        *,
-        attachment_context: str,
-    ) -> tuple[str, list[dict[str, Any]]]:
-        """
-        使用 deterministic solver 嘗試產生可直接支持答案的 evidence。
-
-        Args:
-            - attachment_context: 已解析的附檔內容，供 solver 處理表格或封閉資料問題。
-
-        Returns:
-            - str: solver evidence 文字。
-            - list[dict[str, Any]]: solver 執行紀錄。
-        """
-        return self._build_deterministic_handler_evidence(
-            attachment_context=attachment_context,
-            search_context="",
-        )
 
     def _build_deterministic_handler_evidence(
         self,
@@ -1517,7 +1607,11 @@ class EvidenceRunner:
                 question=self.question,
                 handler_plan=handler_plan or {},
             )
-            context = trust.evidence_text if trust.trusted else ""
+            context = (
+                trust.evidence_text
+                if trust.trusted or trust.usable_as_intermediate
+                else ""
+            )
             if (
                 result.ok
                 and result.output_type == "intermediate_value"
@@ -1525,7 +1619,7 @@ class EvidenceRunner:
                 and result.supporting_inputs
             ):
                 context = result.evidence_text
-            evidence_valid = bool(trust.trusted and result.output_type == "final_answer")
+            evidence_valid = bool(trust.trusted or trust.usable_as_intermediate)
             next_action_hint = result.next_action_hint or (
                 "Recover missing deterministic inputs: " + ", ".join(result.missing_inputs)
                 if result.missing_inputs
@@ -1541,7 +1635,7 @@ class EvidenceRunner:
                     "handler_plan": handler_plan or {},
                     "handler_trust": trust.to_dict(),
                     "status": result.status,
-                    "output_type": result.output_type,
+                    "output_type": trust.effective_output_type or result.output_type,
                     "semantic_role": result.semantic_role,
                     "supporting_inputs": list(result.supporting_inputs or []),
                     "output_text": context,

@@ -61,11 +61,15 @@ class AttachmentToolCoordinator:
         ]
         selected = handler_items[-1] if handler_items else {}
         handler_name = str(selected.get("handler_name") or "")
-        trusted = bool((selected.get("handler_trust") or {}).get("trusted"))
+        handler_trust = selected.get("handler_trust") or {}
+        trusted = bool(handler_trust.get("trusted"))
+        usable_as_intermediate = bool(handler_trust.get("usable_as_intermediate"))
         handler_evidence = str(selected.get("output_text") or "").strip()
         attachment_context = str(strategy_result.attachment_context or "").strip()
         output_text = handler_evidence or attachment_context
-        evidence_valid = bool(handler_evidence and trusted) or bool(
+        evidence_valid = bool(
+            handler_evidence and (trusted or usable_as_intermediate)
+        ) or bool(
             attachment_context and strategy_result.reader_status == "success"
         )
         output_type = str(selected.get("output_type") or "evidence_text")
@@ -77,7 +81,7 @@ class AttachmentToolCoordinator:
             "tool_name": "attachment_reader",
             "status": (
                 "success"
-                if handler_evidence and trusted
+                if handler_evidence and (trusted or usable_as_intermediate)
                 else "partial"
                 if evidence_valid
                 else "failed"
@@ -88,6 +92,7 @@ class AttachmentToolCoordinator:
             "output_text": output_text,
             "handler_name": handler_name,
             "trusted": trusted,
+            "usable_as_intermediate": usable_as_intermediate,
             "evidence_valid": evidence_valid,
             "missing_inputs": list(selected.get("missing_inputs") or []),
             "next_action_hint": str(selected.get("next_action_hint") or ""),

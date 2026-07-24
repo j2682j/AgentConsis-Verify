@@ -84,8 +84,16 @@ class TaskFactStore:
                 and fact.qualifiers.get("answer_binding") == "direct"
                 and self._relation_grounding_is_verifiable(fact)
                 and self._negative_scope_is_verifiable(fact)
+                and self._derived_contract_is_verifiable(fact)
             )
         ]
+
+    @staticmethod
+    def _derived_contract_is_verifiable(fact: EvidenceFact) -> bool:
+        if not fact.parent_fact_ids or not fact.derived_contract:
+            return True
+        status = str(fact.derived_contract.get("verification_status") or "").strip()
+        return status in {"verified", "legacy_accepted"}
 
     @staticmethod
     def _relation_grounding_is_verifiable(fact: EvidenceFact) -> bool:
@@ -391,6 +399,11 @@ class TaskFactStore:
             context=context,
             parent_fact_ids=list(
                 dict.fromkeys([*existing.parent_fact_ids, *incoming.parent_fact_ids])
+            ),
+            derived_contract=(
+                dict(existing.derived_contract)
+                if existing.derived_contract
+                else dict(incoming.derived_contract)
             ),
         )
 

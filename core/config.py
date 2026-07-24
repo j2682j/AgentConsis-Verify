@@ -346,7 +346,6 @@ class VerifierScoreByReasoning:
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
-JudgeScoreByReasoning = VerifierScoreByReasoning
 
 @dataclass
 class NetworkSummary:

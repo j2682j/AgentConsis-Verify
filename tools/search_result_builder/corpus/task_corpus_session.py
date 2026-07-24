@@ -67,6 +67,9 @@ class TaskCorpusSession:
         self.retriever.passage_map.update(
             {record.id: record.to_dict() for record in accepted}
         )
+        rebuild_page_index = getattr(self.retriever, "rebuild_page_index", None)
+        if callable(rebuild_page_index):
+            rebuild_page_index()
         return accepted
 
     def _content_hash(self, text: str) -> str:

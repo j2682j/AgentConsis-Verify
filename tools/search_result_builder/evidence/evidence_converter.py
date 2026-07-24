@@ -11,6 +11,7 @@ from urllib.parse import urlparse
 from utils.network_utils import normalize_text
 from tools.evidence.fact_extraction import EvidenceFact, TaskFactStore
 
+from ..config import EvidenceTier
 from .evidence_contract import EvidenceSelectionContract
 from .span_builder import SpanBuilder
 
@@ -40,6 +41,9 @@ class EvidenceConversionDiagnostics:
     promoted_contract_count: int = 0
     orphan_direct_fact_count: int = 0
     rejection_reasons: dict[str, int] = field(default_factory=dict)
+    relaxed_candidate_count: int = 0
+    relaxed_selected_count: int = 0
+    relaxed_bucket_counts: dict[str, int] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -49,6 +53,13 @@ class _CandidateEvidence:
     bucket_priority: int
     order: int
     diversity_key: str
+    match_score: float = 0.0
+
+
+@dataclass(frozen=True)
+class _DiverseSelection:
+    chosen: list[_CandidateEvidence]
+    dropped_duplicates: int
 
 
 class EvidenceConverter:
@@ -83,9 +94,21 @@ class EvidenceConverter:
         "unknown",
     }
     BUCKET_ANSWER_COMPATIBLE = "ANSWER_COMPATIBLE"
+    # Relaxed buckets carry no direct_contracts, so the evidence support
+    # checker can never treat them as verified answer support; they exist to
+    # give Stage1 agents real retrieved passages instead of empty context.
+    BUCKET_GROUNDED_FACT = "GROUNDED_FACT"
+    BUCKET_SPAN_SUPPORT = "SPAN_SUPPORT"
+    BUCKET_RELEVANCE_FALLBACK = "RELEVANCE_FALLBACK"
     BUCKET_PRIORITY = {
         BUCKET_ANSWER_COMPATIBLE: 0,
+        BUCKET_GROUNDED_FACT: 1,
+        BUCKET_SPAN_SUPPORT: 2,
+        BUCKET_RELEVANCE_FALLBACK: 3,
     }
+    RELAXED_BUCKETS = frozenset(
+        {BUCKET_GROUNDED_FACT, BUCKET_SPAN_SUPPORT, BUCKET_RELEVANCE_FALLBACK}
+    )
 
     def __init__(
         self,
@@ -94,9 +117,13 @@ class EvidenceConverter:
         max_items: int = 8,
         max_chars: int = 520,
         duplicate_overlap_threshold: float = 0.86,
+        max_relaxed_references: int = 8,
     ) -> None:
         self.span_builder = span_builder or SpanBuilder(max_context_chars=max_chars)
         self.max_items = max(1, max_items)
+        # Read-only references get their own budget: they carry no support
+        # authority, so a few extra passages cost only prompt length.
+        self.max_relaxed_references = max(1, max_relaxed_references)
         self.max_chars = max(120, max_chars)
         self.duplicate_overlap_threshold = max(
             0.0,
@@ -114,6 +141,10 @@ class EvidenceConverter:
             orphan_direct_fact_count=0,
             rejection_reasons={},
         )
+        # Ranked read-only passages from the most recent conversion. Populated
+        # even when strict evidence exists so the caller can decide how much
+        # extra context to show.
+        self.last_relaxed_references: list[dict[str, Any]] = []
 
     def convert_web_retrieval_output(
         self,
@@ -137,6 +168,8 @@ class EvidenceConverter:
         retrieval = output_dict.get("retrieval") or {}
         rounds = retrieval.get("rounds") or []
         candidates: list[_CandidateEvidence] = []
+        relaxed_candidates: list[_CandidateEvidence] = []
+        contract_terms = self._contract_terms(evidence_contract)
         dropped_duplicates = 0
         grounded_fact_count = 0
         answer_bound_fact_count = 0
@@ -184,6 +217,16 @@ class EvidenceConverter:
                     rejection_reasons[
                         self._document_rejection_reason(document)
                     ] += 1
+                    relaxed = self._relaxed_candidate_from_document(
+                        document,
+                        contract=evidence_contract,
+                        contract_terms=contract_terms,
+                        round_index=round_index,
+                        query=query,
+                        order=order,
+                    )
+                    if relaxed is not None:
+                        relaxed_candidates.append(relaxed)
 
         ranked = sorted(
             candidates,
@@ -192,32 +235,62 @@ class EvidenceConverter:
                 candidate.order,
             ),
         )
-        selected: list[_CandidateEvidence] = []
-        seen_domains: dict[str, int] = {}
-        for candidate in ranked:
-            if len(selected) >= self.max_items:
-                break
-            if self._is_duplicate(candidate.item, [item.item for item in selected]):
-                dropped_duplicates += 1
-                continue
-            domain = candidate.diversity_key
-            if domain:
-                domain_count = seen_domains.get(domain, 0)
-                if domain_count >= 3 and len(selected) >= 3:
-                    continue
-                seen_domains[domain] = domain_count + 1
-            selected.append(candidate)
+        selected = self._select_diverse(
+            ranked,
+            domain_cap=3,
+            limit=self.max_items,
+        )
+        dropped_duplicates += selected.dropped_duplicates
 
         evidence_items = []
-        for index, candidate in enumerate(selected, start=1):
+        for index, candidate in enumerate(selected.chosen, start=1):
             item = dict(candidate.item)
             item["evidence_id"] = f"E{index}"
+            item["evidence_tier"] = EvidenceTier.ANSWER_GROUNDED.value
+            item["support_eligible"] = True
+            item["verification_ready"] = True
+            item["grounding_status"] = "grounded"
+            item["promotion_reason"] = "direct_evidence_contract"
             evidence_items.append(item)
+
+        # Relaxed passages never become E-ID evidence. Strict conversion
+        # failing does not make an unverified passage trustworthy: on saved
+        # GAIA runs, letting relaxed passages carry support turned generic
+        # question-vocabulary overlap into "bridge" support for whatever the
+        # agents guessed. They are still worth reading, so they are ranked
+        # here and handed to the caller as read-only references (R-ID).
+        relaxed_selected = self._select_relaxed_references(
+            relaxed_candidates,
+            contract=evidence_contract,
+        )
+        relaxed_bucket_counts: Counter[str] = Counter()
+        self.last_relaxed_references = []
+        for index, candidate in enumerate(relaxed_selected.chosen, start=1):
+            item = dict(candidate.item)
+            item["reference_id"] = f"R{index}"
+            item["evidence_id"] = ""
+            item["evidence_tier"] = EvidenceTier.RELAXED_CONTEXT.value
+            item["support_eligible"] = False
+            item["verification_ready"] = False
+            item["relaxed"] = True
+            item["grounding_status"] = "ungrounded"
+            item["promotion_reason"] = ""
+            # Span fields are what the support checker mines for intermediate
+            # values; a read-only reference must not expose them.
+            item["matched_terms"] = []
+            item["useful_spans"] = []
+            item["answer_support_spans"] = []
+            item["compatible_spans"] = []
+            item["bridge_spans"] = []
+            item["direct_contracts"] = []
+            item["semantic_facts"] = []
+            relaxed_bucket_counts[candidate.bucket] += 1
+            self.last_relaxed_references.append(item)
 
         self.last_diagnostics = EvidenceConversionDiagnostics(
             candidate_count=len(candidates),
             selected_count=len(evidence_items),
-            fallback_used=False,
+            fallback_used=bool(self.last_relaxed_references and not evidence_items),
             dropped_duplicates=dropped_duplicates,
             grounded_fact_count=grounded_fact_count,
             answer_bound_fact_count=answer_bound_fact_count,
@@ -225,8 +298,63 @@ class EvidenceConverter:
             promoted_contract_count=promoted_contract_count,
             orphan_direct_fact_count=orphan_direct_fact_count,
             rejection_reasons=dict(rejection_reasons),
+            relaxed_candidate_count=len(relaxed_candidates),
+            relaxed_selected_count=sum(relaxed_bucket_counts.values()),
+            relaxed_bucket_counts=dict(relaxed_bucket_counts),
         )
         return evidence_items
+
+    def _select_relaxed_references(
+        self,
+        relaxed_candidates: list[_CandidateEvidence],
+        *,
+        contract: EvidenceSelectionContract,
+    ) -> _DiverseSelection:
+        """Pick read-only passages by question-term coverage.
+
+        The per-domain cap stays at two on purpose. A looser cap does surface
+        one more answer passage across the saved runs, but it does so by
+        admitting near-duplicate chunks of the same page, and Stage1 context is
+        already truncated on most search tasks — so the extra passages evict
+        other context on tasks that were already answered correctly. Widening
+        this budget needs page-constrained retrieval (which picks a *better*
+        passage rather than more of them), not a bigger cap.
+        """
+        del contract
+        return self._select_diverse(
+            sorted(
+                relaxed_candidates,
+                key=lambda candidate: (-candidate.match_score, candidate.order),
+            ),
+            domain_cap=2,
+            limit=self.max_relaxed_references,
+        )
+
+    def _select_diverse(
+        self,
+        ranked: list[_CandidateEvidence],
+        *,
+        domain_cap: int,
+        limit: int,
+    ) -> _DiverseSelection:
+        """Take the top candidates while capping how many come from one domain."""
+        chosen: list[_CandidateEvidence] = []
+        seen_domains: dict[str, int] = {}
+        dropped_duplicates = 0
+        for candidate in ranked:
+            if len(chosen) >= limit:
+                break
+            if self._is_duplicate(candidate.item, [item.item for item in chosen]):
+                dropped_duplicates += 1
+                continue
+            domain = candidate.diversity_key
+            if domain:
+                domain_count = seen_domains.get(domain, 0)
+                if domain_count >= domain_cap and len(chosen) >= 3:
+                    continue
+                seen_domains[domain] = domain_count + 1
+            chosen.append(candidate)
+        return _DiverseSelection(chosen=chosen, dropped_duplicates=dropped_duplicates)
 
     def _collect_document_facts(
         self,
@@ -435,6 +563,124 @@ class EvidenceConverter:
             bucket_priority=self.BUCKET_PRIORITY.get(bucket, 99),
             order=order,
             diversity_key=self._domain(url),
+        )
+
+    def _contract_terms(self, contract: EvidenceSelectionContract) -> set[str]:
+        """Informative terms from the question and the selection contract."""
+        terms: set[str] = set()
+        terms.update(self._important_terms(contract.question))
+        terms.update(self._important_terms(contract.answer_target))
+        terms.update(self._important_terms(contract.answer_requirement))
+        for entry in contract.must_include:
+            terms.update(self._important_terms(entry))
+        return terms
+
+    def _relaxed_candidate_from_document(
+        self,
+        document: dict[str, Any],
+        *,
+        contract: EvidenceSelectionContract,
+        contract_terms: set[str],
+        round_index: int,
+        query: str,
+        order: int,
+    ) -> _CandidateEvidence | None:
+        """Build an unverified passage candidate for a strict-rejected document.
+
+        Tiers mirror the trust the upstream pipeline expressed in the
+        document: grounded semantic facts, then labeler-useful documents,
+        then any passage overlapping the question terms. The emitted item
+        never carries direct_contracts, so downstream support checking keeps
+        treating it as unverified context.
+        """
+        text = normalize_text(document.get("text", ""))
+        if not text:
+            return None
+        text_terms = self._important_terms(text)
+        overlap = contract_terms & text_terms
+        grounded_facts = [
+            dict(fact)
+            for fact in list(document.get("semantic_facts") or [])
+            if isinstance(fact, dict)
+            and normalize_text(str(fact.get("grounding_status") or "")) == "grounded"
+        ]
+        labeler_useful = (
+            normalize_text(str(document.get("label") or "")).casefold() == "useful"
+            or bool(document.get("grounded_labeler_spans"))
+        )
+        if grounded_facts:
+            bucket = self.BUCKET_GROUNDED_FACT
+            selection_reason = "relaxed_grounded_fact"
+        elif labeler_useful:
+            bucket = self.BUCKET_SPAN_SUPPORT
+            selection_reason = "relaxed_labeler_useful"
+        elif overlap:
+            bucket = self.BUCKET_RELEVANCE_FALLBACK
+            selection_reason = "relaxed_relevance_fallback"
+        else:
+            return None
+
+        # Focus the passage on contract terms when possible; grounded fact
+        # spans anchor the context for fact-backed documents.
+        anchor_terms: list[str] = []
+        for fact in grounded_facts:
+            for span in list(fact.get("evidence_spans") or []):
+                span_text = normalize_text(str(span))
+                if span_text and span_text.casefold() in text.casefold():
+                    anchor_terms.append(span_text)
+        anchor_terms.extend(sorted(overlap))
+        built_context, matched_spans = self.span_builder.build_context(
+            text,
+            anchor_terms[:16],
+            fallback_chars=self.max_chars,
+        )
+        evidence_text = self._truncate(built_context or text, self.max_chars)
+        if not evidence_text:
+            return None
+
+        retrieval_score = self._safe_float(document.get("retrieval_score"))
+        selection_score = self._safe_float(document.get("selection_score"))
+        coverage = len(overlap) / max(1, len(contract_terms))
+        match_score = coverage + max(retrieval_score, selection_score)
+        url = normalize_text(document.get("url", ""))
+        item = {
+            "evidence_id": "",
+            "source_id": normalize_text(document.get("document_id", "")),
+            "query_id": f"R{round_index}" if round_index else "R",
+            "title": normalize_text(document.get("title", "")),
+            "text": evidence_text,
+            "url": url,
+            "matched_terms": sorted(overlap)[:16],
+            "matched_spans": self._span_dicts(matched_spans),
+            "retrieval_score": retrieval_score,
+            "sequence_tag": normalize_text(document.get("sequence_tag", "")),
+            "label": normalize_text(document.get("label", "")),
+            "useful_spans": [],
+            "answer_support_spans": [],
+            "bridge_spans": [],
+            "direct_contracts": [],
+            "semantic_facts": grounded_facts[:16],
+            "span_roles": list(document.get("span_roles") or [])[:24],
+            "support_level": "",
+            "answer_requirement": contract.answer_requirement,
+            "answer_target": contract.answer_target,
+            "must_include": list(contract.must_include),
+            "compatible_spans": [],
+            "compatibility_results": [],
+            "evidence_bucket": bucket,
+            "valid_for_next_hop": False,
+            "round_index": round_index,
+            "retrieval_query": query,
+            "selection_reason": selection_reason,
+            "relaxed": True,
+        }
+        return _CandidateEvidence(
+            item=item,
+            bucket=bucket,
+            bucket_priority=self.BUCKET_PRIORITY.get(bucket, 99),
+            order=order,
+            diversity_key=self._domain(url),
+            match_score=match_score,
         )
 
     def _span_dicts(self, matched_spans: list[Any]) -> list[dict[str, Any]]:

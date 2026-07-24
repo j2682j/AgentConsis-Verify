@@ -3,6 +3,11 @@ from .collection_record import CollectionExtractionResult, CollectionRecord
 from .collection_record_extractor import CollectionRecordExtractor
 from .document_cleaner import DocumentCleaner
 from .jsonl_exporter import JSONLExporter
+from .page_metadata import (
+    PassagePageIndex,
+    build_page_id,
+    canonicalize_page_url,
+)
 from .record_assembler import RecordAssembler
 from .record_text_serializer import RecordTextSerializer
 from .structured_document_extractor import (
@@ -20,10 +25,13 @@ __all__ = [
     "DocumentChunker",
     "DocumentCleaner",
     "JSONLExporter",
+    "PassagePageIndex",
     "RecordAssembler",
     "RecordTextSerializer",
     "StructuredDocumentExtractor",
     "StructuredDocumentUnit",
     "TaskCorpusSession",
     "WebCorpusBuilder",
+    "build_page_id",
+    "canonicalize_page_url",
 ]

@@ -246,37 +246,18 @@ class CollectionRowMergeTests(unittest.TestCase):
         self.assertEqual(len(references), 2)
 
 
-class CorpusMentionTieBreakTests(unittest.TestCase):
-    def test_corpus_mentions_break_exact_versa_tie(self) -> None:
-        configs = [
-            AgentConfig(agent_id="a1", model_name="test-model"),
-            AgentConfig(agent_id="a2", model_name="test-model"),
-        ]
-        results = [
-            summary("a1", "3", "step 1. The count is 3."),
-            summary("a2", "9", "step 1. The count is 9."),
-        ]
-        network = Network("How many studio albums between 2000 and 2009?", configs)
-        candidates = network.answer_candidate_clusterer.cluster(results)
-        verifier_results = [
-            VerifierScoreByReasoning(
-                verifier_id="versa_prm",
-                target_agent_id=agent_id,
-                verifier_score=0.9,
-                metadata={
-                    "candidate_key": answer,
-                    "target_run_index": 1,
-                    "evidence_support": {"status": "no_support", "priority": 1},
-                    "process_verification": {
-                        "critical_step_floor": 0.9,
-                        "critical_step_geometric_mean": 0.9,
-                        "average_probability": 0.9,
-                    },
-                },
-            )
-            for agent_id, answer in (("a1", "3"), ("a2", "9"))
-        ]
-        evidence = {
+class CorpusAttestationTests(unittest.TestCase):
+    """An answer the fetched pages never state loses to one they do.
+
+    Ranking candidates by mention count does not work — the topic of the
+    question is repeated on every relevant page and outnumbers the answer.
+    Absence is the usable signal, and it is checked before the vote-based
+    gates because agents sharing a context agree on invented answers often
+    enough that consensus would otherwise confirm them.
+    """
+
+    def _evidence(self, text: str) -> dict:
+        return {
             "routing": {"primary_route": "factual_search"},
             "tool_usage": [
                 {
@@ -284,19 +265,7 @@ class CorpusMentionTieBreakTests(unittest.TestCase):
                     "raw_result": {
                         "retrieval": {
                             "rounds": [
-                                {
-                                    "round_index": 1,
-                                    "documents": [
-                                        {
-                                            "text": (
-                                                "She released 3 studio albums "
-                                                "between 2000 and 2009; the 3 "
-                                                "albums include Corazon Libre. "
-                                                "In total 3 studio releases."
-                                            )
-                                        }
-                                    ],
-                                }
+                                {"round_index": 1, "documents": [{"text": text}]}
                             ]
                         }
                     },
@@ -304,22 +273,82 @@ class CorpusMentionTieBreakTests(unittest.TestCase):
             ],
         }
 
-        selection = network.final_winner_selector.select(
+    def _select(self, network, results, evidence):
+        return network.final_winner_selector.select(
             stage1_results=results,
-            candidates=candidates,
-            verifier_results=verifier_results,
+            candidates=network.answer_candidate_clusterer.cluster(results),
+            verifier_results=[],
             evidence=evidence,
         )
 
-        self.assertEqual(selection.status, "answerable")
-        self.assertIsNotNone(selection.winner)
-        self.assertEqual(selection.winner.compressed_answer, "3")
-        versa_gate = next(
-            item
-            for item in selection.gate_trace
-            if item.gate_name == "versa_verification"
+    def test_unattested_answer_loses_to_an_attested_one(self) -> None:
+        # The invented answer has the stronger vote: two agents against one.
+        results = [
+            summary("a1", "FunkMonk", "step 1. The nominator was FunkMonk."),
+            summary("a2", "Ian Rose", "step 1. The nominator was Ian Rose."),
+            summary("a3", "Ian Rose", "step 1. The nominator was Ian Rose."),
+        ]
+        network = Network(
+            "Who nominated the featured article promoted in November 2016?",
+            [AgentConfig(agent_id=f"a{i}", model_name="test-model") for i in (1, 2, 3)],
         )
-        self.assertEqual(versa_gate.metadata.get("tie_break_depth"), 4)
+        evidence = self._evidence(
+            "The nomination was made by FunkMonk. FunkMonk opened the review, "
+            "and FunkMonk answered the comments during the FunkMonk nomination."
+        )
+
+        selection = self._select(network, results, evidence)
+
+        self.assertIsNotNone(selection.winner)
+        self.assertEqual(selection.winner.compressed_answer, "FunkMonk")
+        gate = next(
+            item for item in selection.gate_trace
+            if item.gate_name == "corpus_attestation"
+        )
+        self.assertEqual([item.answer for item in gate.survivors], ["FunkMonk"])
+
+    def test_both_attested_leaves_the_decision_to_later_gates(self) -> None:
+        """The gate must not rank by frequency: a topic word beats the answer."""
+        results = [
+            summary("a1", "THE CASTLE", "step 1. The location is the castle."),
+            summary("a2", "Heaven Sent", "step 1. The location is Heaven Sent."),
+        ]
+        network = Network(
+            "In Series 9 Episode 11 of Doctor Who, what is the location called?",
+            [AgentConfig(agent_id="a1", model_name="test-model"),
+             AgentConfig(agent_id="a2", model_name="test-model")],
+        )
+        evidence = self._evidence(
+            "Heaven Sent is the episode. Heaven Sent aired in 2015. In Heaven "
+            "Sent the Doctor is trapped. THE CASTLE is the setting."
+        )
+
+        selection = self._select(network, results, evidence)
+
+        gate = next(
+            item for item in selection.gate_trace
+            if item.gate_name == "corpus_attestation"
+        )
+        self.assertEqual(len(gate.survivors), 2)
+
+    def test_single_character_answers_are_not_counted(self) -> None:
+        """A one-character answer matches too much text to judge by absence."""
+        results = [
+            summary("a1", "3", "step 1. The count is 3."),
+            summary("a2", "9", "step 1. The count is 9."),
+        ]
+        network = Network("How many studio albums between 2000 and 2009?",
+                          [AgentConfig(agent_id="a1", model_name="test-model"),
+                           AgentConfig(agent_id="a2", model_name="test-model")])
+        evidence = self._evidence("She released 3 studio albums between 2000 and 2009.")
+
+        selection = self._select(network, results, evidence)
+
+        gate = next(
+            item for item in selection.gate_trace
+            if item.gate_name == "corpus_attestation"
+        )
+        self.assertEqual(len(gate.survivors), 2)
 
 
 if __name__ == "__main__":

@@ -105,7 +105,11 @@ class DeterministicHandlerFactAdapter:
         raw = item.get("raw_result") if isinstance(item.get("raw_result"), dict) else {}
         trust = item.get("handler_trust") if isinstance(item.get("handler_trust"), dict) else {}
         output_type = normalize_text(
-            item.get("output_type") or trust.get("output_type") or raw.get("output_type")
+            trust.get("effective_output_type")
+            or item.get("effective_output_type")
+            or item.get("output_type")
+            or trust.get("output_type")
+            or raw.get("output_type")
         )
         value = normalize_text(
             item.get("value")
@@ -113,10 +117,22 @@ class DeterministicHandlerFactAdapter:
             or raw.get("answer")
             or raw.get("final_answer")
         )
-        evidence_valid = bool(item.get("evidence_valid") or trust.get("trusted"))
+        finality = trust.get("finality") if isinstance(trust.get("finality"), dict) else {}
+        if not finality and isinstance(item.get("finality"), dict):
+            finality = dict(item.get("finality") or {})
+        finality_status = normalize_text(finality.get("status"))
+        legacy_finality = not finality_status
+        evidence_valid = bool(
+            item.get("evidence_valid")
+            or trust.get("trusted")
+            or trust.get("usable_as_intermediate")
+        )
         if output_type not in {"final_answer", "intermediate_value"} or not value:
             return []
-        if output_type == "final_answer" and not evidence_valid:
+        if output_type == "final_answer" and (
+            not evidence_valid
+            or (not legacy_finality and finality_status not in {"final", "legacy_accepted"})
+        ):
             return []
         role = "ANSWER_SUPPORT" if output_type == "final_answer" else "BRIDGE"
         relation = normalize_text(
@@ -149,6 +165,8 @@ class DeterministicHandlerFactAdapter:
                         "direct" if output_type == "final_answer" else "bridge"
                     ),
                     "answer_requirement": normalize_text(question),
+                    "finality_status": finality_status or "legacy_accepted",
+                    "finality": dict(finality),
                 },
                 polarity="positive",
                 role=role,

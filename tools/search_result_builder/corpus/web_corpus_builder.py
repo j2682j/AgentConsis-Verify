@@ -20,6 +20,7 @@ from .collection_record_extractor import CollectionRecordExtractor
 from .chunker import DocumentChunker
 from .document_cleaner import DocumentCleaner
 from .jsonl_exporter import JSONLExporter
+from .page_metadata import build_page_id, canonicalize_page_url
 from .record_assembler import RecordAssembler
 from .record_text_serializer import RecordTextSerializer
 from .structured_document_extractor import StructuredDocumentExtractor
@@ -64,6 +65,16 @@ class CorpusRecord:
     original_content_chars: int = 0
     required_content: str = "html_text"
     acquisition_state: str = "pending"
+    page_id: str = ""
+    source_url: str = ""
+    canonical_url: str = ""
+    section_title: str = ""
+    section_index: int = 0
+    passage_index: int = 0
+    content_type: str = "text"
+    table_id: str = ""
+    table_headers: tuple[str, ...] = ()
+    row_index: int = -1
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -90,7 +101,29 @@ class CorpusRecord:
             "original_content_chars": self.original_content_chars,
             "required_content": self.required_content,
             "acquisition_state": self.acquisition_state,
+            "page_id": self.page_id,
+            "source_url": self.source_url,
+            "canonical_url": self.canonical_url,
+            "section_title": self.section_title,
+            "section_index": self.section_index,
+            "passage_index": self.passage_index,
+            "content_type": self.content_type,
+            "table_id": self.table_id,
+            "table_headers": list(self.table_headers),
+            "row_index": self.row_index,
         }
+
+
+@dataclass(frozen=True)
+class _ChunkCandidate:
+    text: str
+    passage_index: int
+    section_title: str = ""
+    section_index: int = 0
+    content_type: str = "text"
+    table_id: str = ""
+    table_headers: tuple[str, ...] = ()
+    row_index: int = -1
 
 
 class WebCorpusBuilder:
@@ -146,6 +179,7 @@ class WebCorpusBuilder:
         max_fetch_tokens: int = 8000,
         max_chunks_per_url: int = 20,
         max_records: int | None = 300,
+        question: str = "",
     ) -> list[CorpusRecord]:
         """
         將搜尋來源建立成 corpus records。
@@ -169,6 +203,7 @@ class WebCorpusBuilder:
         page_index = 0
         per_url_limit = max(1, max_chunks_per_url)
         record_limit = None if max_records is None else max(1, max_records)
+        self._question_terms = self._informative_terms(question)
 
         for source in sources:
             if record_limit is not None and len(records) >= record_limit:
@@ -215,6 +250,11 @@ class WebCorpusBuilder:
                 page_records = self._collection_records(
                     collection_result.records,
                     page_index=page_index,
+                    page_url=(
+                        source_data["final_url"]
+                        or source_data["canonical_url"]
+                        or source_data["url"]
+                    ),
                     retrieved_at=retrieved_date,
                     max_records=per_url_limit,
                     accepted_record_keys=accepted_record_keys,
@@ -227,36 +267,80 @@ class WebCorpusBuilder:
                 records.extend(page_records)
                 continue
 
-            chunks: list[str] = []
+            chunks: list[_ChunkCandidate] = []
+            section_indexes: dict[str, int] = {}
             for unit in self.structured_extractor.extract(content):
                 cleaned = self.cleaner.clean(unit.text)
                 if not cleaned:
                     continue
+                section_title = normalize_text(unit.section)
+                section_key = section_title.casefold()
+                if section_key not in section_indexes:
+                    section_indexes[section_key] = len(section_indexes)
+                section_index = section_indexes[section_key]
                 if unit.unit_type == "table_row":
-                    chunks.append(cleaned)
+                    chunks.append(
+                        _ChunkCandidate(
+                            text=cleaned,
+                            passage_index=len(chunks),
+                            section_title=section_title,
+                            section_index=section_index,
+                            content_type="table_row",
+                            table_id=normalize_text(unit.table_id),
+                            table_headers=self._table_headers(cleaned),
+                            row_index=int(unit.row_index),
+                        )
+                    )
                 else:
-                    chunks.extend(self.chunker.chunk(cleaned))
-            unique_chunks: list[str] = []
-            chunk_limit_reached = False
+                    for chunk in self.chunker.chunk(cleaned):
+                        chunks.append(
+                            _ChunkCandidate(
+                                text=chunk,
+                                passage_index=len(chunks),
+                                section_title=section_title,
+                                section_index=section_index,
+                                content_type="text",
+                            )
+                        )
+            eligible: list[_ChunkCandidate] = []
             for chunk in chunks:
-                if len(unique_chunks) >= per_url_limit:
-                    chunk_limit_reached = True
-                    break
-                if self._is_low_quality_chunk(chunk):
+                if self._is_low_quality_chunk(chunk.text):
                     continue
-                content_hash = self._content_hash(chunk)
+                content_hash = self._content_hash(chunk.text)
                 if not content_hash or content_hash in accepted_hashes:
                     continue
-                if self._is_duplicate(chunk, accepted_texts):
+                if self._is_duplicate(chunk.text, accepted_texts):
                     continue
+                eligible.append(chunk)
+            # Which chunks are kept matters more than where they sit on the
+            # page. Taking the first N meant a long reference page contributed
+            # only its introduction, while the sentence answering the question
+            # sat further down and never entered the corpus. Selection is by
+            # relevance; the surviving chunks are then restored to document
+            # order so neighbouring passages still read in sequence.
+            chunk_limit_reached = len(eligible) > per_url_limit
+            selected = self._select_relevant_chunks(eligible, limit=per_url_limit)
+            unique_chunks: list[_ChunkCandidate] = []
+            for chunk in selected:
+                content_hash = self._content_hash(chunk.text)
                 unique_chunks.append(chunk)
-                accepted_texts.append(chunk)
+                accepted_texts.append(chunk.text)
                 accepted_hashes.add(content_hash)
             if not unique_chunks:
                 continue
 
             page_index += 1
             title = self.cleaner.clean_title(source_data["title"])
+            source_url = source_data["url"]
+            canonical_url = canonicalize_page_url(
+                source_data["final_url"]
+                or source_data["canonical_url"]
+                or source_url
+            )
+            stable_page_id = build_page_id(
+                canonical_url=canonical_url,
+                fallback_identity=f"{title}:{page_index}",
+            )
             remaining_record_capacity = (
                 len(unique_chunks)
                 if record_limit is None
@@ -267,15 +351,15 @@ class WebCorpusBuilder:
                 and not chunk_limit_reached
                 and remaining_record_capacity >= len(unique_chunks)
             )
-            for chunk_index, chunk in enumerate(unique_chunks):
+            for chunk in unique_chunks:
                 if record_limit is not None and len(records) >= record_limit:
                     break
                 records.append(
                     CorpusRecord(
-                        id=f"page-{page_index:03d}-{chunk_index:03d}",
+                        id=f"page-{page_index:03d}-{chunk.passage_index:03d}",
                         title=title,
-                        text=chunk,
-                        url=source_data["url"],
+                        text=chunk.text,
+                        url=source_url,
                         retrieved_at=retrieved_date,
                         record_type=self._record_type_for_source(source_data),
                         parent_url=source_data["url"],
@@ -292,6 +376,16 @@ class WebCorpusBuilder:
                         original_content_chars=source_data["original_content_chars"],
                         required_content=source_data["required_content"],
                         acquisition_state=source_data["acquisition_state"],
+                        page_id=stable_page_id,
+                        source_url=source_url,
+                        canonical_url=canonical_url,
+                        section_title=chunk.section_title,
+                        section_index=chunk.section_index,
+                        passage_index=chunk.passage_index,
+                        content_type=chunk.content_type,
+                        table_id=chunk.table_id,
+                        table_headers=chunk.table_headers,
+                        row_index=chunk.row_index,
                     )
                 )
         return records
@@ -345,6 +439,8 @@ class WebCorpusBuilder:
                         fetch_result.truncated or not all_content_preserved
                     ),
                     original_content_chars=fetch_result.original_char_count,
+                    page_url=content_url,
+                    passage_index=index - 1,
                 )
             )
         return results
@@ -407,6 +503,62 @@ class WebCorpusBuilder:
             return ""
         return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
 
+    _TERM_RE = re.compile(r"[a-z0-9][a-z0-9._-]*")
+    _COMMON_TERMS = frozenset({
+        "the", "and", "for", "with", "from", "what", "which", "who", "when",
+        "where", "why", "how", "was", "were", "are", "that", "this", "there",
+        "have", "has", "had", "you", "your", "its", "his", "her", "they",
+        "use", "used", "using", "give", "given", "only", "name", "names",
+    })
+
+    def _informative_terms(self, text: str) -> frozenset[str]:
+        return frozenset(
+            term
+            for term in self._TERM_RE.findall(normalize_text(text).casefold())
+            if len(term) > 2 and term not in self._COMMON_TERMS
+        )
+
+    def _select_relevant_chunks(
+        self,
+        chunks: list[_ChunkCandidate] | list[str],
+        *,
+        limit: int,
+    ) -> list[_ChunkCandidate] | list[str]:
+        """Keep the chunks most related to the question, in document order.
+
+        Scoring is deliberately lexical: this runs during corpus construction,
+        before any embedding exists, and its only job is to decide what is
+        worth embedding at all. Without a question it degrades to the previous
+        document-order behaviour, so callers that do not supply one are
+        unaffected.
+        """
+        if len(chunks) <= limit:
+            return chunks
+        terms = getattr(self, "_question_terms", frozenset())
+        if not terms:
+            return chunks[:limit]
+
+        scored: list[tuple[float, int]] = []
+        for index, chunk in enumerate(chunks):
+            text = chunk.text if isinstance(chunk, _ChunkCandidate) else str(chunk)
+            chunk_terms = self._informative_terms(text)
+            if not chunk_terms:
+                scored.append((0.0, index))
+                continue
+            overlap = len(terms & chunk_terms)
+            # Normalise by the question so a long chunk cannot win on length
+            # alone, and keep a small density term so a focused passage beats
+            # a sprawling one that mentions the same words in passing.
+            coverage = overlap / max(1, len(terms))
+            density = overlap / max(1, len(chunk_terms))
+            scored.append((coverage + 0.25 * density, index))
+
+        keep = sorted(
+            sorted(scored, key=lambda item: (-item[0], item[1]))[:limit],
+            key=lambda item: item[1],
+        )
+        return [chunks[index] for _, index in keep]
+
     def _is_low_quality_chunk(self, text: str) -> bool:
         cleaned = normalize_text(text)
         if len(cleaned) < self.chunker.min_chars:
@@ -444,6 +596,7 @@ class WebCorpusBuilder:
                 getter("original_content_chars", 0) or 0
             ),
             "final_url": str(getter("final_url", "") or ""),
+            "canonical_url": str(getter("canonical_url", "") or ""),
             "required_content": str(
                 getter("required_content", "html_text") or "html_text"
             ),
@@ -486,6 +639,7 @@ class WebCorpusBuilder:
         collection_records: list[CollectionRecord],
         *,
         page_index: int,
+        page_url: str,
         retrieved_at: str,
         max_records: int,
         accepted_record_keys: set[str],
@@ -516,6 +670,9 @@ class WebCorpusBuilder:
                         text=text,
                         content=content,
                         retrieved_at=retrieved_at,
+                        page_url=page_url,
+                        passage_index=len(results),
+                        content_type="collection_record",
                     )
                 )
         return results
@@ -549,7 +706,12 @@ class WebCorpusBuilder:
         content_complete: bool = False,
         content_truncated: bool = False,
         original_content_chars: int = 0,
+        page_url: str = "",
+        passage_index: int = 0,
+        content_type: str = "collection_record",
     ) -> CorpusRecord:
+        source_url = page_url or record.parent_url or record.content_url
+        canonical_url = canonicalize_page_url(source_url)
         return CorpusRecord(
             id=passage_id,
             title=record.title,
@@ -572,6 +734,24 @@ class WebCorpusBuilder:
             content_complete=content_complete,
             content_truncated=content_truncated,
             original_content_chars=original_content_chars,
+            page_id=build_page_id(
+                canonical_url=canonical_url,
+                fallback_identity=record_id,
+            ),
+            source_url=source_url,
+            canonical_url=canonical_url,
+            passage_index=passage_index,
+            content_type=content_type,
+        )
+
+    def _table_headers(self, text: str) -> tuple[str, ...]:
+        match = re.search(r"(?:^|\n)Columns:\s*(.+?)(?:\n|$)", text)
+        if match is None:
+            return ()
+        return tuple(
+            normalize_text(value)
+            for value in match.group(1).split("|")
+            if normalize_text(value)
         )
 
     def _collection_from_mapping(self, data: dict[str, Any]) -> CollectionRecord:

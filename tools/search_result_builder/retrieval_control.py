@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import os
 import pickle
 import re
 import shutil
@@ -23,7 +24,13 @@ from tools.evidence.fact_extraction import (
 )
 
 from .config import EvidenceItem, SearchSourceCandidate
-from .corpus import DocumentChunker, TaskCorpusSession, WebCorpusBuilder
+from .corpus import (
+    DocumentChunker,
+    TaskCorpusSession,
+    WebCorpusBuilder,
+    build_page_id,
+    canonicalize_page_url,
+)
 from .embeddings import Embedder
 from .evidence import (
     ANSWER_SUPPORT,
@@ -103,6 +110,16 @@ class RetrievedDocumentTrace:
     original_content_chars: int = 0
     required_content: str = "html_text"
     acquisition_state: str = "pending"
+    page_id: str = ""
+    source_url: str = ""
+    canonical_url: str = ""
+    section_title: str = ""
+    section_index: int = 0
+    passage_index: int = 0
+    content_type: str = "text"
+    table_id: str = ""
+    table_headers: list[str] = field(default_factory=list)
+    row_index: int = -1
     label: str = ""
     sequence_tag: str = ""
     useful_tokens: list[str] = field(default_factory=list)
@@ -130,6 +147,60 @@ class RetrievedDocumentTrace:
 
 
 @dataclass
+class PageRetrievalTrace:
+    """
+    記錄單一 retrieval round 內每個 Page 的處理結果。
+
+    Args:
+     - page_id: 穩定的 Page ID。
+     - url: Page canonical URL。
+     - title: Page 標題。
+     - status: direct_found、bridge_found 或 no_usable_contract。
+     - selected_passage_ids: 本輪實際處理的 passage IDs。
+
+    Returns:
+     - PageRetrievalTrace: 可直接匯出到任務 JSON 的 Page trace。
+    """
+
+    page_id: str
+    url: str = ""
+    title: str = ""
+    status: str = "no_usable_contract"
+    selection_scope: str = "global"
+    selection_reasons: list[str] = field(default_factory=list)
+    selected_passage_ids: list[str] = field(default_factory=list)
+    direct_document_ids: list[str] = field(default_factory=list)
+    bridge_document_ids: list[str] = field(default_factory=list)
+    direct_fact_ids: list[str] = field(default_factory=list)
+    bridge_goal_ids: list[str] = field(default_factory=list)
+
+
+@dataclass
+class NextHopDecisionTrace:
+    """
+    記錄本輪是否允許跨 Page 搜尋及其 grounded bridge。
+
+    Args:
+     - required: 是否執行下一跳搜尋。
+     - decision_reason: 允許或拒絕下一跳的原因。
+     - generated_query: 通過 Query Guard 的下一跳 query。
+     - bridge_document_ids: 支撐下一跳的 passage IDs。
+
+    Returns:
+     - NextHopDecisionTrace: Next-hop 控制決策紀錄。
+    """
+
+    required: bool = False
+    decision_reason: str = ""
+    unresolved_goal: str = ""
+    bridge_spans: list[str] = field(default_factory=list)
+    bridge_document_ids: list[str] = field(default_factory=list)
+    generated_query: str = ""
+    query_guard_result: str = ""
+    target_page_ids: list[str] = field(default_factory=list)
+
+
+@dataclass
 class RetrievalRoundTrace:
     """
     保存一次 Retriever、Labeler 與 Filter 迭代的完整狀態。
@@ -151,6 +222,10 @@ class RetrievalRoundTrace:
     query: str
     branch_queries: list[str] = field(default_factory=list)
     documents: list[RetrievedDocumentTrace] = field(default_factory=list)
+    pages: list[PageRetrievalTrace] = field(default_factory=list)
+    next_hop_decision: NextHopDecisionTrace = field(
+        default_factory=NextHopDecisionTrace
+    )
     cross_context_facts: list[dict[str, Any]] = field(default_factory=list)
     useful_tokens: list[str] = field(default_factory=list)
     next_query: str = ""
@@ -407,6 +482,8 @@ class IterativeRetrievalControl:
         unique_document_count = 0
         stop_reason = "goal_incomplete_budget_exhausted"
         attempted_recoveries: set[str] = set()
+        self._last_coverage_bridge_terms: list[str] = []
+        self._last_coverage_missing_constraints: list[str] = []
         retrieval_top_k = self.top_k
         retrieval_candidate_pool_size = self.candidate_pool_size
         answer_gate_satisfied = False
@@ -570,6 +647,7 @@ class IterativeRetrievalControl:
                 question=initial_query,
                 intent_plan=current_intent_plan,
             )
+            self._refresh_page_traces(round_trace)
 
             relation_requires_more = bool(
                 current_relation_plan is not None
@@ -660,42 +738,70 @@ class IterativeRetrievalControl:
                     not current_relation_plan.complete
                     and round_index < self.max_iter
                 ):
-                    relation_requests = self.next_hop_composer.build_relation_requests(
-                        relation_plan=current_relation_plan,
-                        constraints=(
-                            list(current_intent_plan.must_include or [])
-                            if current_intent_plan is not None
-                            else []
-                        ),
-                        answer_requirement=self._answer_requirement(
-                            current_intent_plan
-                        ),
-                        original_question=initial_query,
-                        seen_query_keys=seen_query_keys,
-                        max_requests=self.max_relation_branches,
+                    transition_documents = self._documents_for_resolved_goals(
+                        plan=current_relation_plan,
+                        resolved_goal_ids=resolved_goal_ids,
+                        documents=round_trace.documents,
                     )
-                    requests = [item.request for item in relation_requests]
-                    next_queries = [request.query for request in requests]
-                    round_trace.next_queries = list(next_queries)
-                    round_trace.next_query = next_queries[0] if next_queries else ""
                     round_trace.filter_metadata["relation_next_hop"] = {
-                        "branches": [item.to_dict() for item in relation_requests],
+                        "grounded_transition_document_ids": [
+                            item.document_id for item in transition_documents
+                        ],
                     }
-                    added_count = self._load_external_sources(requests)
-                    round_trace.filter_metadata["relation_next_hop"][
-                        "added_record_count"
-                    ] = added_count
-                    if next_queries and added_count > 0:
-                        round_trace.stop_reason = "relation_next_hop"
-                        rounds.append(round_trace)
-                        current_queries = next_queries
-                        current_query = next_queries[0]
-                        continue
+                    if transition_documents:
+                        relation_requests = (
+                            self.next_hop_composer.build_relation_requests(
+                                relation_plan=current_relation_plan,
+                                constraints=(
+                                    list(current_intent_plan.must_include or [])
+                                    if current_intent_plan is not None
+                                    else []
+                                ),
+                                answer_requirement=self._answer_requirement(
+                                    current_intent_plan
+                                ),
+                                original_question=initial_query,
+                                seen_query_keys=seen_query_keys,
+                                max_requests=self.max_relation_branches,
+                            )
+                        )
+                        requests = [item.request for item in relation_requests]
+                        next_queries = [request.query for request in requests]
+                        round_trace.next_queries = list(next_queries)
+                        round_trace.next_query = (
+                            next_queries[0] if next_queries else ""
+                        )
+                        round_trace.filter_metadata["relation_next_hop"][
+                            "branches"
+                        ] = [item.to_dict() for item in relation_requests]
+                        added_count = self._load_external_sources(requests)
+                        round_trace.filter_metadata["relation_next_hop"][
+                            "added_record_count"
+                        ] = added_count
+                        if next_queries and added_count > 0:
+                            self._record_next_hop_decision(
+                                round_trace,
+                                required=True,
+                                reason="grounded_relation_bridge",
+                                documents=transition_documents,
+                                generated_query=next_queries[0],
+                                relation_plan=current_relation_plan,
+                            )
+                            round_trace.stop_reason = "relation_next_hop"
+                            rounds.append(round_trace)
+                            current_queries = next_queries
+                            current_query = next_queries[0]
+                            continue
+                        failure_reason = (
+                            "relation_source_empty"
+                            if next_queries
+                            else "empty_relation_query"
+                        )
+                    else:
+                        failure_reason = "no_grounded_relation_transition"
                     round_trace.filter_metadata["relation_next_hop"][
                         "failure_reason"
-                    ] = (
-                        "relation_source_empty" if next_queries else "empty_relation_query"
-                    )
+                    ] = failure_reason
 
             relation_requires_more = bool(
                 current_relation_plan is not None
@@ -712,6 +818,10 @@ class IterativeRetrievalControl:
                 question=initial_query,
                 documents=non_duplicate_documents,
                 intent_plan=current_intent_plan,
+            )
+            self._last_coverage_bridge_terms = list(coverage.bridge_terms or [])
+            self._last_coverage_missing_constraints = list(
+                coverage.missing_constraints or []
             )
             gate_result = self.sufficiency_gate.assess(
                 question=initial_query,
@@ -823,6 +933,12 @@ class IterativeRetrievalControl:
             )
             round_trace.coverage["sufficient"] = goal_completion.sufficient
             if goal_completion.sufficient:
+                self._record_next_hop_decision(
+                    round_trace,
+                    required=False,
+                    reason="goal_completed",
+                    relation_plan=current_relation_plan,
+                )
                 round_trace.stop_reason = "goal_completion_sufficient"
                 rounds.append(round_trace)
                 stop_reason = round_trace.stop_reason
@@ -834,10 +950,16 @@ class IterativeRetrievalControl:
                 if (
                     not trace.duplicate
                     and trace.valid_for_next_hop
-                    and trace.bridge_spans
+                    and self._grounded_bridge_contracts(trace)
                 )
             ]
             if not continue_documents:
+                self._record_next_hop_decision(
+                    round_trace,
+                    required=False,
+                    reason="no_grounded_bridge",
+                    relation_plan=current_relation_plan,
+                )
                 fallback_result = self._try_fallback_next_query(
                     query=initial_query,
                     documents=[
@@ -845,7 +967,7 @@ class IterativeRetrievalControl:
                         for document in round_trace.documents
                         if (
                             not document.duplicate
-                            and document.bridge_spans
+                            and self._grounded_bridge_contracts(document)
                         )
                     ],
                     reason="no_continue_chunks",
@@ -869,6 +991,14 @@ class IterativeRetrievalControl:
                         "kept_evidence_tokens": fallback_result.kept_evidence_tokens,
                     }
                     if next_query and not self._is_duplicate_query(next_query, seen_query_keys):
+                        self._record_next_hop_decision(
+                            round_trace,
+                            required=True,
+                            reason="grounded_bridge_fallback_next_hop",
+                            documents=continue_documents,
+                            generated_query=next_query,
+                            relation_plan=current_relation_plan,
+                        )
                         round_trace.stop_reason = "fallback_next_query"
                         rounds.append(round_trace)
                         self._load_external_sources([SearchQueryRequest.fallback(next_query)])
@@ -910,7 +1040,7 @@ class IterativeRetrievalControl:
                 document
                 for document in continue_documents
                 if (
-                    document.bridge_spans
+                    self._grounded_bridge_contracts(document)
                     and document.retrieval_score >= relative_threshold
                 )
             ]
@@ -927,6 +1057,13 @@ class IterativeRetrievalControl:
                 ),
             }
             if not qualified_documents:
+                self._record_next_hop_decision(
+                    round_trace,
+                    required=False,
+                    reason="grounded_bridge_below_retrieval_threshold",
+                    documents=continue_documents,
+                    relation_plan=current_relation_plan,
+                )
                 fallback_result = self._try_fallback_next_query(
                     query=initial_query,
                     documents=continue_documents,
@@ -951,6 +1088,14 @@ class IterativeRetrievalControl:
                         "kept_evidence_tokens": fallback_result.kept_evidence_tokens,
                     }
                     if next_query and not self._is_duplicate_query(next_query, seen_query_keys):
+                        self._record_next_hop_decision(
+                            round_trace,
+                            required=True,
+                            reason="grounded_bridge_fallback_next_hop",
+                            documents=continue_documents,
+                            generated_query=next_query,
+                            relation_plan=current_relation_plan,
+                        )
                         round_trace.stop_reason = "fallback_next_query"
                         rounds.append(round_trace)
                         self._load_external_sources([SearchQueryRequest.fallback(next_query)])
@@ -981,12 +1126,19 @@ class IterativeRetrievalControl:
                 break
 
             useful_tokens = self._dedupe_tokens(
-                token
+                str(contract.get("bridge_span") or "")
                 for document in qualified_documents
-                for token in document.bridge_spans
+                for contract in self._grounded_bridge_contracts(document)
             )
             round_trace.useful_tokens = useful_tokens
             if not useful_tokens:
+                self._record_next_hop_decision(
+                    round_trace,
+                    required=False,
+                    reason="grounded_bridge_without_query_span",
+                    documents=qualified_documents,
+                    relation_plan=current_relation_plan,
+                )
                 fallback_result = self._try_fallback_next_query(
                     query=initial_query,
                     documents=continue_documents,
@@ -1011,6 +1163,14 @@ class IterativeRetrievalControl:
                         "kept_evidence_tokens": fallback_result.kept_evidence_tokens,
                     }
                     if next_query and not self._is_duplicate_query(next_query, seen_query_keys):
+                        self._record_next_hop_decision(
+                            round_trace,
+                            required=True,
+                            reason="grounded_bridge_fallback_next_hop",
+                            documents=continue_documents,
+                            generated_query=next_query,
+                            relation_plan=current_relation_plan,
+                        )
                         round_trace.stop_reason = "coverage_next_query"
                         rounds.append(round_trace)
                         self._load_external_sources([SearchQueryRequest.fallback(next_query)])
@@ -1066,6 +1226,13 @@ class IterativeRetrievalControl:
                 round_trace.filter_metadata["next_query_failure"] = (
                     "empty_next_query" if not next_query else "duplicate_next_query"
                 )
+                self._record_next_hop_decision(
+                    round_trace,
+                    required=False,
+                    reason=round_trace.filter_metadata["next_query_failure"],
+                    documents=qualified_documents,
+                    relation_plan=current_relation_plan,
+                )
                 recovery = self._prepare_goal_recovery(
                     relation_plan=current_relation_plan,
                     attempted=attempted_recoveries,
@@ -1089,6 +1256,15 @@ class IterativeRetrievalControl:
                 stop_reason = round_trace.stop_reason
                 break
 
+            self._record_next_hop_decision(
+                round_trace,
+                required=True,
+                reason="grounded_bridge_next_hop",
+                documents=qualified_documents,
+                generated_query=next_query,
+                relation_plan=current_relation_plan,
+            )
+            round_trace.stop_reason = "grounded_bridge_next_hop"
             rounds.append(round_trace)
             self._load_external_sources([SearchQueryRequest.fallback(next_query)])
             current_query = next_query
@@ -1278,6 +1454,12 @@ class IterativeRetrievalControl:
                 top_k=top_k,
                 candidate_pool_size=candidate_pool_size,
                 original_question=original_question,
+                bridge_terms=list(
+                    getattr(self, "_last_coverage_bridge_terms", []) or []
+                ),
+                missing_constraints=list(
+                    getattr(self, "_last_coverage_missing_constraints", []) or []
+                ),
             )
             attempted.add(decision.fingerprint)
             entry = decision.to_dict()
@@ -1309,6 +1491,12 @@ class IterativeRetrievalControl:
             top_k=top_k,
             candidate_pool_size=candidate_pool_size,
             original_question=original_question,
+            bridge_terms=list(
+                getattr(self, "_last_coverage_bridge_terms", []) or []
+            ),
+            missing_constraints=list(
+                getattr(self, "_last_coverage_missing_constraints", []) or []
+            ),
         )
 
     def _prepare_goal_recovery(
@@ -1426,9 +1614,12 @@ class IterativeRetrievalControl:
         )
 
     def _dense_rank(self, query: str, top_k: int) -> list[tuple[str, float]]:
-        prepared_query = query
-        if self.retriever.model_type == "multilingual-e5-base":
-            prepared_query = self.retriever.embedder.prepare_query_text(query)
+        # Delegate the prefix convention to the embedder: E5 needs a "query: "
+        # prefix, bge-m3 is degraded by one. Deciding it here as well meant a
+        # new model had to be registered in two places to be encoded correctly.
+        # Minimal embedders (including test doubles) may not implement it.
+        prepare = getattr(self.retriever.embedder, "prepare_query_text", None)
+        prepared_query = prepare(query) if callable(prepare) else query
         query_vector = self.retriever.embedder.embed([prepared_query])
         search_results = self.retriever.index.search(query_vector, top_k)
         if not search_results:
@@ -1448,10 +1639,10 @@ class IterativeRetrievalControl:
         intent_plan: SearchIntentPlan | None = None,
     ) -> RAGFilterResult:
         selected_spans = self._dedupe_tokens(
-            span
+            str(contract.get("bridge_span") or "")
             for document in documents
             if document.valid_for_next_hop
-            for span in document.bridge_spans
+            for contract in self._grounded_bridge_contracts(document)
         )[:3]
         if not selected_spans:
             return RAGFilterResult(
@@ -1545,7 +1736,7 @@ class IterativeRetrievalControl:
             document
             for document in documents
             if (
-                document.bridge_spans
+                self._grounded_bridge_contracts(document)
                 and document.retrieval_score > 0
                 and document.valid_for_next_hop
             )
@@ -1586,8 +1777,19 @@ class IterativeRetrievalControl:
         document: dict[str, Any],
         score: float,
     ) -> RetrievedDocumentTrace:
+        source_url = normalize_text(
+            document.get("source_url", "") or document.get("url", "")
+        )
+        canonical_url = canonicalize_page_url(
+            normalize_text(document.get("canonical_url", "")) or source_url
+        )
+        document_id = str(document.get("id", ""))
+        page_id = normalize_text(document.get("page_id", "")) or build_page_id(
+            canonical_url=canonical_url,
+            fallback_identity=document_id,
+        )
         return RetrievedDocumentTrace(
-            document_id=str(document.get("id", "")),
+            document_id=document_id,
             title=normalize_text(document.get("title", "")),
             text=normalize_text(document.get("text", "")),
             url=normalize_text(document.get("url", "")),
@@ -1615,7 +1817,201 @@ class IterativeRetrievalControl:
             acquisition_state=(
                 normalize_text(document.get("acquisition_state", "")) or "pending"
             ),
+            page_id=page_id,
+            source_url=source_url,
+            canonical_url=canonical_url,
+            section_title=normalize_text(document.get("section_title", "")),
+            section_index=self._metadata_int(document.get("section_index"), 0),
+            passage_index=self._metadata_int(document.get("passage_index"), 0),
+            content_type=(
+                normalize_text(document.get("content_type", "")) or "text"
+            ),
+            table_id=normalize_text(document.get("table_id", "")),
+            table_headers=[
+                normalize_text(value)
+                for value in list(document.get("table_headers") or [])
+                if normalize_text(value)
+            ],
+            row_index=self._metadata_int(document.get("row_index"), -1),
         )
+
+    def _refresh_page_traces(self, round_trace: RetrievalRoundTrace) -> None:
+        grouped: dict[str, list[RetrievedDocumentTrace]] = {}
+        for trace in round_trace.documents:
+            if trace.duplicate:
+                continue
+            page_id = trace.page_id or build_page_id(
+                canonical_url=trace.canonical_url,
+                fallback_identity=trace.document_id,
+            )
+            grouped.setdefault(page_id, []).append(trace)
+
+        pages: list[PageRetrievalTrace] = []
+        for page_id, documents in grouped.items():
+            direct_documents = [
+                trace.document_id for trace in documents if trace.direct_contracts
+            ]
+            bridge_documents = [
+                trace.document_id
+                for trace in documents
+                if self._grounded_bridge_contracts(trace)
+            ]
+            direct_fact_ids = self._dedupe_tokens(
+                str(contract.get("fact_id") or contract.get("answer_span") or "")
+                for trace in documents
+                for contract in trace.direct_contracts
+                if isinstance(contract, dict)
+            )
+            bridge_goal_ids = self._dedupe_tokens(
+                str(contract.get("goal_id") or "")
+                for trace in documents
+                for contract in self._grounded_bridge_contracts(trace)
+            )
+            status = (
+                "direct_found"
+                if direct_documents
+                else ("bridge_found" if bridge_documents else "no_usable_contract")
+            )
+            pages.append(
+                PageRetrievalTrace(
+                    page_id=page_id,
+                    url=next(
+                        (
+                            trace.canonical_url or trace.url
+                            for trace in documents
+                            if trace.canonical_url or trace.url
+                        ),
+                        "",
+                    ),
+                    title=next(
+                        (trace.title for trace in documents if trace.title),
+                        "",
+                    ),
+                    status=status,
+                    selection_scope="global",
+                    selection_reasons=self._dedupe_tokens(
+                        source
+                        for trace in documents
+                        for source in trace.selection_sources
+                    ),
+                    selected_passage_ids=[
+                        trace.document_id for trace in documents
+                    ],
+                    direct_document_ids=direct_documents,
+                    bridge_document_ids=bridge_documents,
+                    direct_fact_ids=direct_fact_ids,
+                    bridge_goal_ids=bridge_goal_ids,
+                )
+            )
+        round_trace.pages = pages
+
+    def _grounded_bridge_contracts(
+        self,
+        trace: RetrievedDocumentTrace,
+    ) -> list[dict[str, Any]]:
+        grounded: list[dict[str, Any]] = []
+        text_key = normalize_text(trace.text).casefold()
+        for contract in trace.bridge_contracts:
+            if not isinstance(contract, dict):
+                continue
+            span = normalize_text(str(contract.get("bridge_span") or ""))
+            document_id = normalize_text(str(contract.get("document_id") or ""))
+            context = normalize_text(str(contract.get("context") or ""))
+            if not span or span.casefold() not in text_key:
+                continue
+            if document_id and document_id != trace.document_id:
+                continue
+            if context and span.casefold() not in context.casefold():
+                continue
+            grounded.append(contract)
+        return grounded
+
+    def _documents_for_resolved_goals(
+        self,
+        *,
+        plan: Any,
+        resolved_goal_ids: Iterable[str],
+        documents: Iterable[RetrievedDocumentTrace],
+    ) -> list[RetrievedDocumentTrace]:
+        resolved = {
+            normalize_text(str(goal_id or ""))
+            for goal_id in resolved_goal_ids
+            if normalize_text(str(goal_id or ""))
+        }
+        if not resolved:
+            return []
+        evidence_ids = {
+            normalize_text(str(evidence_id or ""))
+            for goal in list(getattr(plan, "goals", []) or [])
+            if normalize_text(str(getattr(goal, "goal_id", "") or "")) in resolved
+            for evidence_id in list(getattr(goal, "evidence_ids", []) or [])
+            if normalize_text(str(evidence_id or ""))
+        }
+        return [
+            trace
+            for trace in documents
+            if not trace.duplicate and trace.document_id in evidence_ids
+        ]
+
+    def _record_next_hop_decision(
+        self,
+        round_trace: RetrievalRoundTrace,
+        *,
+        required: bool,
+        reason: str,
+        documents: Iterable[RetrievedDocumentTrace] = (),
+        generated_query: str = "",
+        relation_plan: Any | None = None,
+    ) -> None:
+        bridge_documents = list(documents)
+        bridge_spans = self._dedupe_tokens(
+            str(contract.get("bridge_span") or "")
+            for trace in bridge_documents
+            for contract in self._grounded_bridge_contracts(trace)
+        )
+        if not bridge_spans:
+            bridge_spans = self._dedupe_tokens(
+                str(contract.get("answer_span") or contract.get("object") or "")
+                for trace in bridge_documents
+                for contract in trace.direct_contracts
+                if isinstance(contract, dict)
+            )
+        guard = round_trace.filter_metadata.get("query_guard")
+        guard_reason = (
+            normalize_text(str(guard.get("reason") or ""))
+            if isinstance(guard, dict)
+            else ""
+        )
+        active_goal = getattr(relation_plan, "active_goal", None)
+        unresolved_goal = ""
+        if active_goal is not None:
+            unresolved_goal = normalize_text(
+                " ".join(
+                    [
+                        str(getattr(active_goal, "subject", "") or ""),
+                        str(getattr(active_goal, "relation", "") or ""),
+                        str(getattr(active_goal, "target", "") or ""),
+                    ]
+                )
+            )
+        round_trace.next_hop_decision = NextHopDecisionTrace(
+            required=bool(required),
+            decision_reason=reason,
+            unresolved_goal=unresolved_goal,
+            bridge_spans=bridge_spans,
+            bridge_document_ids=[
+                trace.document_id for trace in bridge_documents
+            ],
+            generated_query=normalize_text(generated_query),
+            query_guard_result=guard_reason,
+        )
+
+    @staticmethod
+    def _metadata_int(value: Any, default: int) -> int:
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return default
 
     def _record_fields(self, document: dict[str, Any]) -> dict[str, Any]:
         record_type = normalize_text(document.get("record_type", ""))
@@ -2943,7 +3339,7 @@ class WebRetrievalControl:
         rag_filter: EfficientRAGFilterAdapter | None = None,
         next_hop_composer: NextHopQueryComposer | None = None,
         next_hop_evidence_selector: NextHopEvidenceSelector | None = None,
-        model_type: str = "multilingual-e5-base",
+        model_type: str = "",
         max_queries: int = 3,
         max_results_per_query: int = 8,
         max_pages_to_fetch: int = 24,
@@ -2995,7 +3391,17 @@ class WebRetrievalControl:
         self.next_hop_evidence_selector = (
             next_hop_evidence_selector or NextHopEvidenceSelector()
         )
-        self.model_type = model_type
+        # Retrieval embedding model. bge-m3 is the default because on saved
+        # runs it placed the answer passage inside the 8-reference budget on
+        # 8/10 tasks against 6/10 for multilingual-e5-base, and bounded the
+        # worst rank at 18 instead of 26 — the deep-tail cases are exactly
+        # where the previous model could not separate anything. Average rank
+        # quality is a wash between the two, so this is overridable.
+        self.model_type = (
+            model_type
+            or os.getenv("SEARCH_EMBED_MODEL", "").strip()
+            or "bge-m3"
+        )
         self.max_queries = max(1, max_queries)
         self.max_results_per_query = max(1, max_results_per_query)
         self.max_pages_to_fetch = max(0, max_pages_to_fetch)
@@ -3122,6 +3528,7 @@ class WebRetrievalControl:
             fetch_missing=False,
             max_chunks_per_url=self.max_chunks_per_url,
             max_records=self.max_corpus_records,
+            question=text,
         )
         self.corpus_builder.exporter.export(records, corpus_path)
 
@@ -3263,6 +3670,7 @@ class WebRetrievalControl:
                     else self.max_chunks_per_url
                 ),
                 max_records=remaining,
+                question=text,
             )
             record_metadata_by_url: dict[str, dict[str, Any]] = {}
             for document in retriever.passage_map.values():
@@ -3550,6 +3958,30 @@ class WebRetrievalControl:
                 1 for source in filtered_sources if source.should_fetch_full_page
             ),
             "filtered_source_ids": [source.source_id for source in filtered_sources[:20]],
+            "selection_mode": self.source_filter.last_fetch_selection.mode,
+            # Minimal snapshot of every candidate so a fetch-selection change
+            # can be replayed offline. Without this only fetched pages survive
+            # in the trace, and the sources that lost a slot — exactly the ones
+            # a ranking change is meant to rescue — are unrecoverable.
+            "fetch_selection_candidates": [
+                {
+                    "source_id": source.source_id,
+                    "url": source.url,
+                    "domain": source.domain,
+                    "title": source.title[:160],
+                    "matched_query_ids": list(source.matched_query_ids),
+                    "query_hit_count": source.query_hit_count,
+                    "named_source_match": source.named_source_match,
+                    "named_source_terms": list(source.named_source_terms),
+                    "url_echo": source.url_echo,
+                    "constraint_match_level": source.constraint_match_level,
+                    "priority_tier": source.fetch_priority_tier,
+                    "legacy_position": source.legacy_fetch_position,
+                    "fetch_batch": source.fetch_batch,
+                    "selection_reasons": list(source.fetch_priority_reasons),
+                }
+                for source in filtered_sources[:40]
+            ],
             "blocked_source_details": [
                 {
                     "source_id": source.source_id,
@@ -3665,6 +4097,8 @@ class WebRetrievalControl:
 __all__ = [
     "IterativeRetrievalControl",
     "IterativeRetrievalResult",
+    "NextHopDecisionTrace",
+    "PageRetrievalTrace",
     "RetrievalRoundTrace",
     "RetrievedDocumentTrace",
     "WebRetrievalControl",

@@ -57,6 +57,8 @@ class RetrievalRecoveryPolicy:
         top_k: int,
         candidate_pool_size: int,
         original_question: str,
+        bridge_terms: list[str] | None = None,
+        missing_constraints: list[str] | None = None,
     ) -> RetrievalRecoveryDecision:
         plan = relation_plan or RelationPlan()
         corpus = list(corpus_documents)
@@ -143,6 +145,33 @@ class RetrievalRecoveryPolicy:
                 candidate_pool_size=candidate_pool_size,
             )
 
+        bridge_query = self._bridge_query(
+            original_question,
+            bridge_terms=list(bridge_terms or []),
+            missing_constraints=list(missing_constraints or []),
+        )
+        bridge_fingerprint = f"bridge_query:{bridge_query.casefold()}"
+        if bridge_query and bridge_fingerprint not in attempted:
+            # Coverage found intermediate entities (bridge terms) that the
+            # original question never names; a second hop built from them can
+            # reach pages the question-shaped query cannot.
+            request = SearchQueryRequest(
+                query=bridge_query,
+                source_requirement=SourceRequirement(
+                    source_kind="web",
+                    access_mode="search",
+                ),
+            )
+            return RetrievalRecoveryDecision(
+                action="bridge_query",
+                reason="coverage_bridge_terms_second_hop",
+                fingerprint=bridge_fingerprint,
+                requests=[request],
+                next_queries=[bridge_query],
+                top_k=top_k,
+                candidate_pool_size=candidate_pool_size,
+            )
+
         return RetrievalRecoveryDecision(
             action="stop",
             reason="no_viable_recovery_action",
@@ -175,6 +204,50 @@ class RetrievalRecoveryPolicy:
                 candidate_urls.append(url)
                 seen.add(key)
         return [url for url in candidate_urls if url.casefold().rstrip("/") not in complete_urls]
+
+    def _bridge_query(
+        self,
+        original_question: str,
+        *,
+        bridge_terms: list[str],
+        missing_constraints: list[str],
+        max_bridge_terms: int = 4,
+        max_missing_terms: int = 2,
+    ) -> str:
+        """Compose a second-hop query from coverage bridge terms.
+
+        Requires at least one bridge term so the query differs from a plain
+        re-search; missing constraints keep the hop anchored to what the
+        sufficiency gate said is still unresolved.
+        """
+        seen: set[str] = set()
+        parts: list[str] = []
+        for term in bridge_terms:
+            cleaned = normalize_text(str(term))
+            key = cleaned.casefold()
+            if not cleaned or key in seen:
+                continue
+            seen.add(key)
+            parts.append(cleaned)
+            if len(parts) >= max_bridge_terms:
+                break
+        if not parts:
+            return ""
+        missing_added = 0
+        for term in missing_constraints:
+            cleaned = normalize_text(str(term))
+            key = cleaned.casefold()
+            if not cleaned or key in seen or ":" in cleaned:
+                continue
+            seen.add(key)
+            parts.append(cleaned)
+            missing_added += 1
+            if missing_added >= max_missing_terms:
+                break
+        query = normalize_text(" ".join(parts))
+        if not query or query.casefold() == normalize_text(original_question).casefold():
+            return ""
+        return query
 
     def _goal_query(self, plan: RelationPlan) -> str:
         unresolved = next((goal for goal in plan.goals if goal.state != "resolved"), None)

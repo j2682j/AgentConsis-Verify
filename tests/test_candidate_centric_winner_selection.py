@@ -360,7 +360,7 @@ class CandidateCentricWinnerSelectionTests(unittest.TestCase):
             ["paris", "lyon"],
         )
 
-    def test_exact_hierarchical_tie_remains_unresolved(self) -> None:
+    def test_exact_hierarchical_tie_falls_back_to_first_candidate(self) -> None:
         configs = [
             AgentConfig(agent_id="a1", model_name="test-model"),
             AgentConfig(agent_id="a2", model_name="test-model"),
@@ -389,8 +389,13 @@ class CandidateCentricWinnerSelectionTests(unittest.TestCase):
             evidence={},
         )
 
-        self.assertIsNone(selection.winner)
-        self.assertEqual(selection.status, "unresolved_exact_tie")
+        self.assertIsNotNone(selection.winner)
+        self.assertEqual(selection.winner.compressed_answer, "Paris")
+        self.assertEqual(selection.selection_origin, "fallback_best_candidate")
+        self.assertEqual(
+            selection.resolution_metadata.get("fallback_from_status"),
+            "unresolved_exact_tie",
+        )
 
     def test_unsupported_factual_candidates_remain_unresolved(self) -> None:
         configs = [
@@ -507,7 +512,9 @@ class CandidateCentricWinnerSelectionTests(unittest.TestCase):
         versa_gate = next(
             item for item in selection.gate_trace if item.gate_name == "versa_verification"
         )
-        self.assertEqual(versa_gate.metadata.get("tie_break_depth"), 2)
+        # Depth 5: frequency, confidence, and critical-step scores all tie;
+        # only the average verifier probability separates the candidates.
+        self.assertEqual(versa_gate.metadata.get("tie_break_depth"), 5)
 
     def test_weak_bridge_evidence_does_not_eliminate_unsupported_rivals(self) -> None:
         configs = [
@@ -612,11 +619,12 @@ class CandidateCentricWinnerSelectionTests(unittest.TestCase):
 
         winner = network._select_winner(results)
 
-        self.assertIsNone(winner)
+        # The fallback resolves the tie without any model call.
+        self.assertIsNotNone(winner)
         self.assertEqual(model_calls, 0)
         self.assertEqual(
-            network._last_winner_selection_trace["status"],
-            "unresolved_exact_tie",
+            network._last_winner_selection_trace["selection_origin"],
+            "fallback_best_candidate",
         )
 
 

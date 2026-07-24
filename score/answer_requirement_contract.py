@@ -34,6 +34,9 @@ class TaskAnswerRequirementContract:
     )
     directive_text: str = ""
     contract_confidence: str = "unknown"
+    required_constraints: list[dict[str, Any]] = field(default_factory=list)
+    selection_operation: str = ""
+    scope_requirement: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -50,6 +53,9 @@ class TaskAnswerRequirementContract:
         required_relation_goal_id: str = "",
         relation_plan: Mapping[str, Any] | None = None,
         source: str = "",
+        required_constraints: list[dict[str, Any]] | None = None,
+        selection_operation: str = "",
+        scope_requirement: str = "",
     ) -> "TaskAnswerRequirementContract":
         requirement = normalize_text(answer_requirement)
         role = normalize_text(answer_role)
@@ -76,6 +82,12 @@ class TaskAnswerRequirementContract:
         contract_confidence = "explicit" if directive_text else (
             "derived" if selected_source != "question_fallback" else "fallback"
         )
+        constraints = list(required_constraints or cls._infer_required_constraints(question))
+        operation = normalize_text(selection_operation) or cls._infer_selection_operation(question)
+        scope = normalize_text(scope_requirement) or cls._infer_scope_requirement(
+            question,
+            operation,
+        )
         return cls(
             requirement_text=requirement,
             answer_role=role,
@@ -87,6 +99,9 @@ class TaskAnswerRequirementContract:
             format_constraints=format_constraints,
             directive_text=directive_text,
             contract_confidence=contract_confidence,
+            required_constraints=constraints,
+            selection_operation=operation,
+            scope_requirement=scope,
         )
 
     @classmethod
@@ -116,7 +131,84 @@ class TaskAnswerRequirementContract:
                 else None
             ),
             source=str(payload.get("source") or ""),
+            required_constraints=[
+                dict(item)
+                for item in list(payload.get("required_constraints") or [])
+                if isinstance(item, Mapping)
+            ],
+            selection_operation=str(payload.get("selection_operation") or ""),
+            scope_requirement=str(payload.get("scope_requirement") or ""),
         )
+
+    @staticmethod
+    def _infer_required_constraints(question: str) -> list[dict[str, Any]]:
+        text = normalize_text(question)
+        lowered = text.casefold()
+        constraints: list[dict[str, Any]] = []
+        between = re.search(r"\bbetween\s+(\d{4})\s+and\s+(\d{4})\b", lowered)
+        if between:
+            constraints.extend(
+                [
+                    {"field": "year", "operator": ">=", "value": int(between.group(1))},
+                    {"field": "year", "operator": "<=", "value": int(between.group(2))},
+                ]
+            )
+        for pattern, operator in (
+            (r"\b(?:after|later than|more recent than)\s+(\d{4})\b", ">"),
+            (r"\b(?:before|earlier than|prior to)\s+(\d{4})\b", "<"),
+        ):
+            match = re.search(pattern, lowered)
+            if match:
+                constraints.append(
+                    {"field": "year", "operator": operator, "value": int(match.group(1))}
+                )
+        if re.search(r"\bdefunct\s+(?:country|nation|state)\b", lowered):
+            constraints.append(
+                {
+                    "field": "nationality_status",
+                    "operator": "=",
+                    "value": "defunct",
+                }
+            )
+        return constraints
+
+    @staticmethod
+    def _infer_selection_operation(question: str) -> str:
+        text = normalize_text(question).casefold()
+        semantic_text = re.sub(
+            r"\bwithout\s+(?:any\s+)?(?:abbreviations?|spaces?|whitespace|"
+            r"explanations?|extra\s+text)\b",
+            "",
+            text,
+        )
+        for operation, pattern in (
+            ("maximum", r"\b(?:maximum|highest|largest|most)\b"),
+            ("minimum", r"\b(?:minimum|lowest|smallest|least)\b"),
+            ("sum", r"\b(?:sum|total|altogether|combined)\b"),
+            ("count", r"\b(?:how many|number of|count of)\b"),
+            ("absence", r"\b(?:does not|did not|not mention|not contain|without|absent)\b"),
+            ("unique", r"\b(?:only one|unique|sole)\b"),
+        ):
+            if re.search(pattern, semantic_text):
+                return operation
+        return "direct_lookup"
+
+    @staticmethod
+    def _infer_scope_requirement(question: str, operation: str) -> str:
+        text = normalize_text(question).casefold()
+        if operation in {"maximum", "minimum"} and re.search(
+            r"\b(?:video|frames?|simultaneously|at once)\b",
+            text,
+        ):
+            return "temporal_scope"
+        if operation == "absence" and re.search(
+            r"\b(?:article|paper|document|page|transcript)\b",
+            text,
+        ):
+            return "document_scope"
+        if operation in {"maximum", "minimum", "sum", "count", "unique", "absence"}:
+            return "collection_scope"
+        return "not_applicable"
 
     @staticmethod
     def _placeholder(value: str) -> bool:

@@ -1,7 +1,46 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from enum import Enum
 from typing import Any
+
+
+class EvidenceTier(str, Enum):
+    """How much answer-support authority a passage carries.
+
+    Only ANSWER_GROUNDED and BRIDGE_GROUNDED passages may create evidence
+    support. RELAXED_CONTEXT passages are reading material for Stage1 agents
+    and must never reach the support checker, the fact store, or contradiction
+    checks — otherwise a passage that merely shares vocabulary with the
+    question manufactures support for whatever answer an agent guessed.
+    """
+
+    ANSWER_GROUNDED = "answer_grounded"
+    BRIDGE_GROUNDED = "bridge_grounded"
+    RELAXED_CONTEXT = "relaxed_context"
+
+
+SUPPORT_ELIGIBLE_TIERS = frozenset(
+    {EvidenceTier.ANSWER_GROUNDED.value, EvidenceTier.BRIDGE_GROUNDED.value}
+)
+
+
+def is_support_eligible_payload(payload: Any) -> bool:
+    """Return True only for evidence payloads allowed to create support.
+
+    Accepts the dict form used across the search pipeline. Payloads without an
+    explicit tier default to support-eligible so that strict evidence produced
+    before this contract existed keeps working unchanged.
+    """
+
+    if not isinstance(payload, dict):
+        return False
+    if "support_eligible" in payload:
+        return bool(payload.get("support_eligible"))
+    tier = str(payload.get("evidence_tier") or "").strip()
+    if not tier:
+        return not bool(payload.get("relaxed"))
+    return tier in SUPPORT_ELIGIBLE_TIERS
 
 
 @dataclass
@@ -59,6 +98,21 @@ class SearchSourceCandidate:
     url: str
     domain: str = ""
     snippet: str = ""
+    # Fetch-selection signals. A source only earns a full-page fetch slot on
+    # evidence — being named by the question, being found by more than one
+    # query, or matching the question's constraints — never on search-engine
+    # rank alone, which SEO pages built from the question text tend to win.
+    canonical_url: str = ""
+    matched_query_ids: list[str] = field(default_factory=list)
+    query_hit_count: int = 0
+    named_source_match: bool = False
+    named_source_terms: list[str] = field(default_factory=list)
+    url_echo: bool = False
+    constraint_match_level: str = "no_match"
+    fetch_priority_tier: int = 9
+    fetch_priority_reasons: list[str] = field(default_factory=list)
+    legacy_fetch_position: int = -1
+    fetch_batch: int = 0
     raw_content: str = ""
     raw_html: str = ""
     content_complete: bool = False
@@ -126,6 +180,15 @@ class EvidenceItem:
     helpfulness_score: float = 0.0
     evidence_quality: float = 0.0
     cleaning_reasons: list[str] = field(default_factory=list)
+    # Evidence trust contract. Defaults are deliberately the least-privileged
+    # values so any passage that does not explicitly earn grounding stays
+    # read-only context.
+    evidence_tier: str = EvidenceTier.RELAXED_CONTEXT.value
+    support_eligible: bool = False
+    verification_ready: bool = False
+    relation_goal_ids: list[str] = field(default_factory=list)
+    grounding_status: str = ""
+    promotion_reason: str = ""
 
 
 @dataclass(frozen=True)

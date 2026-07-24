@@ -120,6 +120,20 @@ def extract_search_summary(network_summary: dict[str, Any]) -> dict[str, Any]:
         evidence_driven_search = diagnostics.get("evidence_driven_search", {})
         retrieval = raw_result.get("retrieval") or {}
         retrieval_rounds = retrieval.get("rounds", []) if isinstance(retrieval, dict) else []
+        page_traces = [
+            page
+            for round_item in retrieval_rounds
+            if isinstance(round_item, dict)
+            for page in list(round_item.get("pages") or [])
+            if isinstance(page, dict)
+        ]
+        next_hop_decisions = [
+            decision
+            for round_item in retrieval_rounds
+            if isinstance(round_item, dict)
+            for decision in [round_item.get("next_hop_decision")]
+            if isinstance(decision, dict) and decision.get("decision_reason")
+        ]
         queries = raw_result.get("queries") or []
         if not queries and isinstance(retrieval, dict):
             queries = [
@@ -147,6 +161,8 @@ def extract_search_summary(network_summary: dict[str, Any]) -> dict[str, Any]:
             "evidence_items": evidence_items,
             "unverified_references": unverified_references,
             "retrieval_rounds": retrieval_rounds,
+            "page_traces": page_traces,
+            "next_hop_decisions": next_hop_decisions,
             "source_count": final_counts.get("source_count", len(sources)),
             "evidence_count": final_counts.get("evidence_count", len(evidence_items)),
             "strict_evidence_count": final_counts.get(
@@ -697,6 +713,8 @@ def write_markdown_report(results: dict[str, Any], output_path: str | Path) -> P
             source_filter = search_summary.get("source_filter", {}) or {}
             full_page_fetch = search_summary.get("full_page_fetch", {}) or {}
             coverage_summary = search_summary.get("coverage_summary", {}) or {}
+            page_traces = search_summary.get("page_traces", []) or []
+            next_hop_decisions = search_summary.get("next_hop_decisions", []) or []
             lines.extend(
                 [
                     "**Search Summary**",
@@ -709,6 +727,9 @@ def write_markdown_report(results: dict[str, Any], output_path: str | Path) -> P
                     f"- Web search count: {search_summary.get('web_search_count', 0)}",
                     f"- Query count: {len(search_queries)}",
                     f"- Retrieval rounds: {len(retrieval_rounds)}",
+                    f"- Selected pages: {len(page_traces)}",
+                    f"- Required next-hop decisions: "
+                    f"{sum(1 for item in next_hop_decisions if item.get('required'))}",
                     f"- Evidence-driven follow-up: {search_summary.get('evidence_driven_search', {}).get('queries', []) or '-'}",
                     f"- Retrieval stop reason: {search_summary.get('stop_reason', '') or '-'}",
                     f"- Pipeline failure stage: {search_summary.get('pipeline_failure_stage', '') or '-'}",
@@ -723,6 +744,33 @@ def write_markdown_report(results: dict[str, Any], output_path: str | Path) -> P
                     "",
                 ]
                 )
+            if retrieval_rounds:
+                lines.extend(["Page and next-hop trace:", ""])
+                for round_item in retrieval_rounds:
+                    if not isinstance(round_item, dict):
+                        continue
+                    round_index = round_item.get("round_index", "-")
+                    pages = [
+                        page
+                        for page in list(round_item.get("pages") or [])
+                        if isinstance(page, dict)
+                    ]
+                    decision = round_item.get("next_hop_decision") or {}
+                    lines.append(f"- Round {round_index}:")
+                    for page in pages[:4]:
+                        lines.append(
+                            "  - "
+                            + short_cell(page.get("title") or page.get("url") or page.get("page_id"), 100)
+                            + f" [{page.get('status', 'no_usable_contract')}]"
+                        )
+                    if isinstance(decision, dict) and decision.get("decision_reason"):
+                        lines.append(
+                            "  - Next-hop: "
+                            f"{'yes' if decision.get('required') else 'no'}; "
+                            f"reason={decision.get('decision_reason')}; "
+                            f"query={short_cell(decision.get('generated_query') or '-', 140)}"
+                        )
+                lines.append("")
             if coverage_summary.get("missing_constraints") or coverage_summary.get("bridge_terms"):
                 lines.extend(
                     [
@@ -1208,11 +1256,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=2,
         help="Maximum number of candidate verification searches executed in parallel.",
     )
-    parser.add_argument("--max-stage1-tool-turns", type=int, default=2)
+    parser.add_argument("--max-stage1-tool-turns", type=int, default=4)
     parser.add_argument(
         "--stage1-prepared-search-budget",
         type=int,
-        default=1,
+        default=2,
         help=(
             "Task-level supplemental Stage1 search budget when Evidence Prepare already "
             "has usable search evidence. Use -1 to disable the gate."

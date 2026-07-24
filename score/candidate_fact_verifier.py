@@ -61,6 +61,28 @@ class CandidateFactVerifier:
                 answer_requirement=answer_requirement,
                 required_relation=required_relation,
             )
+        unverified_derived_matches = [
+            fact
+            for fact in fact_store.by_role("ANSWER_SUPPORT")
+            if (
+                fact.parent_fact_ids
+                and fact.derived_contract
+                and str(
+                    fact.derived_contract.get("verification_status") or ""
+                ).strip() not in {"verified", "legacy_accepted"}
+                and (
+                    self._values_equivalent(candidate, fact.object, answer_requirement)
+                    or (
+                        fact.polarity == "negative"
+                        and self._values_equivalent(
+                            candidate,
+                            fact.subject,
+                            answer_requirement,
+                        )
+                    )
+                )
+            )
+        ]
         answer_facts = fact_store.verifiable_answer_facts()
         boolean_negative_support = [
             fact
@@ -196,6 +218,16 @@ class CandidateFactVerifier:
                 reason="absence_unverifiable_in_incomplete_scope",
                 answer_requirement=answer_requirement,
                 required_relation=required_relation,
+            )
+        if unverified_derived_matches:
+            return CandidateFactVerification(
+                status="unknown",
+                reason="candidate_matches_unverified_derived_fact",
+                answer_requirement=answer_requirement,
+                required_relation=required_relation,
+                relation_mismatch_fact_ids=[
+                    fact.fact_id for fact in unverified_derived_matches
+                ],
             )
         return CandidateFactVerification(
             status="unknown",

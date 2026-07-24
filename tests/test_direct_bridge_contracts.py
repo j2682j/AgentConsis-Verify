@@ -129,7 +129,25 @@ class EvidenceRoleContractTests(unittest.TestCase):
             ),
             fact_store=(store := TaskFactStore()),
         )
+        # A bridge-only document never becomes evidence: it is offered to
+        # Stage1 as a read-only reference that cannot create support.
         self.assertEqual(items, [])
+        converter = EvidenceConverter()
+        converter.convert_web_retrieval_output(
+            output,
+            contract=EvidenceSelectionContract.from_parts(
+                question="How large is the mall where KGOT has studios?",
+                answer_requirement="mall size",
+            ),
+        )
+        self.assertEqual(len(converter.last_relaxed_references), 1)
+        reference = converter.last_relaxed_references[0]
+        self.assertFalse(reference["support_eligible"])
+        self.assertEqual(reference["evidence_tier"], "relaxed_context")
+        self.assertEqual(reference["reference_id"], "R1")
+        # Span fields the support checker mines must be stripped.
+        self.assertEqual(reference["matched_terms"], [])
+        self.assertEqual(reference["direct_contracts"], [])
         self.assertEqual(store.to_dict()["fact_count"], 1)
         self.assertEqual(store.to_dict()["role_counts"]["BRIDGE"], 1)
 
@@ -302,12 +320,18 @@ class EvidenceRoleContractTests(unittest.TestCase):
                 }
             }
         )
+        # The orphan fact cannot become evidence (no answer contract), but its
+        # grounded context is still offered as a read-only reference so Stage1
+        # can read it without it counting as support.
         self.assertEqual(items, [])
         self.assertEqual(converter.last_diagnostics.orphan_direct_fact_count, 1)
         self.assertEqual(
             converter.last_diagnostics.rejection_reasons,
             {"orphan_direct_fact": 1},
         )
+        self.assertEqual(len(converter.last_relaxed_references), 1)
+        self.assertFalse(converter.last_relaxed_references[0]["support_eligible"])
+        self.assertTrue(converter.last_diagnostics.fallback_used)
 
     def test_label_sequence_tag_does_not_authorize_final_evidence(self) -> None:
         validator = LabelContractValidator()

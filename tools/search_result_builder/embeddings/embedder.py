@@ -7,6 +7,7 @@ import torch
 from tqdm import TqdmExperimentalWarning, tqdm
 from tqdm.rich import tqdm_rich
 
+from .bge import BGEM3Embedding
 from .contriever import Contriever
 from .e5 import (
     E5BaseV2Embedding,
@@ -32,6 +33,7 @@ MULTILINGUAL_E5_BASE_PATH = (
 )
 
 EmbeddingModelTypes = Literal[
+    "bge-m3",
     "contriever",
     "e5-base-v2",
     "e5-large-v2",
@@ -41,6 +43,7 @@ EmbeddingModelTypes = Literal[
 ]
 
 ModelTypes = {
+    "bge-m3": BGEM3Embedding,
     "contriever": Contriever,
     "e5-base-v2": E5BaseV2Embedding,
     "e5-large-v2": E5LargeV2Embedding,
@@ -50,6 +53,7 @@ if AdaEmbedding is not None:
     ModelTypes["ada-002"] = AdaEmbedding
 
 ModelCheckpointMapping = {
+    "bge-m3": "BAAI/bge-m3",
     "contriever": "model_cache/contriever-msmarco",
     "e5-base-v2": "model_cache/e5-base-v2",
     "e5-large-v2": "model_cache/e5-large-v2",

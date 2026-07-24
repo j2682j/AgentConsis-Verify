@@ -546,10 +546,15 @@ class AttachmentStrategyExecutor:
             question=question,
             handler_plan=handler_plan,
         )
-        context = trust.evidence_text if trust.trusted else ""
+        context = (
+            trust.evidence_text
+            if trust.trusted or trust.usable_as_intermediate
+            else ""
+        )
+        evidence_valid = bool(trust.trusted or trust.usable_as_intermediate)
         usage = [
             {
-                "ok": bool(trust.trusted),
+                "ok": evidence_valid,
                 "tool_name": "attachment_strategy_handler",
                 "handler_name": result.handler_name,
                 "planned_handler_name": selected_handler_name,
@@ -557,7 +562,7 @@ class AttachmentStrategyExecutor:
                 "handler_plan": handler_plan,
                 "handler_trust": trust.to_dict(),
                 "status": result.status,
-                "output_type": result.output_type,
+                "output_type": trust.effective_output_type or result.output_type,
                 "semantic_role": result.semantic_role,
                 "supporting_inputs": list(result.supporting_inputs or []),
                 "output_text": context,
@@ -565,7 +570,7 @@ class AttachmentStrategyExecutor:
                 "missing_inputs": list(result.missing_inputs or []),
                 "next_action_hint": result.next_action_hint,
                 "next_capability": result.next_capability,
-                "evidence_valid": bool(trust.trusted),
+                "evidence_valid": evidence_valid,
                 "error": result.error or None,
             }
         ]

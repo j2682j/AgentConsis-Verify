@@ -5,7 +5,7 @@ import re
 from statistics import median
 from typing import Any
 
-from ..base import HandlerInput, HandlerResult
+from ..base import HandlerInput, HandlerResult, build_finality_payload
 from ..contracts import default_outputs, input_field, io_contract, output_field
 from .common import attachment_path, normalize_text, parse_inline_delimited_rows, read_delimited_rows
 
@@ -41,6 +41,10 @@ class TableAggregationRouterHandler:
         operation = self._operation(handler_input.question)
         records = self._records(rows)
         target_column = self._target_column(handler_input.question, list(records[0]) if records else [])
+        referenced_target_columns = self._target_columns(
+            handler_input.question,
+            list(records[0]) if records else [],
+        )
         filtered, condition = self._filter_records(handler_input.question, records)
         return {
             "rows": rows,
@@ -48,6 +52,7 @@ class TableAggregationRouterHandler:
             "filtered": filtered,
             "operation": operation,
             "target_column": target_column,
+            "referenced_target_columns": referenced_target_columns,
             "condition": condition,
         }
 
@@ -145,6 +150,20 @@ class TableAggregationRouterHandler:
                     return header
         return ""
 
+    def _target_columns(self, question: str, headers: list[str]) -> list[str]:
+        lowered = str(question or "").lower()
+        result: list[str] = []
+        for header in sorted(headers, key=len, reverse=True):
+            if not header or not re.search(rf"\b{re.escape(header.lower())}\b", lowered):
+                continue
+            condition_only = re.search(
+                rf"\b{re.escape(header.lower())}\b\s*(?:>=|<=|!=|=|>|<)",
+                lowered,
+            )
+            if not condition_only:
+                result.append(header)
+        return result
+
     def _filter_records(
         self,
         question: str,
@@ -196,13 +215,50 @@ class TableAggregationRouterHandler:
         return format(value.normalize(), "f")
 
     def _result(self, task_type: str, answer: str, inputs: dict[str, Any]) -> HandlerResult:
+        operation = str(inputs.get("operation") or task_type.removeprefix("table_"))
+        target_column = str(inputs.get("target_column") or "")
+        referenced_columns = [
+            str(item)
+            for item in list(inputs.get("referenced_target_columns") or [])
+            if str(item).strip()
+        ]
+        required_constraints = [f"target_column:{item}" for item in referenced_columns]
+        satisfied_constraints = (
+            [f"target_column:{target_column}"] if target_column else []
+        )
+        missing_constraints = [
+            item for item in required_constraints if item not in satisfied_constraints
+        ]
+        filtered_rows = list(inputs.get("filtered") or [])
         structured = {
             "task_type": task_type,
+            "operation": operation,
             "condition": dict(inputs.get("condition") or {}),
-            "target_column": inputs.get("target_column", ""),
-            "matched_row_count": len(inputs.get("filtered") or []),
-            "rows": list(inputs.get("filtered") or [])[:10],
+            "target_column": target_column,
+            "referenced_target_columns": referenced_columns,
+            "matched_row_count": len(filtered_rows),
+            "rows": filtered_rows[:10],
         }
+        derivation_trace = [
+            {
+                "operation": operation,
+                "target_column": target_column,
+                "matched_row_count": len(filtered_rows),
+                "condition": dict(inputs.get("condition") or {}),
+            }
+        ]
+        finality = build_finality_payload(
+            operation=operation,
+            answer_role=task_type,
+            required_inputs=["rows", "operation"],
+            consumed_inputs=["rows", "operation", *(["target_column"] if target_column else [])],
+            scope_status="complete",
+            scope_contract_ids=["table:all_filtered_rows"],
+            required_constraints=required_constraints,
+            satisfied_constraints=satisfied_constraints,
+            missing_constraints=missing_constraints,
+            provenance_ids=[f"table_row:{index}" for index in range(1, len(filtered_rows) + 1)],
+        )
         return HandlerResult(
             handler_name=self.name,
             status="ok",
@@ -215,6 +271,10 @@ class TableAggregationRouterHandler:
                 f"target_column={structured['target_column']}",
                 f"matched_row_count={structured['matched_row_count']}",
             ],
+            operation=operation,
+            derivation_type=f"table_{operation}",
+            derivation_trace=derivation_trace,
+            verification_payload={"finality": finality},
         )
 
 

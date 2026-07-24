@@ -10,6 +10,8 @@ from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 from utils.network_utils import normalize_text, semantic_similarity_score
 
 from ...config import SearchSourceCandidate
+from .fetch_candidate_selector import FetchCandidateSelector, FetchSelectionResult
+from .source_selection_signals import SourceSelectionSignalBuilder
 
 
 class SourceFilter:
@@ -74,6 +76,28 @@ class SourceFilter:
         "missing:",
         "login required",
     )
+    # SEO sites that mass-generate pages for long-tail question queries, plus
+    # storefront pages: demoted in fetch priority, never hard-blocked.
+    DEMOTED_DOMAIN_MARKERS = (
+        "wordplays.com",
+        "spellingcenter.com",
+        "crossword",
+        "etsy.com",
+        "ebay.",
+        "amazon.",
+    )
+    PRODUCT_PAGE_MARKERS = (
+        "/market/",
+        "shop_product",
+        "/product/",
+        "/dp/",
+        "/itm/",
+    )
+    GENERIC_DOMAIN_LABELS = {
+        "www", "com", "org", "net", "edu", "gov", "html", "co", "uk", "ac",
+        "de", "info", "io", "blog", "shop", "web", "site", "index", "pages",
+        "en", "m",
+    }
     GENERIC_PAGE_MARKERS = (
         "/search",
         "/tag/",
@@ -135,7 +159,15 @@ class SourceFilter:
         semantic_echo_threshold: float | None = None,
         lexical_echo_threshold: float | None = None,
         max_new_information_ratio: float | None = None,
+        signal_builder: "SourceSelectionSignalBuilder | None" = None,
+        fetch_selector: "FetchCandidateSelector | None" = None,
     ) -> None:
+        self.signal_builder = signal_builder or SourceSelectionSignalBuilder()
+        self.fetch_selector = fetch_selector or FetchCandidateSelector(
+            demoted_domain_markers=self.DEMOTED_DOMAIN_MARKERS,
+            product_page_markers=self.PRODUCT_PAGE_MARKERS,
+        )
+        self.last_fetch_selection = FetchSelectionResult()
         self.max_urls_per_domain = max(1, max_urls_per_domain)
         self.min_sources = max(0, min_sources)
         self.semantic_echo_threshold = (
@@ -167,14 +199,13 @@ class SourceFilter:
 
         Args:
             - sources: search tool 回傳的 source candidates。
-            - question: 原始問題，目前只用於 question echo hard check。
-            - query_text_by_id: query id 到 query 文字的對應，目前 filter 不使用。
+            - question: 原始問題，用於 question echo 檢查與指名來源比對。
+            - query_text_by_id: query id 到 query 文字的對應，用於跨 query 共識計數。
             - fetch_limit: 最多標記多少來源抓全文。
 
         Returns:
             - list[SearchSourceCandidate]: 通過 hard filter 的來源。
         """
-        del query_text_by_id
         filtered: list[SearchSourceCandidate] = []
         soft_blocked: list[SearchSourceCandidate] = []
         seen_urls: set[str] = set()
@@ -182,16 +213,53 @@ class SourceFilter:
         seen_fingerprints: list[str] = []
         domain_counts: dict[str, int] = {}
 
+        primary_by_url: dict[str, SearchSourceCandidate] = {}
+        normalized_queries = {
+            key: normalize_text(value).casefold()
+            for key, value in (query_text_by_id or {}).items()
+        }
+
+        def register_query(target: SearchSourceCandidate, query_id: str) -> None:
+            """Record that ``query_id`` also found this source.
+
+            Consensus counts distinct queries, not repeated hits: the same
+            query returning a URL twice says nothing new, whereas two
+            different queries agreeing is real evidence the page is central.
+            """
+            if query_id and query_id not in target.matched_query_ids:
+                target.matched_query_ids.append(query_id)
+            distinct = {
+                normalized_queries.get(item, item)
+                for item in target.matched_query_ids
+                if item
+            }
+            target.query_hit_count = len(distinct)
+
         for source in sources:
             self._reset_source_marks(source)
             canonical_url = self._canonical_url(source.url)
             domain = self._source_domain(source, canonical_url)
             source.domain = domain
+            source.canonical_url = canonical_url
+            register_query(source, source.query_id)
             if canonical_url and canonical_url in seen_urls:
+                primary = primary_by_url.get(canonical_url)
+                if primary is not None:
+                    register_query(primary, source.query_id)
+                    # Keep whichever copy carries more usable metadata.
+                    if len(normalize_text(source.snippet)) > len(
+                        normalize_text(primary.snippet)
+                    ):
+                        primary.snippet = source.snippet
+                    if not normalize_text(primary.title):
+                        primary.title = source.title
+                    if not normalize_text(primary.source_hint):
+                        primary.source_hint = source.source_hint
                 self._mark_blocked(source, "duplicate_url")
                 continue
             if canonical_url:
                 seen_urls.add(canonical_url)
+                primary_by_url[canonical_url] = source
             document_id = self._canonical_document_identity(source, canonical_url)
             if document_id and document_id in seen_document_ids:
                 self._mark_blocked(source, "duplicate_document")
@@ -251,7 +319,17 @@ class SourceFilter:
             )
 
         filtered.sort(key=lambda item: (item.query_id, item.rank, item.source_id))
-        self._mark_fetch_candidates(filtered, fetch_limit=fetch_limit)
+        # Signals first, then selection: the filter decides usability, the
+        # selector decides which usable sources are worth a full-page fetch.
+        self.signal_builder.build(
+            filtered,
+            question=question,
+            query_text_by_id=query_text_by_id,
+        )
+        self.last_fetch_selection = self.fetch_selector.select(
+            filtered,
+            fetch_limit=fetch_limit,
+        )
         return filtered
 
     def apply_post_fetch_safety(

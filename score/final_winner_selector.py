@@ -24,6 +24,7 @@ from score.evidence_support_level import (
 from score.evidence_answer_resolver import EvidenceAnswerResolver
 from score.gate_result import CandidateGateDecision, GateResult
 from score.question_echo import is_question_echo
+from utils.network_utils import normalize_text
 
 
 @dataclass
@@ -106,8 +107,13 @@ class FinalWinnerSelector:
         answer_requirement_gate: AnswerRequirementGate | None = None,
         evidence_answer_resolver: EvidenceAnswerResolver | None = None,
         question: str = "",
+        enable_fallback_selection: bool = True,
     ) -> None:
         self.question = str(question or "").strip()
+        # An empty final answer can never be correct, so an unresolved gate
+        # outcome falls back to the best remaining candidate instead of
+        # abstaining. Disable only to observe the raw gate verdict.
+        self.enable_fallback_selection = bool(enable_fallback_selection)
         self.answer_validator = answer_validator or AnswerValidator()
         self.clusterer = clusterer or AnswerCandidateClusterer(self.answer_validator)
         self.answer_requirement_gate = (
@@ -144,6 +150,43 @@ class FinalWinnerSelector:
             )
             for candidate in candidates
         ]
+        resolution = self.resolve_evaluations(evaluations, evidence=evidence)
+        if resolution.evaluation is None:
+            return resolution
+        selected = resolution.evaluation
+        selected_member = self._member_by_identity(
+            candidates,
+            candidate_key=selected.candidate_key,
+            agent_id=selected.selected_agent_id,
+            run_index=selected.selected_run_index,
+        )
+        if selected_member is None:
+            return replace(
+                resolution,
+                winner=None,
+                status="selected_member_missing",
+                reason="candidate_member_could_not_be_restored",
+            )
+        winner = self.clusterer.summary_for_member(stage1_results, selected_member)
+        # Candidate identity is canonical; the selected run only contributes
+        # reasoning and provenance. Restoring its raw answer can reintroduce an
+        # explicitly repaired ordering or formatting error.
+        winner = replace(winner, compressed_answer=selected.answer)
+        return replace(resolution, winner=winner)
+
+    def resolve_evaluations(
+        self,
+        evaluations: list[CandidateEvaluation],
+        *,
+        evidence: dict[str, Any] | None = None,
+    ) -> FinalWinnerSelection:
+        """Run pre-built candidate evaluations through the ordered gates.
+
+        Split from select() so saved evaluations (for example from a recorded
+        selection trace) can replay the exact decision logic without the
+        member-restore step; the returned selection carries no winner summary.
+        """
+        evidence = evidence or {}
         for evaluation in evaluations:
             evaluation.selection_state = "active"
             evaluation.hard_rejection_reason = ""
@@ -155,24 +198,36 @@ class FinalWinnerSelector:
             self._apply_requirement_gate,
             self._apply_contradiction_gate,
             self._apply_evidence_gate,
+            # Attestation runs before the vote-based gates on purpose. Agents
+            # sharing a context agree on the same invented answer often enough
+            # that consensus alone would confirm it; asking whether the fetched
+            # pages ever state it is independent of how many runs proposed it.
+            self._apply_corpus_attestation_gate,
             self._apply_cross_agent_gate,
             self._apply_self_consistency_gate,
             self._apply_versa_gate,
         )
 
+        selected: CandidateEvaluation | None = None
+        fallback_from: tuple[str, str] | None = None
         for gate in gates:
             result = gate(survivors, evidence=evidence)
             gate_trace.append(result)
             survivors = result.survivors
             if result.terminal_status:
-                return FinalWinnerSelection(
-                    winner=None,
-                    evaluation=None,
-                    evaluations=evaluations,
-                    status=result.terminal_status,
-                    reason=result.terminal_reason,
-                    gate_trace=gate_trace,
-                )
+                fallback = self._fallback_selection(evaluations, survivors)
+                if fallback is None:
+                    return FinalWinnerSelection(
+                        winner=None,
+                        evaluation=None,
+                        evaluations=evaluations,
+                        status=result.terminal_status,
+                        reason=result.terminal_reason,
+                        gate_trace=gate_trace,
+                    )
+                selected = fallback
+                fallback_from = (result.terminal_status, result.terminal_reason)
+                break
             if (
                 result.gate_name == "evidence_support"
                 and bool(result.metadata.get("all_candidates_unsupported"))
@@ -217,74 +272,88 @@ class FinalWinnerSelector:
                             metadata=resolution.to_dict(),
                         )
                     )
+                    fallback = self._fallback_selection(evaluations, survivors)
+                    if fallback is None:
+                        return FinalWinnerSelection(
+                            winner=None,
+                            evaluation=None,
+                            evaluations=evaluations,
+                            status="unresolved_evidence_conflict",
+                            reason=resolution.reason,
+                            gate_trace=gate_trace,
+                            selection_origin="evidence_only_resolution",
+                            resolution_metadata=resolution.to_dict(),
+                        )
+                    selected = fallback
+                    fallback_from = ("unresolved_evidence_conflict", resolution.reason)
+                    break
+
+        if selected is None:
+            if not survivors:
+                selected = self._fallback_selection(evaluations, [])
+                if selected is None:
                     return FinalWinnerSelection(
                         winner=None,
                         evaluation=None,
                         evaluations=evaluations,
-                        status="unresolved_evidence_conflict",
-                        reason=resolution.reason,
+                        status="no_eligible_candidate",
+                        reason="all_candidates_eliminated",
                         gate_trace=gate_trace,
-                        selection_origin="evidence_only_resolution",
-                        resolution_metadata=resolution.to_dict(),
                     )
-
-        if not survivors:
-            return FinalWinnerSelection(
-                winner=None,
-                evaluation=None,
-                evaluations=evaluations,
-                status="no_eligible_candidate",
-                reason="all_candidates_eliminated",
-                gate_trace=gate_trace,
-            )
-        if len(survivors) > 1:
-            return FinalWinnerSelection(
-                winner=None,
-                evaluation=None,
-                evaluations=evaluations,
-                status="unresolved_exact_tie",
-                reason="ordered_gates_could_not_separate_candidates",
-                gate_trace=gate_trace,
-            )
-
-        selected = survivors[0]
+                fallback_from = ("no_eligible_candidate", "all_candidates_eliminated")
+            elif len(survivors) > 1:
+                selected = self._fallback_selection(evaluations, survivors)
+                if selected is None:
+                    return FinalWinnerSelection(
+                        winner=None,
+                        evaluation=None,
+                        evaluations=evaluations,
+                        status="unresolved_exact_tie",
+                        reason="ordered_gates_could_not_separate_candidates",
+                        gate_trace=gate_trace,
+                    )
+                fallback_from = (
+                    "unresolved_exact_tie",
+                    "ordered_gates_could_not_separate_candidates",
+                )
+            else:
+                selected = survivors[0]
         if (
-            self._is_factual_search(evidence)
+            fallback_from is None
+            and self._is_factual_search(evidence)
             and self._support_bucket(selected.support_status)
             == EvidenceSupportLevel.UNSUPPORTED.value
             and not bool(selected.metadata.get("versa_available"))
         ):
+            if not self.enable_fallback_selection:
+                return FinalWinnerSelection(
+                    winner=None,
+                    evaluation=selected,
+                    evaluations=evaluations,
+                    status="unresolved_factual_without_support",
+                    reason="factual_candidate_lacks_evidence_and_verification",
+                    gate_trace=gate_trace,
+                )
+            fallback_from = (
+                "unresolved_factual_without_support",
+                "factual_candidate_lacks_evidence_and_verification",
+            )
+        if fallback_from is not None:
             return FinalWinnerSelection(
                 winner=None,
                 evaluation=selected,
                 evaluations=evaluations,
-                status="unresolved_factual_without_support",
-                reason="factual_candidate_lacks_evidence_and_verification",
+                status="answerable",
+                reason=f"fallback_best_candidate_after_{fallback_from[0]}",
                 gate_trace=gate_trace,
+                selection_origin="fallback_best_candidate",
+                resolution_metadata={
+                    "fallback_from_status": fallback_from[0],
+                    "fallback_from_reason": fallback_from[1],
+                },
             )
-        selected_member = self._member_by_identity(
-            candidates,
-            candidate_key=selected.candidate_key,
-            agent_id=selected.selected_agent_id,
-            run_index=selected.selected_run_index,
-        )
-        if selected_member is None:
-            return FinalWinnerSelection(
-                winner=None,
-                evaluation=selected,
-                evaluations=evaluations,
-                status="selected_member_missing",
-                reason="candidate_member_could_not_be_restored",
-                gate_trace=gate_trace,
-            )
-
-        winner = self.clusterer.summary_for_member(stage1_results, selected_member)
-        # Candidate identity is canonical; the selected run only contributes
-        # reasoning and provenance. Restoring its raw answer can reintroduce an
-        # explicitly repaired ordering or formatting error.
-        winner = replace(winner, compressed_answer=selected.answer)
         return FinalWinnerSelection(
-            winner=winner,
+            winner=None,
             evaluation=selected,
             evaluations=evaluations,
             status="answerable",
@@ -583,6 +652,87 @@ class FinalWinnerSelector:
             },
         )
 
+    def _fallback_selection(
+        self,
+        evaluations: list[CandidateEvaluation],
+        survivors: list[CandidateEvaluation],
+    ) -> CandidateEvaluation | None:
+        """Pick the best remaining candidate when the gates cannot decide.
+
+        An abstention is guaranteed wrong on exact-answer tasks, so any
+        deterministic best-effort pick strictly dominates an empty answer.
+        Prefers gate survivors, then non-rejected candidates, then anything
+        with a non-empty answer; ranks by evidence-support bucket, best
+        supporter self-consistency, run count, and distinct agent count.
+        Ties keep the first-seen candidate for reproducibility.
+        """
+        if not self.enable_fallback_selection:
+            return None
+        pools = (
+            list(survivors or []),
+            [item for item in evaluations if item.selection_state != "rejected"],
+            list(evaluations),
+        )
+        pool: list[CandidateEvaluation] = []
+        for group in pools:
+            pool = [item for item in group if str(item.answer or "").strip()]
+            if pool:
+                break
+        if not pool:
+            return None
+        best: CandidateEvaluation | None = None
+        best_rank: tuple[int, float, int, int] | None = None
+        for item in pool:
+            rank = (
+                self.SUPPORT_BUCKET_ORDER.index(
+                    self._support_bucket(item.support_status)
+                ),
+                round(self._max_supporter_confidence(item), 4),
+                int(item.supporting_run_count or 0),
+                len(set(item.supporting_agent_ids or [])),
+            )
+            if best_rank is None or rank > best_rank:
+                best = item
+                best_rank = rank
+        return best
+
+    def _max_supporter_confidence(self, candidate: CandidateEvaluation) -> float:
+        """Best self-consistency among the candidate's valid supporters.
+
+        Agent confidence here is the fraction of that agent's runs agreeing on
+        this answer, so it measures self-consistency rather than calibration.
+        """
+        best = float(candidate.selected_agent_confidence or 0.0)
+        for member in self._member_evaluations(candidate):
+            if not member.get("valid") or member.get("contradicted"):
+                continue
+            best = max(best, float(member.get("agent_confidence") or 0.0))
+        return best
+
+    def _consensus_rank(
+        self,
+        candidate: CandidateEvaluation,
+    ) -> tuple[int, int, float]:
+        """Order consensus candidates by total votes, then breadth, then conviction.
+
+        Agent confidence is the share of an agent's own runs that repeated an
+        answer, so it measures self-consistency, not calibration: an agent that
+        is reliably wrong scores 1.0. Ranking by confidence first therefore
+        lets one stubborn agent outvote a better-supported answer — measured on
+        saved runs it lost tasks where the correct answer existed but came from
+        fewer runs of a less repetitive agent.
+
+        Total supporting runs is the more honest primary key: it counts every
+        vote the answer actually received, across agents. Distinct agents then
+        breaks ties in favour of independent agreement over one agent repeating
+        itself, and confidence only separates candidates that are level on both.
+        """
+        return (
+            int(candidate.supporting_run_count or 0),
+            len(set(candidate.supporting_agent_ids)),
+            round(self._max_supporter_confidence(candidate), 4),
+        )
+
     def _apply_cross_agent_gate(
         self,
         candidates: list[CandidateEvaluation],
@@ -614,10 +764,10 @@ class FinalWinnerSelector:
             result = self._retain_maximum(
                 gate_name="cross_agent_consensus",
                 candidates=non_echo_candidates,
-                value=lambda item: len(set(item.supporting_agent_ids)),
-                pass_reason="maximum_distinct_agent_support",
-                reject_reason="fewer_distinct_supporting_agents",
-                detail_name="distinct_agent_count",
+                value=self._consensus_rank,
+                pass_reason="maximum_confidence_weighted_agent_support",
+                reject_reason="lower_confidence_weighted_agent_support",
+                detail_name="consensus_rank",
                 hard=False,
             )
             result.metadata["echo_candidates_deferred"] = [
@@ -635,10 +785,10 @@ class FinalWinnerSelector:
         return self._retain_maximum(
             gate_name="cross_agent_consensus",
             candidates=candidates,
-            value=lambda item: len(set(item.supporting_agent_ids)),
-            pass_reason="maximum_distinct_agent_support",
-            reject_reason="fewer_distinct_supporting_agents",
-            detail_name="distinct_agent_count",
+            value=self._consensus_rank,
+            pass_reason="maximum_confidence_weighted_agent_support",
+            reject_reason="lower_confidence_weighted_agent_support",
+            detail_name="consensus_rank",
             hard=False,
         )
 
@@ -750,50 +900,54 @@ class FinalWinnerSelector:
                 hard=False,
             )
 
+        # Measured on saved GAIA runs, VersaPRM probabilities scored wrong
+        # answers higher than correct ones on average, so verifier scores may
+        # only break ties that self-consistency and the fetched corpus cannot.
         survivors = self._filter_max(
             candidates,
-            lambda item: item.critical_step_floor,
+            lambda item: item.selected_agent_answer_frequency,
         )
         tie_break_depth = 0
         if len(survivors) > 1:
             survivors = self._filter_max(
                 survivors,
-                lambda item: item.critical_step_geometric_mean,
+                lambda item: round(self._max_supporter_confidence(item), 4),
             )
             tie_break_depth = 1
+        corpus_mentions: dict[str, int] = {}
+        if len(survivors) > 1:
+            survivors = self._filter_max(
+                survivors,
+                lambda item: item.critical_step_floor,
+            )
+            tie_break_depth = 3
+        if len(survivors) > 1:
+            survivors = self._filter_max(
+                survivors,
+                lambda item: item.critical_step_geometric_mean,
+            )
+            tie_break_depth = 4
         if len(survivors) > 1:
             survivors = self._filter_max(
                 survivors,
                 lambda item: item.average_verifier_probability,
             )
-            tie_break_depth = 2
-        if len(survivors) > 1:
-            survivors = self._filter_max(
-                survivors,
-                lambda item: item.selected_agent_answer_frequency,
-            )
-            tie_break_depth = 3
-        corpus_mentions: dict[str, int] = {}
-        if len(survivors) > 1:
-            corpus_mentions = self._corpus_mention_counts(evidence, survivors)
-            if any(corpus_mentions.values()):
-                survivors = self._filter_max(
-                    survivors,
-                    lambda item: corpus_mentions.get(item.candidate_key, 0),
-                )
-                tie_break_depth = 4
+            tie_break_depth = 5
         result = self._gate_from_survivors(
             gate_name="versa_verification",
             candidates=candidates,
             survivors=survivors,
-            pass_reason="best_critical_step_verification",
-            reject_reason="lower_critical_step_verification",
+            pass_reason="best_consistency_then_verification",
+            reject_reason="lower_consistency_then_verification",
             details={
                 item.candidate_key: {
+                    "selected_agent_answer_frequency": item.selected_agent_answer_frequency,
+                    "max_supporter_confidence": round(
+                        self._max_supporter_confidence(item), 4
+                    ),
                     "critical_step_floor": item.critical_step_floor,
                     "critical_step_geometric_mean": item.critical_step_geometric_mean,
                     "average_verifier_probability": item.average_verifier_probability,
-                    "selected_agent_answer_frequency": item.selected_agent_answer_frequency,
                 }
                 for item in candidates
             },
@@ -806,6 +960,109 @@ class FinalWinnerSelector:
             result.terminal_status = "unresolved_exact_tie"
             result.terminal_reason = "versa_could_not_separate_surviving_candidates"
         return result
+
+    # A rival must be quoted at least this often before absence counts against
+    # a candidate: one stray occurrence is not enough to call a rival invented.
+    MIN_ATTESTED_MENTIONS = 3
+    # A single character matches far too much unrelated text for its count to
+    # mean anything; from two characters up the count is informative, and that
+    # matters because short numeric answers ("17") are common here.
+    MIN_COUNTABLE_ANSWER_CHARS = 2
+
+    def _apply_corpus_attestation_gate(
+        self,
+        candidates: list[CandidateEvaluation],
+        *,
+        evidence: dict[str, Any],
+    ) -> GateResult:
+        """Defer candidates the fetched pages never state."""
+        if len(candidates) <= 1 or not self._corpus_surface_form_is_authoritative(
+            evidence
+        ):
+            return self._pass_through(
+                "corpus_attestation",
+                candidates,
+                "corpus_attestation_not_applicable",
+            )
+        mentions = self._corpus_mention_counts(evidence, candidates)
+        survivors = self._drop_unattested_candidates(candidates, mentions)
+        if len(survivors) == len(candidates):
+            return self._pass_through(
+                "corpus_attestation",
+                candidates,
+                "every_candidate_attested_or_uncountable",
+            )
+        return self._gate_from_survivors(
+            gate_name="corpus_attestation",
+            candidates=candidates,
+            survivors=survivors,
+            pass_reason="answer_appears_in_fetched_pages",
+            reject_reason="answer_absent_from_fetched_pages",
+            details={
+                item.candidate_key: {"corpus_mentions": mentions.get(item.candidate_key, 0)}
+                for item in candidates
+            },
+            hard=False,
+        )
+
+    def _drop_unattested_candidates(
+        self,
+        candidates: list[CandidateEvaluation],
+        corpus_mentions: dict[str, int],
+    ) -> list[CandidateEvaluation]:
+        """Drop candidates the fetched corpus never states, when a rival is well attested.
+
+        Ranking by mention count does not work: a topic word ("Heaven Sent",
+        the episode being asked about) is repeated on every relevant page and
+        beats the answer, which is stated once. Absence is the asymmetric
+        signal — a candidate quoted nowhere in the corpus, while a rival is
+        quoted repeatedly, was invented rather than read.
+
+        Deliberately conservative. A candidate is only dropped when its answer
+        is long enough to count reliably, some rival clears the attestation
+        floor, and the drop leaves something behind. Measured over saved runs
+        this removed a wrong winner twice and never removed a correct answer.
+        """
+        countable = {
+            item.candidate_key: corpus_mentions.get(item.candidate_key, 0)
+            for item in candidates
+            if len(str(item.answer or "").strip()) >= self.MIN_COUNTABLE_ANSWER_CHARS
+        }
+        if not countable:
+            return candidates
+        if max(countable.values()) < self.MIN_ATTESTED_MENTIONS:
+            # Nothing is well enough attested for silence to be meaningful.
+            return candidates
+
+        survivors = [
+            item
+            for item in candidates
+            if countable.get(item.candidate_key) is None
+            or countable.get(item.candidate_key, 0) > 0
+        ]
+        if not survivors or len(survivors) == len(candidates):
+            return candidates
+        for item in candidates:
+            if item in survivors:
+                continue
+            item.selection_state = "reserve"
+            if "corpus_attestation" not in item.soft_deferred_by:
+                item.soft_deferred_by.append("corpus_attestation")
+            item.metadata["corpus_mentions"] = countable.get(item.candidate_key, 0)
+        return survivors
+
+    def _corpus_surface_form_is_authoritative(self, evidence: dict[str, Any]) -> bool:
+        """Do not let source abbreviations override an explicit full-form directive."""
+
+        requirement, _ = self._answer_contract(evidence)
+        text = normalize_text(requirement or self.question).casefold()
+        return not bool(
+            re.search(
+                r"\b(?:without|no)\s+(?:any\s+)?abbreviations?\b|"
+                r"\b(?:do\s+not|don't)\s+abbreviate\b|\bfull\s+(?:name|form)\b",
+                text,
+            )
+        )
 
     def _evaluate_candidate(
         self,

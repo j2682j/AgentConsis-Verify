@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 import re
 from typing import Any
 
-from tools.validation import CandidateResultValidator
+from tools.validation import CandidateResultValidator, ToolFinalityValidator
 
-from .base import HandlerResult
+from .base import HandlerResult, render_handler_evidence
 
 
 @dataclass
@@ -44,6 +44,10 @@ class HandlerTrustResult:
     operation: str = ""
     derivation_type: str = ""
     derivation_trace: list[dict[str, Any]] = field(default_factory=list)
+    declared_output_type: str = ""
+    effective_output_type: str = ""
+    finality: dict[str, Any] = field(default_factory=dict)
+    usable_as_intermediate: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -60,8 +64,13 @@ class HandlerTrustGate:
         - HandlerTrustGate: 可重複使用的 handler trust gate。
     """
 
-    def __init__(self, candidate_validator: CandidateResultValidator | None = None) -> None:
+    def __init__(
+        self,
+        candidate_validator: CandidateResultValidator | None = None,
+        finality_validator: ToolFinalityValidator | None = None,
+    ) -> None:
         self.candidate_validator = candidate_validator or CandidateResultValidator()
+        self.finality_validator = finality_validator or ToolFinalityValidator()
 
     def validate(
         self,
@@ -102,7 +111,10 @@ class HandlerTrustGate:
             reasons.append("handler_not_ok")
         if not str(result.answer or "").strip():
             reasons.append("empty_answer")
-        output_type = str(result.output_type or "").strip() or "intermediate_value"
+        declared_output_type = (
+            str(result.output_type or "").strip() or "intermediate_value"
+        )
+        output_type = declared_output_type
         semantic_role = str(result.semantic_role or "").strip()
         supporting_inputs = [
             str(item).strip()
@@ -200,6 +212,30 @@ class HandlerTrustGate:
         if not candidate_validation.valid:
             reasons.append(f"candidate_{candidate_validation.status}")
 
+        verification_payload = (
+            result.verification_payload
+            if isinstance(result.verification_payload, dict)
+            else {}
+        )
+        finality_payload = verification_payload.get("finality")
+        if not isinstance(finality_payload, dict):
+            finality_payload = {}
+        finality = self.finality_validator.validate(
+            declared_output_type=declared_output_type,
+            result_ok=result.ok,
+            answer=candidate_validation.cleaned_answer or result.answer,
+            missing_inputs=list(result.missing_inputs or []),
+            finality_payload=finality_payload,
+        )
+        output_type = finality.effective_output_type
+        if finality.status == "invalid":
+            reasons.append("finality_invalid")
+        elif (
+            declared_output_type == "final_answer"
+            and output_type != "final_answer"
+        ):
+            reasons.append("finality_downgraded_to_intermediate")
+
         if not result.input_summary:
             warnings.append("missing_input_summary")
         if "output_contract" not in structured:
@@ -207,13 +243,33 @@ class HandlerTrustGate:
 
         hard_reasons = [reason for reason in reasons if reason]
         trusted = not hard_reasons
+        non_finality_reasons = [
+            reason
+            for reason in hard_reasons
+            if reason != "finality_downgraded_to_intermediate"
+        ]
+        usable_as_intermediate = bool(
+            not trusted
+            and not non_finality_reasons
+            and finality.usable_as_intermediate
+            and declared_output_type == "final_answer"
+            and result.ok
+            and candidate_validation.valid
+        )
         status = "trusted" if trusted else self._status_from_reasons(hard_reasons)
+        effective_evidence = ""
+        if trusted:
+            effective_evidence = result.evidence_text or render_handler_evidence(result)
+        elif usable_as_intermediate:
+            effective_evidence = result.evidence_text or render_handler_evidence(
+                replace(result, output_type="intermediate_value")
+            )
         return HandlerTrustResult(
             trusted=trusted,
             status=status,
             reasons=hard_reasons + warnings,
             answer=candidate_validation.cleaned_answer,
-            evidence_text=result.evidence_text if trusted else "",
+            evidence_text=effective_evidence,
             missing_inputs=list(result.missing_inputs or []),
             next_action_hint=result.next_action_hint,
             confidence=float(result.confidence or 0.0),
@@ -224,6 +280,10 @@ class HandlerTrustGate:
             operation=handler_operation,
             derivation_type=derivation_type,
             derivation_trace=derivation_trace,
+            declared_output_type=declared_output_type,
+            effective_output_type=output_type,
+            finality=finality.to_dict(),
+            usable_as_intermediate=usable_as_intermediate,
         )
 
     def _status_from_reasons(self, reasons: list[str]) -> str:
@@ -251,6 +311,10 @@ class HandlerTrustGate:
             return "missing_input"
         if "handler_error" in reasons:
             return "handler_error"
+        if "finality_invalid" in reasons:
+            return "invalid_finality"
+        if "finality_downgraded_to_intermediate" in reasons:
+            return "intermediate_value"
         if any(reason.startswith("candidate_") for reason in reasons):
             return "invalid_candidate"
         if "intermediate_value_not_final_evidence" in reasons:

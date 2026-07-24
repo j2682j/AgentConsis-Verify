@@ -5,7 +5,12 @@ import re
 
 from utils.network_utils import normalize_text
 
-from .derivation_models import FactDerivation, FactDerivationResult
+from .derivation_models import (
+    DerivedEvidenceContract,
+    DerivedEvidenceContractValidator,
+    FactDerivation,
+    FactDerivationResult,
+)
 from .answer_bound_validator import AnswerBoundFactValidator
 from .fact_store import TaskFactStore
 from .models import EvidenceFact
@@ -20,12 +25,14 @@ class FactDerivationEngine:
         max_depth: int = 2,
         max_derivations: int = 64,
         answer_bound_validator: AnswerBoundFactValidator | None = None,
+        contract_validator: DerivedEvidenceContractValidator | None = None,
     ) -> None:
         self.max_depth = max(1, int(max_depth))
         self.max_derivations = max(1, int(max_derivations))
         self.answer_bound_validator = (
             answer_bound_validator or AnswerBoundFactValidator()
         )
+        self.contract_validator = contract_validator or DerivedEvidenceContractValidator()
 
     def derive(
         self,
@@ -35,6 +42,8 @@ class FactDerivationEngine:
         required_relation: str = "",
         required_relation_goal_id: str = "",
         answer_role: str = "",
+        required_constraints: list[dict] | None = None,
+        scope_requirement: str = "not_applicable",
     ) -> FactDerivationResult:
         derivations: list[FactDerivation] = []
         added_ids: list[str] = []
@@ -56,7 +65,18 @@ class FactDerivationEngine:
                         break
                     if not self._can_compose(left, right):
                         continue
-                    result_fact = self._compose(left, right, depth=depth)
+                    contract = self.contract_validator.validate_relation_chain(
+                        parent_facts=[left, right],
+                        required_constraints=required_constraints,
+                        scope_requirement=scope_requirement,
+                        completeness_contracts=fact_store.completeness_contracts(),
+                    )
+                    result_fact = self._compose(
+                        left,
+                        right,
+                        depth=depth,
+                        contract=contract,
+                    )
                     result_fact = self.answer_bound_validator.bind(
                         result_fact,
                         question=answer_requirement,
@@ -74,6 +94,7 @@ class FactDerivationEngine:
                             f"{right.subject} --{right.relation}--> {right.object}"
                         ),
                         grounded=True,
+                        contract=contract.to_dict(),
                     )
                     derivations.append(derivation)
                     added_ids.append(result_fact.fact_id)
@@ -93,6 +114,8 @@ class FactDerivationEngine:
                     required_relation_goal_id
                 ),
                 "answer_role": normalize_text(answer_role),
+                "required_constraints": list(required_constraints or []),
+                "scope_requirement": normalize_text(scope_requirement),
                 "base_fact_count": len(base_facts),
                 "derived_fact_count": len(added_ids),
                 "max_depth": self.max_depth,
@@ -121,6 +144,7 @@ class FactDerivationEngine:
         right: EvidenceFact,
         *,
         depth: int,
+        contract: DerivedEvidenceContract,
     ) -> EvidenceFact:
         relation = f"{left.relation} -> {right.relation}"
         parent_ids = [left.fact_id, right.fact_id]
@@ -136,6 +160,8 @@ class FactDerivationEngine:
             if right.role == "ANSWER_SUPPORT" or completes_goal
             else "BRIDGE"
         )
+        if not contract.verified:
+            role = "BRIDGE"
         context_parts = [left.context, right.context]
         context = "\n".join(part for part in context_parts if part).strip()
         spans = self._dedupe([*left.evidence_spans, *right.evidence_spans])[:4]
@@ -164,6 +190,7 @@ class FactDerivationEngine:
             extraction_method="fact_derivation",
             parent_fact_ids=parent_ids,
             derivation_type="relation_chain",
+            derived_contract=contract.to_dict(),
         )
 
     @staticmethod

@@ -111,6 +111,87 @@ class HandlerTrustGateTests(unittest.TestCase):
         self.assertFalse(trust.trusted)
         self.assertIn("answer_role_binding_failed", trust.reasons)
 
+    def test_explicit_incomplete_finality_is_only_intermediate(self):
+        result = HandlerResult(
+            handler_name="table_aggregation",
+            status="ok",
+            answer="18028",
+            input_summary={"rows": 10},
+            structured_result={"output_contract": {"required_outputs": ["answer"]}},
+            output_type="final_answer",
+            semantic_role="table_sum",
+            supporting_inputs=["Burgers"],
+            operation="sum",
+            derivation_type="table_sum",
+            derivation_trace=[{"operation": "sum", "result": "18028"}],
+            verification_payload={
+                "finality": {
+                    "operation_status": "complete",
+                    "scope_status": "complete",
+                    "required_constraints": ["Burgers", "Fries"],
+                    "satisfied_constraints": ["Burgers"],
+                    "provenance_ids": ["row:1"],
+                }
+            },
+        )
+
+        trust = HandlerTrustGate().validate(
+            result,
+            question="What is the sum of Burgers and Fries?",
+        )
+
+        self.assertFalse(trust.trusted)
+        self.assertTrue(trust.usable_as_intermediate)
+        self.assertEqual(trust.effective_output_type, "intermediate_value")
+
+    def test_legacy_finality_absence_preserves_trusted_result(self):
+        result = HandlerResult(
+            handler_name="simple_math",
+            status="ok",
+            answer="5",
+            input_summary={"expression": "9 - 4"},
+            structured_result={"output_contract": {"required_outputs": ["answer"]}},
+            output_type="final_answer",
+            semantic_role="arithmetic_result",
+            supporting_inputs=["9 - 4"],
+        )
+
+        trust = HandlerTrustGate().validate(result, question="Compute 9 - 4.")
+
+        self.assertTrue(trust.trusted)
+        self.assertTrue(trust.finality["legacy_accepted"])
+
+    def test_handler_mismatch_cannot_be_retained_as_intermediate(self):
+        result = HandlerResult(
+            handler_name="table_aggregation",
+            status="ok",
+            answer="18028",
+            input_summary={"rows": 10},
+            structured_result={"output_contract": {"required_outputs": ["answer"]}},
+            output_type="final_answer",
+            semantic_role="table_sum",
+            supporting_inputs=["Burgers"],
+            operation="sum",
+            derivation_type="table_sum",
+            derivation_trace=[{"operation": "sum", "result": "18028"}],
+            verification_payload={
+                "finality": {
+                    "operation_status": "complete",
+                    "scope_status": "incomplete",
+                    "provenance_ids": ["row:1"],
+                }
+            },
+        )
+
+        trust = HandlerTrustGate().validate(
+            result,
+            question="What is the sum?",
+            handler_plan={"handler_name": "simple_math"},
+        )
+
+        self.assertFalse(trust.trusted)
+        self.assertFalse(trust.usable_as_intermediate)
+
 
 if __name__ == "__main__":
     unittest.main()

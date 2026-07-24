@@ -12,7 +12,12 @@ from .completeness_contract import (
     CompletenessContractBuilder,
     SetDifferenceDerivation,
 )
-from .derivation_models import FactDerivation, FactDerivationResult
+from .derivation_models import (
+    DerivedEvidenceContract,
+    DerivedEvidenceContractValidator,
+    FactDerivation,
+    FactDerivationResult,
+)
 from .direct_evidence_promoter import (
     AnswerValueCanonicalizer,
     DirectEvidencePromoter,
@@ -64,6 +69,8 @@ __all__ = [
     "QuestionRuleFactExtractor",
     "FactAdapter",
     "FactDerivation",
+    "DerivedEvidenceContract",
+    "DerivedEvidenceContractValidator",
     "FactDerivationEngine",
     "FactDerivationResult",
     "DeterministicHandlerFactAdapter",

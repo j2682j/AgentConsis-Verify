@@ -9,6 +9,7 @@ from utils.network_utils import normalize_text
 
 from .answer_bound_validator import AnswerBoundFactValidator
 from .models import EvidenceFact, FactEvidenceRef
+from .derivation_models import DerivedEvidenceContract
 
 
 @dataclass(frozen=True)
@@ -461,8 +462,30 @@ class DirectEvidencePromoter:
             [value.source_id, value.goal_id, value.answer_requirement, value.value]
         )
         fact_id = f"promotion-{hashlib.sha1(seed.encode('utf-8')).hexdigest()[:16]}"
+        scope_required = bool(self._GLOBAL_RE.search(value.answer_requirement))
+        scope_verified = bool(
+            not scope_required
+            or value.scope_status in {"global_complete", "derived_complete"}
+        )
+        contract = DerivedEvidenceContract(
+            derivation_type="answer_value_promotion",
+            parent_fact_ids=[value.origin_fact_id] if value.origin_fact_id else [],
+            operation_status="verified",
+            entity_binding_status="verified",
+            record_coherence="verified",
+            verification_status="verified" if scope_verified else "unverified",
+            scope_status=(
+                "complete" if scope_verified and scope_required else
+                "not_applicable" if not scope_required else "incomplete"
+            ),
+            reasons=(
+                ["answer_value_promotion_verified"]
+                if scope_verified
+                else ["aggregate_scope_not_complete"]
+            ),
+        )
         qualifiers = {
-            "answer_binding": "direct",
+            "answer_binding": "direct" if scope_verified else "bridge",
             "binding_reason": "grounded_answer_value_promotion",
             "answer_requirement": value.answer_requirement,
             "answer_target": value.answer_target,
@@ -478,7 +501,7 @@ class DirectEvidencePromoter:
             object=value.value,
             qualifiers=qualifiers,
             polarity="positive",
-            role="ANSWER_SUPPORT",
+            role="ANSWER_SUPPORT" if scope_verified else "BRIDGE",
             goal_id=value.goal_id,
             evidence_spans=[value.evidence_span],
             evidence_refs=[
@@ -497,6 +520,7 @@ class DirectEvidencePromoter:
             extraction_method="grounded_answer_value_promotion",
             parent_fact_ids=[value.origin_fact_id] if value.origin_fact_id else [],
             derivation_type="answer_value_promotion",
+            derived_contract=contract.to_dict(),
         )
 
     @staticmethod

@@ -218,25 +218,6 @@ class SLM_Agent:
                 "warning": f"{type(exc).__name__}: {exc}",
             }
 
-    def think(
-        self,
-        messages: list[dict[str, str]],
-        temperature: float | None = None,
-    ) -> Any:
-        """
-        呼叫模型並回傳 provider 原始 response。
-
-        Args:
-            - messages: OpenAI-compatible chat messages。
-            - temperature: 此次呼叫覆蓋的生成溫度。
-
-        Returns:
-            - Any: Provider 原始 chat completion response。
-        """
-        overrides = {}
-        if temperature is not None:
-            overrides["temperature"] = temperature
-        return self._chat(messages, **overrides).raw_response
 
     def invoke(self, messages: list[dict[str, str]], **kwargs: Any) -> str:
         """

@@ -13,6 +13,7 @@ from core.config import (
     ToolEvidenceRecord,
 )
 from score.answer_validator import AnswerValidator
+from score.answer_requirement_contract import TaskAnswerRequirementContract
 from score.evidence_support_context import EvidenceSupportContext
 from score.evidence_support_level import support_level_for_status
 from score.candidate_fact_verifier import (
@@ -24,6 +25,7 @@ from score.numerical_derivation_verifier import (
     NumericalDerivationVerifier,
 )
 from score.question_echo import is_question_echo
+from tools.search_result_builder.config import is_support_eligible_payload
 from utils.network_utils import normalize_for_exact
 from tools.evidence.fact_extraction import (
     FactDerivationEngine,
@@ -137,12 +139,25 @@ class EvidenceSupportChecker:
             (evidence or {}).get("required_relation_goal_id") or ""
         ).strip()
         answer_role = str((evidence or {}).get("answer_role") or "").strip()
+        requirement_contract = TaskAnswerRequirementContract.from_mapping(
+            (
+                (evidence or {}).get("task_answer_requirement_contract")
+                if isinstance(
+                    (evidence or {}).get("task_answer_requirement_contract"),
+                    dict,
+                )
+                else None
+            ),
+            question=question,
+        )
         fact_derivation = self.fact_derivation_engine.derive(
             shared_fact_store,
             answer_requirement=answer_requirement,
             required_relation=required_relation,
             required_relation_goal_id=required_relation_goal_id,
             answer_role=answer_role,
+            required_constraints=requirement_contract.required_constraints,
+            scope_requirement=requirement_contract.scope_requirement,
         )
         if evidence is not None:
             evidence["fact_store"] = shared_fact_store.to_dict()
@@ -152,6 +167,9 @@ class EvidenceSupportChecker:
             candidate_answer=final_answer,
             fact_store=fact_store,
             answer_requirement=answer_requirement,
+            required_relation=required_relation,
+            required_relation_goal_id=required_relation_goal_id,
+            answer_role=answer_role,
         )
         records = self.collect_records(target=target, evidence=evidence or {})
         records = self._deduplicate_records(
@@ -164,6 +182,7 @@ class EvidenceSupportChecker:
                 record.output_type == "final_answer"
                 and record.trusted
                 and record.evidence_valid
+                and self._record_has_usable_finality(record)
                 and record.value
             )
         )
@@ -475,6 +494,12 @@ class EvidenceSupportChecker:
         for evidence_item in evidence_items or []:
             if not isinstance(evidence_item, dict):
                 continue
+            # Evidence trust contract: only grounded tiers may create support.
+            # Relaxed references are read-only context for Stage1 — mining
+            # their spans for intermediate values turned shared question
+            # vocabulary into "bridge" support for guessed answers.
+            if not is_support_eligible_payload(evidence_item):
+                continue
             text = str(evidence_item.get("text") or "").strip()
             if not text:
                 continue
@@ -677,11 +702,17 @@ class EvidenceSupportChecker:
         evidence_valid = bool(item.get("evidence_valid", raw.get("evidence_valid", False)))
         trusted = bool(trust.get("trusted", ok and evidence_valid))
 
-        output_type = str(
+        declared_output_type = str(
             item.get("output_type")
+            or trust.get("declared_output_type")
             or trust.get("output_type")
             or raw.get("output_type")
             or ""
+        ).strip()
+        output_type = str(
+            trust.get("effective_output_type")
+            or item.get("effective_output_type")
+            or declared_output_type
         ).strip()
         if error or missing_inputs or status in {
             "error",
@@ -724,6 +755,12 @@ class EvidenceSupportChecker:
             evidence_valid = False
         elif tool_name in self._DETERMINISTIC_TOOLS and output_type == "final_answer":
             trusted = bool(trusted and value)
+        elif output_type == "intermediate_value":
+            trusted = False
+
+        finality = trust.get("finality") if isinstance(trust.get("finality"), dict) else {}
+        if not finality and isinstance(item.get("finality"), dict):
+            finality = dict(item.get("finality") or {})
 
         return ToolEvidenceRecord(
             tool_name=tool_name,
@@ -750,6 +787,14 @@ class EvidenceSupportChecker:
                 "cache_hit": bool(item.get("cache_hit")),
                 "trust_status": str(trust.get("status") or ""),
                 "trust_reasons": list(trust.get("reasons") or []),
+                "declared_output_type": declared_output_type,
+                "effective_output_type": output_type,
+                "finality": dict(finality),
+                "finality_status": str(finality.get("status") or ""),
+                "usable_as_intermediate": bool(
+                    trust.get("usable_as_intermediate")
+                    or item.get("usable_as_intermediate")
+                ),
                 "handler_role": str(
                     trust.get("semantic_role")
                     or raw.get("handler_role")
@@ -1049,6 +1094,7 @@ class EvidenceSupportChecker:
                         "evidence_spans": list(fact.evidence_spans),
                         "parent_fact_ids": list(fact.parent_fact_ids),
                         "derivation_type": fact.derivation_type,
+                        "derived_contract": dict(fact.derived_contract),
                     },
                 )
             )
@@ -1105,7 +1151,19 @@ class EvidenceSupportChecker:
             extraction_method="numerical_derivation_verifier",
             parent_fact_ids=parent_fact_ids,
             derivation_type="numerical_calculation",
+            derived_contract=dict(numerical_derivation.derived_contract),
         )
+
+    @staticmethod
+    def _record_has_usable_finality(record: ToolEvidenceRecord) -> bool:
+        """Accept legacy finals, but require explicit new contracts to be final."""
+
+        metadata = record.metadata if isinstance(record.metadata, dict) else {}
+        finality = metadata.get("finality") if isinstance(metadata.get("finality"), dict) else {}
+        status = str(metadata.get("finality_status") or finality.get("status") or "").strip()
+        if not status:
+            return True
+        return status in {"final", "legacy_accepted"}
 
     def _record_directly_supports_answer(
         self,

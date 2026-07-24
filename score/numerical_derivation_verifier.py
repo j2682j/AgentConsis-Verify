@@ -7,6 +7,7 @@ import re
 from typing import Any, Iterable
 
 from core.config import ToolEvidenceRecord
+from tools.evidence.fact_extraction.derivation_models import DerivedEvidenceContract
 
 
 @dataclass(frozen=True)
@@ -85,6 +86,7 @@ class NumericalDerivationSummary:
     source_tools: list[str] = field(default_factory=list)
     goal_ids: list[str] = field(default_factory=list)
     reason: str = ""
+    derived_contract: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -100,6 +102,7 @@ class NumericalDerivationSummary:
             "source_tools": list(self.source_tools),
             "goal_ids": list(self.goal_ids),
             "reason": self.reason,
+            "derived_contract": dict(self.derived_contract),
         }
 
 
@@ -250,6 +253,17 @@ class NumericalDerivationVerifier:
         else:
             status = "not_applicable"
             reason = "no_explicit_numeric_derivation"
+        derived_contract = DerivedEvidenceContract(
+            derivation_type="numerical_calculation",
+            parent_fact_ids=list(provenance_ids),
+            operation_status="verified" if derived_values and not contradicted_steps else "unverified",
+            entity_binding_status="not_applicable",
+            record_coherence="verified" if provenance_ids else "unverified",
+            scope_contract_ids=[],
+            verification_status="verified" if final_supported else "unverified",
+            scope_status="not_applicable",
+            reasons=[reason],
+        )
         return NumericalDerivationSummary(
             status=status,
             final_supported=final_supported,
@@ -261,6 +275,7 @@ class NumericalDerivationVerifier:
             source_tools=source_tools,
             goal_ids=goal_ids,
             reason=reason,
+            derived_contract=derived_contract.to_dict(),
         )
 
     def extract_evidence_quantities(

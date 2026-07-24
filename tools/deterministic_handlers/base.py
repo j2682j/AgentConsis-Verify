@@ -169,6 +169,45 @@ class HandlerResult:
         return "handler" if values else ""
 
 
+def build_finality_payload(
+    *,
+    operation: str,
+    operation_status: str = "complete",
+    answer_role: str = "",
+    required_inputs: list[str] | None = None,
+    consumed_inputs: list[str] | None = None,
+    scope_status: str = "not_applicable",
+    scope_contract_ids: list[str] | None = None,
+    required_constraints: list[str] | None = None,
+    satisfied_constraints: list[str] | None = None,
+    missing_constraints: list[str] | None = None,
+    provenance_ids: list[str] | None = None,
+    provenance_status: str = "",
+    role_match: bool = True,
+) -> dict[str, Any]:
+    """Build the common finality contract emitted by deterministic tools."""
+
+    provenance = [str(item) for item in provenance_ids or [] if str(item).strip()]
+    return {
+        "operation": str(operation or "").strip(),
+        "operation_status": str(operation_status or "").strip(),
+        "answer_role": str(answer_role or "").strip(),
+        "required_inputs": list(required_inputs or []),
+        "consumed_inputs": list(consumed_inputs or []),
+        "scope_status": str(scope_status or "").strip(),
+        "scope_contract_ids": list(scope_contract_ids or []),
+        "required_constraints": list(required_constraints or []),
+        "satisfied_constraints": list(satisfied_constraints or []),
+        "missing_constraints": list(missing_constraints or []),
+        "provenance_ids": provenance,
+        "provenance_status": (
+            str(provenance_status or "").strip()
+            or ("verified" if provenance else "not_applicable")
+        ),
+        "role_match": bool(role_match),
+    }
+
+
 class DeterministicHandler(Protocol):
     name: str
     capability_description: str
@@ -220,5 +259,6 @@ __all__ = [
     "HandlerInput",
     "HandlerMatch",
     "HandlerResult",
+    "build_finality_payload",
     "render_handler_evidence",
 ]

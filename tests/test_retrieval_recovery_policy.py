@@ -32,6 +32,55 @@ class RetrievalRecoveryPolicyTests(unittest.TestCase):
         )
         self.assertEqual(second.action, "stop")
 
+    def test_bridge_terms_enable_second_hop_query(self) -> None:
+        policy = RetrievalRecoveryPolicy(max_expand_attempts=0)
+        attempted: set[str] = set()
+
+        decision = policy.decide(
+            relation_plan=None,
+            corpus_documents=[],
+            attempted=attempted,
+            top_k=10,
+            candidate_pool_size=20,
+            original_question="which journal is named for one of Hreidmar's sons?",
+            bridge_terms=["Fafnir", "journal of dragon studies"],
+            missing_constraints=["emily midkiff", "answer_support:person"],
+        )
+
+        self.assertEqual(decision.action, "bridge_query")
+        self.assertEqual(len(decision.next_queries), 1)
+        query = decision.next_queries[0].casefold()
+        self.assertIn("fafnir", query)
+        # Colon-tagged internal markers may not leak into the web query.
+        self.assertNotIn("answer_support", query)
+        self.assertIn("emily midkiff", query)
+        attempted.add(decision.fingerprint)
+
+        repeat = policy.decide(
+            relation_plan=None,
+            corpus_documents=[],
+            attempted=attempted,
+            top_k=10,
+            candidate_pool_size=20,
+            original_question="which journal is named for one of Hreidmar's sons?",
+            bridge_terms=["Fafnir", "journal of dragon studies"],
+            missing_constraints=["emily midkiff"],
+        )
+        self.assertEqual(repeat.action, "stop")
+
+    def test_no_bridge_terms_still_stops(self) -> None:
+        policy = RetrievalRecoveryPolicy(max_expand_attempts=0)
+        decision = policy.decide(
+            relation_plan=None,
+            corpus_documents=[],
+            attempted=set(),
+            top_k=10,
+            candidate_pool_size=20,
+            original_question="original question",
+            missing_constraints=["only missing, no bridges"],
+        )
+        self.assertEqual(decision.action, "stop")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -79,6 +79,69 @@ def verifier(
 
 
 class OrderedWinnerGateTests(unittest.TestCase):
+    def test_corpus_abbreviation_does_not_override_full_form_directive(self) -> None:
+        configs = [
+            AgentConfig(agent_id="short", model_name="test-model"),
+            AgentConfig(agent_id="full", model_name="test-model"),
+        ]
+        results = [
+            make_summary(
+                "short",
+                [make_run("short", 1, "St. Petersburg", answer_type="place")],
+                answer="St. Petersburg",
+                confidence=1.0,
+            ),
+            make_summary(
+                "full",
+                [make_run("full", 1, "Saint Petersburg", answer_type="place")],
+                answer="Saint Petersburg",
+                confidence=1.0,
+            ),
+        ]
+        network = Network(
+            "Give the city name without abbreviations.",
+            configs,
+        )
+
+        winner = network._select_winner(
+            results,
+            verifier_results=[
+                verifier(
+                    "short",
+                    "St. Petersburg",
+                    support_status="no_support",
+                    probability=0.80,
+                ),
+                verifier(
+                    "full",
+                    "Saint Petersburg",
+                    support_status="no_support",
+                    probability=0.95,
+                ),
+            ],
+            evidence={
+                "answer_requirement": "Give the city name without abbreviations.",
+                "tool_usage": [
+                    {
+                        "raw_result": {
+                            "retrieval": {
+                                "rounds": [
+                                    {
+                                        "documents": [
+                                            {"text": "The collection is in St. Petersburg."}
+                                        ]
+                                    }
+                                ]
+                            }
+                        }
+                    }
+                ],
+            },
+        )
+
+        self.assertIsNotNone(winner)
+        self.assertEqual(winner.compressed_answer, "Saint Petersburg")
+
     def test_selected_output_uses_canonical_explicit_list_order(self) -> None:
         configs = [AgentConfig(agent_id="a1", model_name="test-model")]
         results = [
@@ -222,7 +285,7 @@ class OrderedWinnerGateTests(unittest.TestCase):
         self.assertIsNotNone(winner)
         self.assertEqual(winner.compressed_answer, "3")
 
-    def test_single_unsupported_factual_candidate_is_unresolved(self) -> None:
+    def test_single_unsupported_factual_candidate_falls_back(self) -> None:
         configs = [AgentConfig(agent_id="a1", model_name="test-model")]
         results = [
             make_summary(
@@ -239,13 +302,16 @@ class OrderedWinnerGateTests(unittest.TestCase):
             evidence={"routing": {"primary_route": "factual_search"}},
         )
 
-        self.assertIsNone(winner)
+        self.assertIsNotNone(winner)
+        self.assertEqual(winner.compressed_answer, "Paris")
+        trace = network._last_winner_selection_trace
+        self.assertEqual(trace["selection_origin"], "fallback_best_candidate")
         self.assertEqual(
-            network._last_winner_selection_trace["status"],
+            trace["evidence_only_resolution"].get("fallback_from_status"),
             "unresolved_factual_without_support",
         )
 
-    def test_closed_world_consensus_uses_distinct_agents_before_run_count(self) -> None:
+    def test_closed_world_consensus_prefers_self_consistent_agent(self) -> None:
         configs = [
             AgentConfig(agent_id="a1", model_name="test-model"),
             AgentConfig(agent_id="a2", model_name="test-model"),
@@ -279,8 +345,11 @@ class OrderedWinnerGateTests(unittest.TestCase):
 
         winner = network._select_winner(results)
 
+        # Two internally inconsistent agents (0.33) agreeing may not outvote a
+        # fully self-consistent agent (1.0): correlated errors dominate GAIA
+        # closed-book runs, so conviction outranks headcount.
         self.assertIsNotNone(winner)
-        self.assertEqual(winner.compressed_answer, "A")
+        self.assertEqual(winner.compressed_answer, "B")
 
     def test_versa_only_compares_candidates_after_equal_earlier_gates(self) -> None:
         configs = [
@@ -318,7 +387,7 @@ class OrderedWinnerGateTests(unittest.TestCase):
             "versa_verification",
         )
 
-    def test_equal_versa_results_remain_unresolved(self) -> None:
+    def test_equal_versa_results_fall_back_deterministically(self) -> None:
         configs = [
             AgentConfig(agent_id="a1", model_name="test-model"),
             AgentConfig(agent_id="a2", model_name="test-model"),
@@ -347,9 +416,14 @@ class OrderedWinnerGateTests(unittest.TestCase):
             ],
         )
 
-        self.assertIsNone(winner)
+        # A fully tied pool must still produce a non-empty answer: the
+        # fallback keeps the first-seen candidate instead of abstaining.
+        self.assertIsNotNone(winner)
+        self.assertEqual(winner.compressed_answer, "A")
+        trace = network._last_winner_selection_trace
+        self.assertEqual(trace["selection_origin"], "fallback_best_candidate")
         self.assertEqual(
-            network._last_winner_selection_trace["status"],
+            trace["evidence_only_resolution"].get("fallback_from_status"),
             "unresolved_exact_tie",
         )
 
