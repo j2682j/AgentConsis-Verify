@@ -11,7 +11,7 @@ from ..query.relation_plan import RelationPlan
 from ..query.search_intent_plan import SearchIntentPlan
 from ..query.source_requirement import SearchQueryRequest, SourceRequirement
 from .query_token_selector import QueryTokenSelector
-from .rag_filter import RAGFilterResult
+from .next_hop_result import NextHopQueryResult
 from .relation_goal_resolver import RelationGoalResolver
 
 
@@ -208,9 +208,9 @@ class NextHopQueryComposer:
         question: str,
         evidence_items: list[EvidenceItem],
         intent_plan: SearchIntentPlan | None = None,
-    ) -> RAGFilterResult:
+    ) -> NextHopQueryResult:
         """
-        Build a RAGFilterResult-compatible next-hop query without running the filter model.
+        Build a next-hop query from question tokens and bridge evidence.
 
         Args:
             - question: Original task question.
@@ -218,7 +218,7 @@ class NextHopQueryComposer:
             - intent_plan: Planner state carrying answer role and missing terms.
 
         Returns:
-            - RAGFilterResult: Next-hop query and trace-compatible metadata.
+            - NextHopQueryResult: Next-hop query and trace metadata.
         """
         selected = self.query_token_selector.select(
             question=question,
@@ -229,7 +229,7 @@ class NextHopQueryComposer:
             evidence_items=evidence_items,
         )
         if not evidence_spans:
-            return RAGFilterResult(
+            return NextHopQueryResult(
                 query="",
                 kept_question_tokens=[],
                 kept_evidence_tokens=[],
@@ -256,7 +256,7 @@ class NextHopQueryComposer:
             intent_plan=intent_plan,
         )
 
-        return RAGFilterResult(
+        return NextHopQueryResult(
             query=query,
             kept_question_tokens=list(query_tokens),
             kept_evidence_tokens=list(evidence_spans),

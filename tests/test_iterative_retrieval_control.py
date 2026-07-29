@@ -8,7 +8,6 @@ from unittest.mock import patch
 
 import numpy as np
 
-from tools.search_result_builder.next_hop_query.rag_filter import RAGFilterResult
 from tools.search_result_builder.config import SearchSourceCandidate
 from tools.search_result_builder.retrieval_control import (
     IterativeRetrievalControl,
@@ -79,28 +78,12 @@ class FakeLabeler:
         ]
 
 
-class FakeFilter:
-    def __init__(self, queries):
-        self.queries = iter(queries)
-        self.calls = []
-
-    def build_query(self, *, question, evidence_items):
-        self.calls.append((question, evidence_items))
-        return RAGFilterResult(
-            query=next(self.queries),
-            kept_evidence_tokens=["bridge"],
-            metadata={"method": "fake_filter"},
-        )
-
-
 class IterativeRetrievalControlTests(unittest.TestCase):
     def test_incomplete_goal_does_not_accept_surface_sufficiency(self):
         labeler = FakeLabeler()
-        rag_filter = FakeFilter(["original query"])
         controller = IterativeRetrievalControl(
             retriever=FakeRetriever(),
             labeler=labeler,
-            rag_filter=rag_filter,
             max_iter=4,
             top_k=1,
         )
@@ -115,13 +98,12 @@ class IterativeRetrievalControlTests(unittest.TestCase):
             labeler.calls[0][1],
             ["Relevant document A useful bridge token appears here."],
         )
-        self.assertEqual(rag_filter.calls, [])
+        self.assertEqual(result.rounds[0].next_query, "")
 
     def test_exhausted_corpus_does_not_repeat_duplicate_documents(self):
         controller = IterativeRetrievalControl(
             retriever=FakeRetriever(),
             labeler=FakeLabeler(),
-            rag_filter=FakeFilter(["next query"]),
             max_iter=4,
             top_k=1,
         )
@@ -137,7 +119,6 @@ class IterativeRetrievalControlTests(unittest.TestCase):
         controller = IterativeRetrievalControl(
             retriever=retriever,
             labeler=FakeLabeler(),
-            rag_filter=FakeFilter([]),
         )
 
         result = controller.run("   ")
@@ -145,12 +126,10 @@ class IterativeRetrievalControlTests(unittest.TestCase):
         self.assertEqual(result.stop_reason, "empty_initial_query")
         self.assertEqual(retriever.index.calls, 0)
 
-    def test_continue_without_useful_tokens_is_not_sent_to_filter(self):
-        rag_filter = FakeFilter(["next query"])
+    def test_continue_without_useful_tokens_does_not_create_next_hop(self):
         controller = IterativeRetrievalControl(
             retriever=FakeRetriever(),
             labeler=FakeLabeler(kept_tokens=[]),
-            rag_filter=rag_filter,
             max_iter=4,
             top_k=1,
         )
@@ -161,17 +140,15 @@ class IterativeRetrievalControlTests(unittest.TestCase):
             result.stop_reason,
             "goal_incomplete_no_viable_recovery",
         )
-        self.assertEqual(rag_filter.calls, [])
+        self.assertEqual(result.rounds[0].next_query, "")
         self.assertFalse(
             result.rounds[0].filter_metadata["goal_completion"]["sufficient"]
         )
 
-    def test_continue_below_absolute_e5_threshold_is_not_sent_to_filter(self):
-        rag_filter = FakeFilter(["next query"])
+    def test_continue_below_absolute_e5_threshold_does_not_create_next_hop(self):
         controller = IterativeRetrievalControl(
             retriever=FakeRetriever(score=0.7),
             labeler=FakeLabeler(),
-            rag_filter=rag_filter,
             max_iter=4,
             top_k=1,
             min_retrieval_score=0.75,
@@ -183,7 +160,7 @@ class IterativeRetrievalControlTests(unittest.TestCase):
             result.stop_reason,
             "goal_incomplete_no_viable_recovery",
         )
-        self.assertEqual(rag_filter.calls, [])
+        self.assertEqual(result.rounds[0].next_query, "")
         self.assertFalse(
             result.rounds[0].filter_metadata["goal_completion"]["sufficient"]
         )

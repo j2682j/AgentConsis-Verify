@@ -1268,7 +1268,7 @@ class EvidenceRunner:
                         if self.bypass_search_labeler
                         else "efficientrag_labeler"
                     ),
-                    "efficientrag_filter",
+                    "next_hop_query_composer",
                 ],
             },
             "web_retrieval_control": {

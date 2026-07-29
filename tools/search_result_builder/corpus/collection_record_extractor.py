@@ -56,8 +56,28 @@ class CollectionRecordExtractor:
         *,
         max_records: int = 120,
         assembler: RecordAssembler | None = None,
+        max_block_content_paragraphs: int = 30,
+        max_block_text_chars: int = 20000,
     ) -> None:
         self.max_records = max(1, max_records)
+        # A repeated-block record used to keep only the first 3 <p> elements,
+        # which silently dropped the answer whenever a section held a long
+        # itemised list (level1_final_06 task d0633230: the scikit-learn v0.19
+        # changelog Bug fixes section holds 78 items, and the answer
+        # 'BaseLabelPropagation' sits at item 28). The bound now defaults to
+        # 30 — the smallest value that recovers that answer on the real page
+        # while keeping a ceiling for uncontrolled body blocks. Downstream
+        # chunker splits oversize content again, so raising this bound does
+        # not create oversized retrieval chunks.
+        self.max_block_content_paragraphs = max(1, int(max_block_content_paragraphs))
+        # Repeated-block detection previously rejected any child whose text was
+        # longer than 4000 chars. That silently dropped legitimate long
+        # sections in docs / changelog / clinical trial pages — including the
+        # v0.19.0 Bug fixes section that hosts BaseLabelPropagation, whose
+        # full text is around 8000 chars. The upper bound now exists only to
+        # exclude "the whole page body" from being mistaken as a block; that
+        # kind of body-sized child is measured in tens of thousands of chars.
+        self.max_block_text_chars = max(200, int(max_block_text_chars))
         self.assembler = assembler or RecordAssembler()
 
     def extract(
@@ -297,7 +317,10 @@ class CollectionRecordExtractor:
                 if child_signature != signature or id(child) in seen_nodes:
                     continue
                 text = normalize_text(child.get_text(" ", strip=True))
-                if not 20 <= len(text) <= 4000 or child.find("a", href=True) is None:
+                if (
+                    not 20 <= len(text) <= self.max_block_text_chars
+                    or child.find("a", href=True) is None
+                ):
                     continue
                 blocks.append(child)
                 seen_nodes.add(id(child))
@@ -365,7 +388,9 @@ class CollectionRecordExtractor:
             "[itemprop='description'], [class*='abstract'], [class*='summary'], "
             "[class*='description'], p"
         )
-        content = " ".join(self._unique_texts(content_nodes)[:3])
+        content = " ".join(
+            self._unique_texts(content_nodes)[: self.max_block_content_paragraphs]
+        )
         if not content:
             full_text = normalize_text(block.get_text(" ", strip=True))
             content = full_text.removeprefix(title).strip(" -:|")

@@ -3,7 +3,6 @@ from __future__ import annotations
 import unittest
 
 from tools.search_result_builder.config import SearchSourceCandidate
-from tools.search_result_builder.next_hop_query.rag_filter import RAGFilterResult
 from tools.search_result_builder.retrieval_control import IterativeRetrievalControl
 from tools.search_result_builder.source_analyze.rag_labeler import RAGLabelResult
 from tools.search_result_builder.source_analyze.seer.source_filter import SourceFilter
@@ -92,24 +91,11 @@ class NoContinueLabeler:
         ]
 
 
-class FixedFilter:
-    def build_query(self, *, question, evidence_items):
-        del question
-        text = " ".join(item.text for item in evidence_items)
-        return RAGFilterResult(
-            query="Example Org Taiwan 2024 Alice Chen",
-            kept_evidence_tokens=["Example", "Org", "Taiwan", "2024", "Alice", "Chen"],
-            fallback_used=True,
-            metadata={"method": "test_filter", "source_text": text},
-        )
-
-
 class IterativeRetrievalCoverageTests(unittest.TestCase):
     def test_no_bridge_span_does_not_repeat_an_exhausted_corpus(self):
         controller = IterativeRetrievalControl(
             retriever=FakeRetriever(),
             labeler=NoContinueLabeler(),
-            rag_filter=FixedFilter(),
             max_iter=2,
             top_k=1,
             min_retrieval_score=0.0,

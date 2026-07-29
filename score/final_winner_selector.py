@@ -108,12 +108,39 @@ class FinalWinnerSelector:
         evidence_answer_resolver: EvidenceAnswerResolver | None = None,
         question: str = "",
         enable_fallback_selection: bool = True,
+        trusted_tool_majority_override_ratio: float = 2.0,
+        attestation_majority_override_min_runs: int = 3,
+        attestation_majority_override_min_agents: int = 2,
     ) -> None:
         self.question = str(question or "").strip()
         # An empty final answer can never be correct, so an unresolved gate
         # outcome falls back to the best remaining candidate instead of
         # abstaining. Disable only to observe the raw gate verdict.
         self.enable_fallback_selection = bool(enable_fallback_selection)
+        # A tool_final_supported label unconditionally dominates every other
+        # bucket, so a candidate held by two runs can strip a five-run majority
+        # to the reserve pool. Guard the bucket dominance by requiring the
+        # trusted answer to at least keep pace with the loudest rival: when
+        # majority_runs > trusted_runs * ratio, both survive into the consensus
+        # gate. Ratio 0 disables the guard.
+        self.trusted_tool_majority_override_ratio = max(
+            0.0, float(trusted_tool_majority_override_ratio)
+        )
+        # Corpus attestation drops candidates the fetched pages never state.
+        # That is a strong signal on text-search tasks but wrong on tasks where
+        # the answer lives in a video, audio clip, or reasoning step and the
+        # corpus was searched with the wrong angle: level1_final_06 task
+        # 9d191bce lost the 4-run cross-agent answer 'extremely' this way, to
+        # a chatty 2-run rival that happened to match a common phrase in the
+        # fetched pages. A candidate held by enough runs across enough agents
+        # cannot be silenced by silence in the corpus. Setting either bound to
+        # 0 disables the guard.
+        self.attestation_majority_override_min_runs = max(
+            0, int(attestation_majority_override_min_runs)
+        )
+        self.attestation_majority_override_min_agents = max(
+            0, int(attestation_majority_override_min_agents)
+        )
         self.answer_validator = answer_validator or AnswerValidator()
         self.clusterer = clusterer or AnswerCandidateClusterer(self.answer_validator)
         self.answer_requirement_gate = (
@@ -607,6 +634,28 @@ class FinalWinnerSelector:
             for item in candidates
             if buckets[item.candidate_key] == best_bucket
         ]
+        # Carve-out: a trusted_tool_final label backed by a couple of runs
+        # should not silently strip a much larger cross-agent majority. When
+        # a rival bucket carries meaningfully more supporting runs, keep both
+        # so the consensus gate can weigh them. Only relaxes trusted_tool_final
+        # because every other bucket already survives via the soft-signal path.
+        majority_rescued: list[CandidateEvaluation] = []
+        if (
+            best_bucket == EvidenceSupportLevel.TRUSTED_TOOL_FINAL.value
+            and self.trusted_tool_majority_override_ratio > 0
+            and survivors
+        ):
+            trusted_top = max(
+                int(item.supporting_run_count or 0) for item in survivors
+            )
+            threshold = trusted_top * self.trusted_tool_majority_override_ratio
+            for item in candidates:
+                if item in survivors:
+                    continue
+                if int(item.supporting_run_count or 0) > threshold:
+                    majority_rescued.append(item)
+        if majority_rescued:
+            survivors = list(survivors) + majority_rescued
         deferred = [
             self._decision(
                 item,
@@ -649,6 +698,9 @@ class FinalWinnerSelector:
                 "gate_strength": "soft",
                 "reserve_candidate_keys": [item.candidate_key for item in candidates if item not in survivors],
                 "deferred": [item.to_dict() for item in deferred],
+                "trusted_tool_majority_rescued": [
+                    item.candidate_key for item in majority_rescued
+                ],
             },
         )
 
@@ -1040,6 +1092,28 @@ class FinalWinnerSelector:
             if countable.get(item.candidate_key) is None
             or countable.get(item.candidate_key, 0) > 0
         ]
+        # Cross-agent majority safety net: rescue candidates the corpus never
+        # states when several agents' runs all landed on them. A single agent
+        # repeating itself is not the same signal — the agents' guard uses
+        # distinct-agent count, not raw run count, precisely so one prolific
+        # agent cannot manufacture a fake majority.
+        rescued_by_majority: list[CandidateEvaluation] = []
+        if (
+            self.attestation_majority_override_min_runs > 0
+            and self.attestation_majority_override_min_agents > 0
+        ):
+            for item in candidates:
+                if item in survivors:
+                    continue
+                run_count = int(item.supporting_run_count or 0)
+                agent_count = len(set(item.supporting_agent_ids or []))
+                if (
+                    run_count >= self.attestation_majority_override_min_runs
+                    and agent_count >= self.attestation_majority_override_min_agents
+                ):
+                    rescued_by_majority.append(item)
+        if rescued_by_majority:
+            survivors = list(survivors) + rescued_by_majority
         if not survivors or len(survivors) == len(candidates):
             return candidates
         for item in candidates:
@@ -1049,6 +1123,12 @@ class FinalWinnerSelector:
             if "corpus_attestation" not in item.soft_deferred_by:
                 item.soft_deferred_by.append("corpus_attestation")
             item.metadata["corpus_mentions"] = countable.get(item.candidate_key, 0)
+        for item in rescued_by_majority:
+            item.metadata["corpus_attestation_majority_rescue"] = {
+                "supporting_run_count": int(item.supporting_run_count or 0),
+                "supporting_agent_count": len(set(item.supporting_agent_ids or [])),
+                "corpus_mentions": countable.get(item.candidate_key, 0),
+            }
         return survivors
 
     def _corpus_surface_form_is_authoritative(self, evidence: dict[str, Any]) -> bool:

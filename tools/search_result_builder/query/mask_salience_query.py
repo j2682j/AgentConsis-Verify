@@ -239,6 +239,8 @@ Rules:
 - Use full_document when absence cannot be verified from a passage.
 - Use collection when every relevant record in a list must be checked.
 - Do not guess or include a final answer.
+- Do not invent specific identifiers: NCT trial numbers, DOIs, arXiv IDs, catalog codes, jersey or docket numbers, contract IDs, patent numbers. Use entity names, dates, and stated constraints instead. Copy such identifiers only when the Question or Search clues state them literally.
+- Do not guess the league, database, catalog, region, platform, or organization the entity belongs to. Keep entity names as written; add a source name only when the Question or Search clues supply it.
 
 Return exactly this JSON shape:
 {{"queries": [{{"query": "...", "source_kind": "web|video|academic|collection", "access_mode": "search|direct_fetch|browser", "source_hint": "...", "required_content": "html_text|full_page|pdf_text|pdf_figure|transcript|temporal_video|visual|collection_records"}}], "relation_goals": [{{"subject": "...", "relation": "...", "target": "...", "source_kind": "web|video|academic|collection", "polarity": "positive|negative", "verification_scope": "passage|full_document|collection", "required_content": "html_text|full_page|pdf_text|pdf_figure|transcript|temporal_video|visual|collection_records"}}]}}"""

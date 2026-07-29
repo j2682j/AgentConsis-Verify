@@ -1,7 +1,6 @@
 from .answer_target_extractor import AnswerTarget, AnswerTargetExtractor
 from .coverage_assessor import CoverageAssessment, CoverageAssessor
 from .evidence_sufficiency_gate import EvidenceSufficiencyGate, EvidenceSufficiencyResult
-from .filter_input_builder import FilterInputBuilder, QueryInfoTokenRecord
 from .intent_state_tracker import SearchIntentStateTracker
 from .next_hop_evidence_selector import NextHopEvidenceSelection, NextHopEvidenceSelector
 from .next_hop_query_composer import (
@@ -9,6 +8,7 @@ from .next_hop_query_composer import (
     NextHopQueryComposer,
     RelationHopRequest,
 )
+from .next_hop_result import NextHopQueryResult
 from .query_guard import NextHopQueryGuard, NextHopQueryGuardResult
 from .query_token_selector import QueryTokenSelector, SelectedQueryTokens
 from .relation_evidence import RelationEvidence
@@ -23,7 +23,6 @@ from .retrieval_recovery_policy import (
     RetrievalRecoveryDecision,
     RetrievalRecoveryPolicy,
 )
-from .rag_filter import EfficientRAGFilterAdapter, RAGFilterResult
 from .retrieval_controller import RetrievalDecision, RetrievalController
 
 __all__ = [
@@ -33,17 +32,14 @@ __all__ = [
     "CoverageAssessor",
     "EvidenceSufficiencyGate",
     "EvidenceSufficiencyResult",
-    "EfficientRAGFilterAdapter",
-    "FilterInputBuilder",
-    "QueryInfoTokenRecord",
     "NextHopEvidenceSelection",
     "NextHopEvidenceSelector",
     "NextHopComposition",
     "NextHopQueryComposer",
+    "NextHopQueryResult",
     "RelationHopRequest",
     "QueryTokenSelector",
     "SelectedQueryTokens",
-    "RAGFilterResult",
     "RelationEvidence",
     "RelationBindingResult",
     "RelationEvidenceBinder",

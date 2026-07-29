@@ -55,7 +55,7 @@ class PassageEvidenceUnitBuilder:
         self,
         *,
         max_units: int = 10,
-        max_units_per_document: int = 3,
+        max_units_per_document: int = 6,
         max_unit_chars: int = 160,
         max_context_chars: int = 600,
     ) -> None:

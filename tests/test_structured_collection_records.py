@@ -120,6 +120,163 @@ class CollectionRecordExtractorTests(unittest.TestCase):
         self.assertEqual(record.authors, ("Dana Lee", "Evan Yu"))
         self.assertEqual(record.source, "Research Press")
 
+    # A regression pair around the repeated-block content cap.
+    # level1_final_06 task d0633230 hit a section with 20+ paragraphs where the
+    # answer sat past the 3rd, and _block_record kept only the first three,
+    # silently dropping it. The extractor's raw-text sibling path has a mirror
+    # test in test_corpus_chunk_selection.py; these two keep the HTML path in
+    # sync with it.
+
+    def _paged_section_html(self, answer_paragraph: str) -> str:
+        """Two repeated <article>s (needed to trip the block detector).
+
+        The version-0.19 article carries an itemised bug-fix section: many
+        earlier fixes, the answer somewhere past the third item, more fixes
+        after. Mirrors the shape of Sphinx-generated changelogs.
+        """
+
+        earlier = "\n".join(
+            f"<p>Fix number {i} in module x.</p>" for i in range(1, 8)
+        )
+        later = "\n".join(
+            f"<p>Fix number {i} in module y.</p>" for i in range(11, 15)
+        )
+        return f"""
+        <div>
+          <article>
+            <h2><a href="/v019">Version 0.19</a></h2>
+            <h3>Bug fixes</h3>
+            {earlier}
+            <p>{answer_paragraph}</p>
+            {later}
+          </article>
+          <article>
+            <h2><a href="/v018">Version 0.18</a></h2>
+            <p>An earlier release notes summary.</p>
+          </article>
+        </div>
+        """
+
+    def test_repeated_block_keeps_content_past_the_third_paragraph(self):
+        answer = (
+            "Other predictors fix semi_supervised.BaseLabelPropagation to correctly "
+            "implement LabelPropagation and LabelSpreading as documented."
+        )
+
+        result = CollectionRecordExtractor().extract(
+            self._paged_section_html(answer),
+            parent_url="https://example.test/whats_new",
+            source_title="changelog",
+            source_kind="web",
+        )
+
+        v019 = next(record for record in result.records if record.title == "Version 0.19")
+        self.assertIn("BaseLabelPropagation", v019.content)
+
+    def test_a_cap_of_three_would_drop_the_answer(self):
+        """Explicit guard on the regression direction."""
+
+        answer = (
+            "Other predictors fix semi_supervised.BaseLabelPropagation to correctly "
+            "implement LabelPropagation and LabelSpreading as documented."
+        )
+
+        result = CollectionRecordExtractor(max_block_content_paragraphs=3).extract(
+            self._paged_section_html(answer),
+            parent_url="https://example.test/whats_new",
+            source_title="changelog",
+            source_kind="web",
+        )
+
+        v019 = next(record for record in result.records if record.title == "Version 0.19")
+        self.assertNotIn("BaseLabelPropagation", v019.content)
+
+    def test_default_content_paragraph_cap_is_thirty(self):
+        self.assertEqual(
+            CollectionRecordExtractor().max_block_content_paragraphs, 30
+        )
+
+    # A regression pair around the repeated-block text-size cap.
+    # The original 4000-char upper bound rejected sections whose full text was
+    # larger, which silently excluded the v0.19.0 Bug fixes section (~8000
+    # chars, contains BaseLabelPropagation) from ever becoming a block.
+
+    def _oversized_section_html(self, answer_paragraph: str) -> str:
+        # <section> matches the Sphinx-generated shape of the scikit-learn
+        # changelog. <article> was tried first, but that tag is added to the
+        # block pool unconditionally at the top of _extract_repeated_blocks and
+        # bypasses max_block_text_chars entirely — the cap only ever guards
+        # ul/ol/div/section repetition detection.
+        long_fix = (
+            "<p>A long detailed fix explanation with reasoning and "
+            "reproduction steps that spans several sentences to push the "
+            "total block text well past four thousand characters. "
+            "It repeats context for the reader across each entry. </p>"
+        )
+        earlier = "\n".join(long_fix for _ in range(20))
+        later = "\n".join(long_fix for _ in range(5))
+        return f"""
+        <div>
+          <section>
+            <h2><a href="/v019">Version 0.19</a></h2>
+            <h3>Bug fixes</h3>
+            {earlier}
+            <p>{answer_paragraph}</p>
+            {later}
+          </section>
+          <section>
+            <h2><a href="/v018">Version 0.18</a></h2>
+            {long_fix}
+          </section>
+        </div>
+        """
+
+    def test_oversized_section_still_becomes_a_record(self):
+        answer = (
+            "Other predictors fix semi_supervised.BaseLabelPropagation to correctly "
+            "implement LabelPropagation and LabelSpreading as documented."
+        )
+
+        result = CollectionRecordExtractor(
+            max_block_content_paragraphs=200,
+        ).extract(
+            self._oversized_section_html(answer),
+            parent_url="https://example.test/whats_new",
+            source_title="changelog",
+            source_kind="web",
+        )
+
+        v019 = next(record for record in result.records if record.title == "Version 0.19")
+        self.assertIn("BaseLabelPropagation", v019.content)
+
+    def test_a_four_thousand_char_cap_would_drop_the_section(self):
+        """Explicit guard on the regression direction."""
+
+        answer = (
+            "Other predictors fix semi_supervised.BaseLabelPropagation to correctly "
+            "implement LabelPropagation and LabelSpreading as documented."
+        )
+
+        result = CollectionRecordExtractor(
+            max_block_content_paragraphs=200,
+            max_block_text_chars=4000,
+        ).extract(
+            self._oversized_section_html(answer),
+            parent_url="https://example.test/whats_new",
+            source_title="changelog",
+            source_kind="web",
+        )
+
+        v019 = [record for record in result.records if record.title == "Version 0.19"]
+        # With the old cap the oversize section is rejected outright, so no
+        # record is produced for the version at all.
+        self.assertFalse(v019)
+
+    def test_default_text_char_cap_is_twenty_thousand(self):
+        self.assertEqual(
+            CollectionRecordExtractor().max_block_text_chars, 20000
+        )
+
 
 class StructuredCorpusIntegrationTests(unittest.TestCase):
     def setUp(self):

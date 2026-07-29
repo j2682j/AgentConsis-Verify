@@ -50,11 +50,11 @@ from .next_hop_query.goal_completion import GoalCompletionEvaluator
 from .next_hop_query.intent_state_tracker import SearchIntentStateTracker
 from .next_hop_query.next_hop_evidence_selector import NextHopEvidenceSelector
 from .next_hop_query.next_hop_query_composer import NextHopQueryComposer
+from .next_hop_query.next_hop_result import NextHopQueryResult
 from .next_hop_query.relation_evidence_binder import RelationEvidenceBinder
 from .next_hop_query.relation_goal_resolver import RelationGoalResolver
 from .next_hop_query.retrieval_recovery_policy import RetrievalRecoveryPolicy
 from .next_hop_query.query_guard import NextHopQueryGuard
-from .next_hop_query.rag_filter import EfficientRAGFilterAdapter, RAGFilterResult
 from .passage_retriever import Retriever
 from .passage_candidate_selector import PassageCandidateSelector
 from .query import QueryGenerator, SearchIntentPlan, SearchQueryRequest
@@ -334,7 +334,7 @@ class IterativeRetrievalControl:
     Args:
         - retriever: 已載入 corpus、passage embeddings 與 FAISS index 的 Retriever。
         - labeler: 判斷 chunk 為 CONTINUE 或 TERMINATE 的 EfficientRAG Labeler。
-        - rag_filter: 根據 query 與 useful tokens 產生下一輪 query 的 Filter。
+        - next_hop_composer: 根據問題與 bridge evidence 組合下一輪 query。
         - max_iter: 最大 retrieval 輪數，預設為 4。
         - top_k: 每輪從 FAISS 取得的 passage 數量。
 
@@ -347,7 +347,6 @@ class IterativeRetrievalControl:
         *,
         retriever: Retriever,
         labeler: EfficientRAGLabelerAdapter | None = None,
-        rag_filter: EfficientRAGFilterAdapter | None = None,
         next_hop_composer: NextHopQueryComposer | None = None,
         next_hop_evidence_selector: NextHopEvidenceSelector | None = None,
         coverage_assessor: CoverageAssessor | None = None,
@@ -379,6 +378,7 @@ class IterativeRetrievalControl:
         recovery_policy: RetrievalRecoveryPolicy | None = None,
         external_source_loader: Callable[[list[SearchQueryRequest]], int] | None = None,
         max_relation_branches: int = 2,
+        anchor_span_role_in_extraction: bool = True,
     ) -> None:
         self.retriever = retriever
         self.bypass_labeler = bool(bypass_labeler)
@@ -387,7 +387,6 @@ class IterativeRetrievalControl:
             if labeler is not None
             else (None if self.bypass_labeler else EfficientRAGLabelerAdapter())
         )
-        self.rag_filter = rag_filter or EfficientRAGFilterAdapter()
         self.next_hop_composer = next_hop_composer or NextHopQueryComposer()
         self.next_hop_evidence_selector = (
             next_hop_evidence_selector or NextHopEvidenceSelector()
@@ -402,6 +401,7 @@ class IterativeRetrievalControl:
         self.direct_evidence_promoter = (
             direct_evidence_promoter or DirectEvidencePromoter()
         )
+        self.anchor_span_role_in_extraction = bool(anchor_span_role_in_extraction)
         self.span_grounder = span_grounder or CandidateSpanGrounder()
         self.span_quality_gate = span_quality_gate or CandidateSpanQualityGate()
         self.span_finalizer = span_finalizer or RoleAwareSpanFinalizer()
@@ -1637,7 +1637,7 @@ class IterativeRetrievalControl:
         query: str,
         documents: list[RetrievedDocumentTrace],
         intent_plan: SearchIntentPlan | None = None,
-    ) -> RAGFilterResult:
+    ) -> NextHopQueryResult:
         selected_spans = self._dedupe_tokens(
             str(contract.get("bridge_span") or "")
             for document in documents
@@ -1645,7 +1645,7 @@ class IterativeRetrievalControl:
             for contract in self._grounded_bridge_contracts(document)
         )[:3]
         if not selected_spans:
-            return RAGFilterResult(
+            return NextHopQueryResult(
                 query="",
                 kept_question_tokens=[],
                 kept_evidence_tokens=[],
@@ -1688,7 +1688,7 @@ class IterativeRetrievalControl:
         *,
         original_question: str,
         current_query: str,
-        result: RAGFilterResult,
+        result: NextHopQueryResult,
         round_trace: RetrievalRoundTrace,
         intent_plan: SearchIntentPlan | None,
         seen_query_keys: set[str],
@@ -1731,7 +1731,7 @@ class IterativeRetrievalControl:
         documents: list[RetrievedDocumentTrace],
         reason: str,
         intent_plan: SearchIntentPlan | None = None,
-    ) -> RAGFilterResult | None:
+    ) -> NextHopQueryResult | None:
         candidates = [
             document
             for document in documents
@@ -2306,7 +2306,16 @@ class IterativeRetrievalControl:
                     source_type=candidate.source_type,
                     source_title=candidate.source_title,
                     candidate_span=candidate.text,
-                    requested_role=effective_role,
+                    # SemanticFactExtractor treats requested_role as a hard
+                    # override of the model's own role output, so forwarding the
+                    # classifier's label made the extractor unable to correct it.
+                    # The classifier emitted BRIDGE 337 times against
+                    # ANSWER_SUPPORT 8 on level1_final_06, and that pinned 317 of
+                    # 325 facts to BRIDGE — which is what starves direct
+                    # contracts. Leave it blank so the extractor classifies.
+                    requested_role=(
+                        effective_role if self.anchor_span_role_in_extraction else ""
+                    ),
                     goal_id=role_result.goal_id,
                     metadata={"answer_target": self._answer_target(intent_plan)},
                 )
@@ -2950,7 +2959,7 @@ class IterativeRetrievalControl:
         round_trace: RetrievalRoundTrace,
         *,
         max_total: int = 15,
-        max_per_document: int = 3,
+        max_per_document: int = 6,
     ) -> tuple[list[CandidateSpan], dict[str, tuple[int, str]]]:
         candidates: list[CandidateSpan] = []
         candidate_map: dict[str, tuple[int, str]] = {}
@@ -3313,7 +3322,7 @@ class WebRetrievalControl:
         - search_tool: 提供 run(parameters) 的網頁搜尋工具。
         - corpus_builder: 清洗全文、分割 passages 與去重的 corpus builder。
         - labeler: EfficientRAG Labeler。
-        - rag_filter: EfficientRAG Filter。
+        - next_hop_composer: 組合下一跳查詢的控制器。
         - model_type: Passage/query embedding 模型類型。
         - max_queries: 最多使用的初始搜尋 query 數量。
         - max_results_per_query: 每個 query 最多取得的網頁結果數。
@@ -3336,7 +3345,6 @@ class WebRetrievalControl:
         source_filter: SourceFilter | None = None,
         page_content_fetcher: PageContentFetcher | None = None,
         labeler: EfficientRAGLabelerAdapter | None = None,
-        rag_filter: EfficientRAGFilterAdapter | None = None,
         next_hop_composer: NextHopQueryComposer | None = None,
         next_hop_evidence_selector: NextHopEvidenceSelector | None = None,
         model_type: str = "",
@@ -3386,7 +3394,6 @@ class WebRetrievalControl:
             if labeler is not None
             else (None if self.bypass_labeler else EfficientRAGLabelerAdapter())
         )
-        self.rag_filter = rag_filter or EfficientRAGFilterAdapter()
         self.next_hop_composer = next_hop_composer or NextHopQueryComposer()
         self.next_hop_evidence_selector = (
             next_hop_evidence_selector or NextHopEvidenceSelector()
@@ -3716,7 +3723,6 @@ class WebRetrievalControl:
             retriever=retriever,
             labeler=self.labeler,
             bypass_labeler=self.bypass_labeler,
-            rag_filter=self.rag_filter,
             next_hop_composer=self.next_hop_composer,
             next_hop_evidence_selector=self.next_hop_evidence_selector,
             max_iter=self.max_iter,

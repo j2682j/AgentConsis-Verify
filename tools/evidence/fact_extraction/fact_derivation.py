@@ -26,9 +26,14 @@ class FactDerivationEngine:
         max_derivations: int = 64,
         answer_bound_validator: AnswerBoundFactValidator | None = None,
         contract_validator: DerivedEvidenceContractValidator | None = None,
+        enforce_contract_gate: bool = True,
     ) -> None:
         self.max_depth = max(1, int(max_depth))
         self.max_derivations = max(1, int(max_derivations))
+        # When False a composed fact keeps the role implied by its parents even
+        # if the derived contract failed verification. Only for A/B measurement
+        # of the gate's effect — an unverified chain carries no evidence proof.
+        self.enforce_contract_gate = bool(enforce_contract_gate)
         self.answer_bound_validator = (
             answer_bound_validator or AnswerBoundFactValidator()
         )
@@ -160,7 +165,7 @@ class FactDerivationEngine:
             if right.role == "ANSWER_SUPPORT" or completes_goal
             else "BRIDGE"
         )
-        if not contract.verified:
+        if self.enforce_contract_gate and not contract.verified:
             role = "BRIDGE"
         context_parts = [left.context, right.context]
         context = "\n".join(part for part in context_parts if part).strip()
