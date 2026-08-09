@@ -58,6 +58,11 @@ class AttachmentPayloadBuilder:
                 self._read_page_blocks(content, payload, marker="page")
             elif extension == ".pptx":
                 self._read_page_blocks(content, payload, marker="slide")
+            elif extension in {
+                ".mp3", ".m4a", ".wav", ".flac", ".ogg",
+                ".mp4", ".mov", ".mkv", ".avi", ".webm",
+            }:
+                self._read_transcript_segments(content, payload)
             elif extension in {".json", ".jsonld"}:
                 self._read_json(file_path, payload)
             elif extension == ".pdb":
@@ -294,6 +299,47 @@ class AttachmentPayloadBuilder:
                         block_type=marker,
                     )
                 )
+
+    def _read_transcript_segments(
+        self,
+        content: str,
+        payload: ParsedAttachmentPayload,
+    ) -> None:
+        """Split a transcription on the timestamps Whisper already emitted.
+
+        Audio used to arrive as one text block holding the whole recording, so
+        the fact extractor saw `input_count: 1` and returned nothing usable,
+        while a PowerPoint arriving as one block per slide returned a grounded
+        fact for each. Both level1_final_16 audio tasks then fell back to an
+        Agent reading raw transcript text and dropped items from a list: `031`
+        lost one ingredient of five, `045` returned two page numbers of five,
+        with every expected item present in the transcript.
+
+        The header lines before the first timestamp are model and language
+        metadata, not content, and are left out the way `_read_page_blocks`
+        drops anything preceding its first marker. A transcript without
+        timestamps falls back to a single block, which is what it does today.
+        """
+
+        pattern = re.compile(r"\[(\d+(?:\.\d+)?)-(\d+(?:\.\d+)?)\]\s*")
+        matches = list(pattern.finditer(content or ""))
+        if not matches:
+            if content.strip():
+                payload.text_blocks.append(TextBlock(text=content.strip()))
+            return
+        for index, match in enumerate(matches):
+            end = matches[index + 1].start() if index + 1 < len(matches) else len(content)
+            text = content[match.end():end].strip()
+            if not text:
+                continue
+            payload.text_blocks.append(
+                TextBlock(
+                    text=text,
+                    section=f"[{match.group(1)}-{match.group(2)}]",
+                    page=index + 1,
+                    block_type="transcript_segment",
+                )
+            )
 
     def _read_visual_content(
         self,

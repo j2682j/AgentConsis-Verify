@@ -51,7 +51,16 @@ class BestEffortReferenceSelectorTests(unittest.TestCase):
             "about the question, but it has not passed the strict evidence contract."
         )
 
-    def test_strict_evidence_disables_fallback(self) -> None:
+    def test_strict_evidence_no_longer_disables_the_fallback(self) -> None:
+        """Withholding references whenever any grounded item existed cost tasks.
+
+        The rule assumed a grounded item states the answer, which held while
+        level1_final_13 produced one across 53 tasks. level1_final_14 produced
+        five, three of which did not, and each removed all eight references
+        from its task -- 046 fell from 9 of 9 runs correct to 1 of 9. The two
+        now share the prompt, with the context budget giving evidence its
+        allowance first, so this selector no longer decides.
+        """
         selector = BestEffortReferenceSelector()
         output = {
             "retrieval": {
@@ -76,7 +85,8 @@ class BestEffortReferenceSelectorTests(unittest.TestCase):
             strict_evidence_items=[{"evidence_id": "E1"}],
         )
 
-        self.assertEqual(result, [])
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0].source_id, "D1")
 
     def test_selects_ranked_deduplicated_references(self) -> None:
         selector = BestEffortReferenceSelector(max_items=3, max_items_per_domain=1)

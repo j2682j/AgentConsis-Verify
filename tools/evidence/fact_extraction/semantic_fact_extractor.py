@@ -265,8 +265,8 @@ class SemanticFactExtractor:
     ) -> tuple[list[EvidenceFact], list[dict[str, Any]]]:
         unit_by_id: dict[str, SemanticSourceUnit] = {}
         for unit in units:
-            unit_by_id[unit.unit_id] = unit
-            unit_by_id.setdefault(unit.source_id, unit)
+            unit_by_id[self._unit_key(unit.unit_id)] = unit
+            unit_by_id.setdefault(self._unit_key(unit.source_id), unit)
         raw_units = parsed.get("units", []) if isinstance(parsed, dict) else []
         facts: list[EvidenceFact] = []
         rejected: list[dict[str, Any]] = []
@@ -274,7 +274,7 @@ class SemanticFactExtractor:
             if not isinstance(raw_unit, dict):
                 continue
             unit_id = normalize_text(str(raw_unit.get("unit_id") or ""))
-            unit = unit_by_id.get(unit_id)
+            unit = unit_by_id.get(self._unit_key(unit_id))
             if unit is None:
                 rejected.append({"unit_id": unit_id, "reason": "unknown_unit_id"})
                 continue
@@ -376,6 +376,23 @@ class SemanticFactExtractor:
                 start = starts.pop()
                 objects.append(text[start : index + 1])
         return objects
+
+    @staticmethod
+    def _unit_key(value: str) -> str:
+        """Match the model's unit reference against the ids it was given.
+
+        The prompt lists each source as `Unit T1`, so the model frequently
+        answers with `"unit_id": "Unit T1"` rather than `"T1"`, and an exact
+        lookup then drops every fact it produced with `unknown_unit_id`. On
+        level1_final_16 task 031 that discarded all three units of a correctly
+        extracted ingredient list -- 848 completion tokens of usable output,
+        `fact_count: 0`. Stripping the label the prompt itself introduced costs
+        nothing: unit ids are `T1`, `V1` and the like, so nothing else collides
+        after the prefix is removed.
+        """
+
+        text = normalize_text(str(value or "")).casefold()
+        return re.sub(r"^unit\s+", "", text).strip()
 
     def _truncate(self, value: str) -> str:
         return normalize_text(value)[: self.max_context_chars]

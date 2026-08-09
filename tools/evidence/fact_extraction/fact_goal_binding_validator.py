@@ -30,6 +30,7 @@ class FactGoalBindingValidator:
     """以 subject-relation-object contract 驗證 evidence fact。"""
 
     _TOKEN_RE = re.compile(r"[a-z0-9]+", re.IGNORECASE)
+    _MIN_IDENTIFYING_TOKEN = 3
     _PERSON_TARGETS = {"person", "human", "author", "writer", "nominator", "name"}
     _NUMBER_TARGETS = {"number", "count", "quantity", "measurement", "amount"}
     _BOOLEAN_TARGETS = {"boolean", "yes no", "yes/no", "true false"}
@@ -185,9 +186,36 @@ class FactGoalBindingValidator:
             return None
 
     def _entity_equivalent(self, first: str, second: str) -> bool:
-        left = self._entity_key(first)
-        right = self._entity_key(second)
-        return bool(left and right and (left == right or left in right or right in left))
+        """Whether two subject strings name the same entity.
+
+        Compared token by token rather than as raw substrings. Raw containment
+        binds anything short to anything longer that happens to spell it: on
+        level1_final_14 a contract with subject "I" bound the goal subject
+        "Wikipedia", because "i" is inside "wikipedia". That contract --
+        "I nominated_by this particular article" -- then counted as a direct
+        answer, marked the task sufficient, and stopped retrieval two rounds
+        early on a question whose answer was a username.
+
+        A shorter name still binds a longer one, so "Claus" reaches
+        "Claus Peter Flor", but only when every one of its tokens appears in
+        the other and at least one of them is long enough to identify
+        something. That last part is what rejects "I", "it", and other
+        single-letter or stopword-length subjects.
+        """
+
+        left = self._entity_tokens(first)
+        right = self._entity_tokens(second)
+        if not left or not right:
+            return False
+        if left == right:
+            return True
+        smaller, larger = sorted((left, right), key=len)
+        if not smaller <= larger:
+            return False
+        return any(len(token) >= self._MIN_IDENTIFYING_TOKEN for token in smaller)
+
+    def _entity_tokens(self, value: str) -> set[str]:
+        return set(self._TOKEN_RE.findall(normalize_text(value).casefold()))
 
     def _entity_key(self, value: str) -> str:
         return " ".join(self._TOKEN_RE.findall(normalize_text(value).casefold()))

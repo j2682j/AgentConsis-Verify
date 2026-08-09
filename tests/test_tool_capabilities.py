@@ -37,7 +37,7 @@ class FakeAgent:
         self.calls = 0
         self.messages = []
 
-    def invoke_with_usage(self, messages):
+    def invoke_with_usage(self, messages, **_overrides):
         self.calls += 1
         self.messages.append(messages)
         if self.calls == 1:

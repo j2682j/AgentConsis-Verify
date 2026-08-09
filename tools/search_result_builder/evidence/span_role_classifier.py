@@ -151,7 +151,7 @@ class SpanRoleClassifier:
          - SpanRoleBatchResult: span role 結果與診斷資訊。
 
         """
-        candidates = self._dedupe_candidates(spans)[: self.max_spans_per_call]
+        candidates = self._dedupe_candidates(spans)
         diagnostics: dict[str, Any] = {
             "provider": "ollama_native",
             "model": self.model_name,
@@ -164,6 +164,27 @@ class SpanRoleClassifier:
             diagnostics["success"] = True
             diagnostics["empty_reason"] = "no_candidate_spans"
             return SpanRoleBatchResult(diagnostics=diagnostics)
+
+        # `max_spans_per_call` bounds one prompt, not the batch: it is sized
+        # against `max_tokens`, since the model must emit a role per span and a
+        # larger slice would truncate the reply rather than classify more. Spans
+        # beyond it are carried into further calls instead of being dropped.
+        chunks = [
+            candidates[start : start + self.max_spans_per_call]
+            for start in range(0, len(candidates), self.max_spans_per_call)
+        ]
+        if len(chunks) > 1:
+            return self._classify_chunks(
+                chunks=chunks,
+                question=question,
+                answer_requirement=answer_requirement,
+                answer_target=answer_target,
+                active_goal=active_goal,
+                next_goal=next_goal,
+                relation_goals=relation_goals,
+                keep_alive=keep_alive,
+                diagnostics=diagnostics,
+            )
 
         prompt = self._prompt(
             question=question,
@@ -279,6 +300,67 @@ class SpanRoleClassifier:
         )
         return SpanRoleBatchResult(results=best_results, diagnostics=diagnostics)
 
+    def _classify_chunks(
+        self,
+        *,
+        chunks: list[list[CandidateSpan]],
+        question: str,
+        answer_requirement: str,
+        answer_target: str,
+        active_goal: str,
+        next_goal: str,
+        relation_goals: list[dict[str, str]] | None,
+        keep_alive: int | str,
+        diagnostics: dict[str, Any],
+    ) -> SpanRoleBatchResult:
+        """Classify one over-sized candidate set as several bounded calls."""
+
+        results: list[SpanRoleResult] = []
+        chunk_diagnostics: list[dict[str, Any]] = []
+        for chunk in chunks:
+            outcome = self.classify_batch(
+                question=question,
+                answer_requirement=answer_requirement,
+                answer_target=answer_target,
+                active_goal=active_goal,
+                next_goal=next_goal,
+                relation_goals=relation_goals,
+                spans=chunk,
+                keep_alive=keep_alive,
+            )
+            results.extend(outcome.results)
+            chunk_diagnostics.append(dict(outcome.diagnostics))
+
+        complete = len(results) == sum(len(chunk) for chunk in chunks)
+        diagnostics.update(
+            {
+                "success": complete,
+                "chunk_count": len(chunks),
+                "chunk_diagnostics": chunk_diagnostics,
+                "prompt_tokens": sum(
+                    int(item.get("prompt_tokens") or 0) for item in chunk_diagnostics
+                ),
+                "completion_tokens": sum(
+                    int(item.get("completion_tokens") or 0)
+                    for item in chunk_diagnostics
+                ),
+                "answer_support_count": sum(
+                    1 for result in results if result.role == ANSWER_SUPPORT
+                ),
+                "bridge_count": sum(1 for result in results if result.role == BRIDGE),
+                "noise_count": sum(1 for result in results if result.role == NOISE),
+                "goal_assignment_counts": self._goal_assignment_counts(results),
+            }
+        )
+        if not complete:
+            diagnostics["partial"] = True
+            diagnostics["error"] = (
+                "incomplete_span_role_response:"
+                f" expected={sum(len(chunk) for chunk in chunks)}"
+                f" actual={len(results)}"
+            )
+        return SpanRoleBatchResult(results=results, diagnostics=diagnostics)
+
     def unload(self) -> dict[str, Any]:
         try:
             self.llm_client.ollama_native_chat(
@@ -337,12 +419,43 @@ class SpanRoleClassifier:
                 "Do not skip any candidate id.",
                 "",
                 "Labels:",
-                "ANSWER_SUPPORT = directly supports the original question's final answer.",
-                "BRIDGE = fills the active goal and is needed by the next goal.",
-                "NOISE = irrelevant, page chrome, navigation, login, captcha, or generic text.",
-                "ANSWER_SUPPORT means the fact object itself is a final answer value for Answer Requirement.",
-                "A clue, entity, row, date, or intermediate value is BRIDGE, even when it is relevant.",
-                "For count, maximum, minimum, list, or calculated questions, an individual item is not ANSWER_SUPPORT unless Context explicitly states the requested aggregate result.",
+                # The label is anchored on whether the span states a candidate
+                # answer, not on whether it fills the currently active goal.
+                # Anchoring on the goal is what made this label almost never
+                # fire: on level1_final_13 the classifier returned
+                # ANSWER_SUPPORT for 37 of 2,209 spans and not once for a span
+                # carrying the gold answer, because rules like "a clue, entity,
+                # row, date, or intermediate value is BRIDGE, even when it is
+                # relevant" cover nearly every real span. Everything then
+                # arrived downstream as a bridge contract and was rejected as a
+                # goal mismatch, leaving evidence_count = 1 across 28 retrieval
+                # tasks. Replayed offline against spans known to contain the
+                # answer, this wording lifts recall from 13% to 43% and the
+                # tasks with a usable ANSWER_SUPPORT span from 3 of 9 to 8 of 9,
+                # while false positives on known-irrelevant spans move from 1%
+                # to 2%. See tests/test_span_role_label_anchor.py.
+                "ANSWER_SUPPORT = the span states a value that could be the question's final answer.",
+                "BRIDGE = the span helps reach the answer but does not state it.",
+                # The second sentence is the load-bearing one. With NOISE
+                # defined only by listing kinds of chrome, spans that plainly
+                # state the answer were discarded as "generic text": on
+                # level1_final_15, 10 of the 21 classified spans containing the
+                # gold answer came back NOISE, among them "Jack O'Neill: Isn't
+                # that hot? Teal'c: Extremely" and "- Annie Levin, The New York
+                # Observer". Rewriting ANSWER_SUPPORT and BRIDGE without
+                # touching NOISE is what opened the gap: the old BRIDGE was a
+                # wide catch-all, the new one is narrow, and borderline spans
+                # fell through to NOISE. Replayed on those spans, this wording
+                # takes the NOISE rate on answer-bearing spans from 47% to 13%
+                # while ANSWER_SUPPORT stays put -- the rescued spans land in
+                # BRIDGE, where they belong. It costs filtering: NOISE on the
+                # rest falls from 83% to 67%.
+                # Both sentences stay on one line. Splitting them across two
+                # lines of the label block measured 33% against 13% on the same
+                # fixed spans, reproducibly -- the classifier is deterministic
+                # here, so that is a real difference and not sampling.
+                "NOISE = page chrome, navigation, login, captcha, cookie banners, or boilerplate carrying no factual content. A span that states any fact about the entities in the question is never NOISE.",
+                "Prefer ANSWER_SUPPORT whenever the span contains a candidate answer value, even if other steps are still needed to confirm it.",
                 goal_rule,
                 "For NOISE, goal_id must be an empty string.",
                 "",

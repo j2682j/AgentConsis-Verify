@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Any
 
 from context.stage1_final_answer_repair_context import Stage1FinalAnswerRepairContextBuilder
 from context.stage1_tool_context import Stage1ToolContextBuilder
 from core.config import AgentConfig, EachAgentReply
+from core.sampling_seed import sampling_overrides
 from core.slm_agent import SLM_Agent
 from core.stage1_search_gate import Stage1SearchAccessState
 from core.tool_turn_policy import AdaptiveToolTurnPolicy
@@ -151,7 +153,14 @@ class Stage1ToolUseRunner:
                         self._attachment_access_prompt(attachment_workspace)
                     ),
                 )
-            raw_reply, prompt_tokens, completion_tokens = agent.invoke_with_usage(messages)
+            raw_reply, prompt_tokens, completion_tokens = agent.invoke_with_usage(
+                messages,
+                **sampling_overrides(
+                    agent_id=config.agent_id,
+                    run_index=run_index,
+                    turn=turn_index,
+                ),
+            )
             prompt_tokens_total += prompt_tokens
             completion_tokens_total += completion_tokens
 
@@ -175,6 +184,7 @@ class Stage1ToolUseRunner:
                     parsed.get("tool_args", {}),
                     question=question,
                     attachment=attachment,
+                    reasoning_step=str(parsed.get("reasoning_step", "") or "").strip(),
                 )
                 tool_name, tool_args = self._reroute_local_media_tool(
                     tool_name,
@@ -209,6 +219,7 @@ class Stage1ToolUseRunner:
                     gate_decision = search_access_state.authorize(
                         query=search_query,
                         missing_information=missing_information,
+                        agent_id=config.agent_id,
                     )
                     tool_call["search_gate"] = {
                         "allowed": gate_decision.allowed,
@@ -600,6 +611,7 @@ class Stage1ToolUseRunner:
         *,
         question: str = "",
         attachment: dict[str, Any] | None = None,
+        reasoning_step: str = "",
     ) -> dict[str, Any]:
         """
         正規化工具參數，補齊 search 預設欄位並處理 query/input 別名。
@@ -607,6 +619,7 @@ class Stage1ToolUseRunner:
         Args:
             - tool_name: 正規化後的工具名稱。
             - tool_args: Agent 回傳的工具參數。
+            - reasoning_step: 本回合工具請求的理由，用於補齊 missing_information。
 
         Returns:
             - dict[str, Any]: 可傳給 ToolManager 的工具參數。
@@ -616,6 +629,10 @@ class Stage1ToolUseRunner:
             if "input" not in args and "query" in args:
                 args["input"] = args["query"]
             args.setdefault("mode", "text")
+            if not str(args.get("missing_information", "") or "").strip():
+                derived = self._missing_information_from_reasoning(reasoning_step)
+                if derived:
+                    args["missing_information"] = derived
         elif tool_name == "python_calculator":
             if "input" not in args and "expression" in args:
                 args["input"] = args["expression"]
@@ -641,6 +658,63 @@ class Stage1ToolUseRunner:
                 args.get("input") or args.get("query") or args.get("question") or question,
             )
         return args
+
+    _STEP_PREFIX_RE = re.compile(r"^\s*step\s*\d+\s*[.:)-]\s*", re.IGNORECASE)
+    _NEED_PREFIX_RE = re.compile(
+        r"^\s*(?:i\s+need\s+to\s+|i\s+must\s+|i\s+should\s+|need\s+to\s+)", re.IGNORECASE
+    )
+    _MISSING_INFORMATION_MAX_CHARS = 200
+    # Words that only restate that something is missing. A step built from these
+    # alone names nothing, so it cannot stand in for the gate's required field.
+    _GENERIC_NEED_WORDS = frozenset(
+        {
+            "a", "an", "and", "answer", "any", "be", "data", "detail", "details",
+            "fact", "facts", "find", "for", "from", "get", "identify", "in",
+            "information", "is", "it", "its", "locate", "missing", "more",
+            "needed", "obtain", "of", "on", "one", "out", "required", "retrieve",
+            "search", "specific", "that", "the", "this", "to", "tool", "value",
+            "values", "what", "which", "why", "with",
+        }
+    )
+    _MISSING_INFORMATION_MIN_CONTENT_WORDS = 2
+
+    @classmethod
+    def _missing_information_from_reasoning(cls, reasoning_step: str) -> str:
+        """Recover the search gate's required field from the adjacent one.
+
+        The gate blocks a search whose tool_args omit `missing_information`, and
+        the block costs the run one of its few tool turns. But the agent has
+        usually already stated the need in `reasoning_step` -- across
+        level1_final_06, _07 and _08 all 142 requests blocked this way carried
+        one, reading like "step 1. I need to find the minimum perigee distance
+        between Earth and the Moon". The field is misplaced, not absent.
+
+        Recovery is deliberately narrow, because reading any step across would
+        make the gate's requirement vacuous: the prompt asks for a
+        `reasoning_step` on every tool request, so every request would satisfy
+        it. The step has to actually name something -- "Obtain the one missing
+        fact" restates the need without stating it, and still blocks, while the
+        142 real steps name a distance, a nominator, a season.
+        """
+
+        text = str(reasoning_step or "").strip()
+        if not text:
+            return ""
+        text = cls._STEP_PREFIX_RE.sub("", text).strip()
+        text = cls._NEED_PREFIX_RE.sub("", text).strip()
+        text = re.sub(r"\s+", " ", text)
+        if not text:
+            return ""
+        content = [
+            word
+            for word in re.findall(r"[a-z0-9']+", text.casefold())
+            if word not in cls._GENERIC_NEED_WORDS
+        ]
+        if len(content) < cls._MISSING_INFORMATION_MIN_CONTENT_WORDS:
+            return ""
+        if len(text) > cls._MISSING_INFORMATION_MAX_CHARS:
+            text = text[: cls._MISSING_INFORMATION_MAX_CHARS].rstrip()
+        return text
 
     def _attachment_access_prompt(
         self,

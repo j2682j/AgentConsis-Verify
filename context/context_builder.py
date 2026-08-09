@@ -36,6 +36,28 @@ class ContextConfig:
     max_tokens: int = 8000
     reserve_ratio: float = 0.15
     min_relevance: float = 0.0
+    # These bounds were raised to 240/24000 for level1_final_09 and reverted:
+    # the extra evidence made the 4B Agents worse, not better. Grouping that
+    # run's 477 Agent runs by how much their context grew against
+    # level1_final_08 gives a dose-response, so this is not run-to-run noise:
+    #
+    #   context within 1.2x   366 runs   30.6% -> 29.8% correct
+    #   grown 1.2-2x           67 runs   16.4% -> 11.9%
+    #   grown over 2x          44 runs   29.5% -> 15.9%
+    #
+    # Two tasks show the mechanism. On 5a0c1adf every Agent answered 'Claus'
+    # from a 4,964-character context and none did from 19,672; on 840bfca7 two
+    # Agents produced the exact award number from about 5,000 characters and
+    # all three produced different wrong ones from 14,000. Fitting the window is
+    # not the constraint -- the largest context ever built was 35,998
+    # characters against windows of 32k and up. Locating the answer inside it
+    # is.
+    #
+    # Note for anyone retuning these: compression cuts lines first and
+    # characters second, so the line bound decides the outcome. A retrieval
+    # record runs 6 lines and 443 characters at the median and retrieval hands
+    # over 16 of them -- 96 lines against 80, but only 7,088 characters against
+    # 12,000. Moving the character bound alone changes nothing.
     max_context_lines: int = 80
     max_context_chars: int = 12000
     max_solver_chars: int = 2000

@@ -57,6 +57,77 @@ def replay_evidence(metadata: dict) -> dict:
     }
 
 
+def seed_requirement_gate(selector, trace: dict) -> None:
+    """Take the requirement gate's verdict from the record instead of redoing it.
+
+    That gate re-derives the answer contract from the evidence bundle, and the
+    bundle's ``task_answer_requirement_contract`` is never written to the task
+    JSON, so a replay cannot rebuild it. On level1_final_15 task 050 the
+    reconstructed contract rejected every candidate. Replaying just this gate
+    from the record takes fidelity from 52/53 to 53/53 on level1_final_13, _15
+    and _16, and costs nothing for selector work, because every gate that
+    ranks candidates -- consensus, self-consistency, versa -- runs after it.
+    """
+
+    recorded = next(
+        (
+            gate
+            for gate in trace.get("gate_trace") or []
+            if gate.get("gate_name") == "answer_requirement"
+        ),
+        None,
+    )
+    if recorded is None:
+        return
+    survivor_keys = [str(key) for key in recorded.get("survivors") or []]
+
+    def replayed(candidates, *, evidence):
+        from score.final_winner_selector import GateResult
+
+        by_key = {item.candidate_key: item for item in candidates}
+        decisions = []
+        for decision in recorded.get("decisions") or []:
+            candidate = by_key.get(str(decision.get("candidate_key")))
+            if candidate is None:
+                continue
+            outcome = str(decision.get("outcome") or "pass")
+            reason = str(decision.get("reason") or "")
+            if outcome == "reject":
+                candidate.selection_state = "rejected"
+                candidate.hard_rejection_reason = reason
+            elif outcome == "reserve":
+                candidate.selection_state = "reserve"
+                if "answer_requirement" not in candidate.soft_deferred_by:
+                    candidate.soft_deferred_by.append("answer_requirement")
+            decisions.append(selector._decision(candidate, outcome, reason))
+        return GateResult(
+            gate_name="answer_requirement",
+            survivors=[by_key[key] for key in survivor_keys if key in by_key],
+            eliminated=[item for item in decisions if item.outcome == "reject"],
+            decisions=decisions,
+            metadata={"replayed_from_record": True},
+        )
+
+    selector._apply_requirement_gate = replayed
+
+
+def agent_chosen_keys(data: dict) -> list[str]:
+    """What `select()` sets before the gates and `resolve_evaluations` does not.
+
+    `_consensus_rank` reads it to rank agents that settled on an answer ahead
+    of agents that merely produced it in some run, so leaving it empty changes
+    the consensus ordering.
+    """
+
+    from utils.network_utils import normalize_text
+
+    return [
+        normalize_text(str(agent.get("compressed_answer") or "")).casefold()
+        for agent in (data.get("network_summary") or {}).get("stage1_results") or []
+        if normalize_text(str(agent.get("compressed_answer") or ""))
+    ]
+
+
 def run_old_gates(selector, evaluations, evidence):
     """Reproduce the pre-change select() decision loop on saved evaluations."""
     for evaluation in evaluations:
@@ -125,9 +196,13 @@ def main() -> int:
         recorded = str(data.get("predicted") or "")
         evidence = replay_evidence(metadata)
 
+        chosen_keys = agent_chosen_keys(data)
+
         old_answer = None
         if old_selector_cls is not None:
             old_selector = old_selector_cls(question=question)
+            old_selector._agent_chosen_keys = list(chosen_keys)
+            seed_requirement_gate(old_selector, trace)
             old_answer, old_status = run_old_gates(
                 old_selector, rebuild_evaluations(trace), evidence
             )
@@ -137,6 +212,8 @@ def main() -> int:
                 )
 
         new_selector = FinalWinnerSelector(question=question)
+        new_selector._agent_chosen_keys = list(chosen_keys)
+        seed_requirement_gate(new_selector, trace)
         selection = new_selector.resolve_evaluations(
             rebuild_evaluations(trace), evidence=evidence
         )

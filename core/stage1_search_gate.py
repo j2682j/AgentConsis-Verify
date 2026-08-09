@@ -30,12 +30,24 @@ class Stage1SearchAccessState:
     prepared_queries: list[str] = field(default_factory=list)
     prepared_evidence_ids: list[str] = field(default_factory=list)
     refinement_budget: int = 1
+    # Refinement searches every Agent may make before the shared budget applies.
+    # The budget is task-scoped but requested by 3 Agents x 3 runs, so without a
+    # floor it is simply whoever asks first: on level1_final_08 it was exhausted
+    # on 24 of 53 tasks, gemma was refused 93 times and granted none, and every
+    # refusal costs one of a run's few tool turns. Losing them all is what pushed
+    # gemma through the tool-less repair prompt on 100% of its runs. A floor
+    # grant does not draw on the shared budget, so the task ceiling is
+    # per_agent_floor * agents + refinement_budget. Set to 0 to restore a purely
+    # shared budget.
+    per_agent_refinement_floor: int = 1
     direct_evidence_available: bool = False
     supplemental_evidence_max_items: int = 3
     request_count: int = 0
     physical_execution_count: int = 0
     cache_hit_count: int = 0
     refinement_used: int = 0
+    shared_refinement_used: int = 0
+    agent_refinement_used: dict[str, int] = field(default_factory=dict)
     executed_queries: list[str] = field(default_factory=list)
     blocked_requests: list[dict[str, Any]] = field(default_factory=list)
     _prepared_query_keys: set[str] = field(default_factory=set, repr=False)
@@ -51,6 +63,7 @@ class Stage1SearchAccessState:
         *,
         refinement_budget: int = 1,
         supplemental_evidence_max_items: int = 3,
+        per_agent_refinement_floor: int = 1,
     ) -> "Stage1SearchAccessState":
         search_result = str(evidence.get("search_result", "") or "").strip()
         routing = evidence.get("routing") if isinstance(evidence.get("routing"), dict) else {}
@@ -100,6 +113,7 @@ class Stage1SearchAccessState:
             prepared_queries=cls._unique_text(prepared_queries),
             prepared_evidence_ids=cls._unique_text(evidence_ids),
             refinement_budget=int(refinement_budget),
+            per_agent_refinement_floor=max(0, int(per_agent_refinement_floor)),
             direct_evidence_available=direct_evidence_available,
             supplemental_evidence_max_items=max(1, int(supplemental_evidence_max_items)),
         )
@@ -117,10 +131,12 @@ class Stage1SearchAccessState:
         *,
         query: str,
         missing_information: str,
+        agent_id: str = "",
     ) -> SearchGateDecision:
         query = str(query or "").strip()
         missing_information = str(missing_information or "").strip()
         query_key = self.normalize_query(query)
+        agent_key = str(agent_id or "").strip().casefold()
         with self._lock:
             self.request_count += 1
             if not self.enabled or (
@@ -173,17 +189,36 @@ class Stage1SearchAccessState:
                     query=query,
                     missing_information=missing_information,
                 )
-            if self.refinement_used >= self.refinement_budget:
+            agent_used = self.agent_refinement_used.get(agent_key, 0)
+            # A budget of 0 disables refinement outright, so the per-agent floor
+            # has nothing to apportion: it shares out an enabled budget fairly,
+            # it does not override a closed one.
+            within_floor = (
+                bool(agent_key)
+                and self.refinement_budget > 0
+                and agent_used < self.per_agent_refinement_floor
+            )
+            within_shared = self.shared_refinement_used < self.refinement_budget
+            if not within_floor and not within_shared:
                 return self._block(
                     reason="refinement_budget_exhausted",
                     query=query,
                     missing_information=missing_information,
                 )
 
+            if not within_floor:
+                self.shared_refinement_used += 1
+            if agent_key:
+                self.agent_refinement_used[agent_key] = agent_used + 1
             self.refinement_used += 1
             self._reserved_query_keys.add(query_key)
             self.executed_queries.append(query)
-            return SearchGateDecision(True, "refinement_allowed", query, missing_information)
+            return SearchGateDecision(
+                True,
+                "refinement_allowed_by_floor" if within_floor else "refinement_allowed",
+                query,
+                missing_information,
+            )
 
     def complete(self, *, query: str, result: dict[str, Any]) -> None:
         query_key = self.normalize_query(query)
@@ -228,13 +263,14 @@ class Stage1SearchAccessState:
                 )
             if not self.prepared_evidence_available:
                 return "Mode: normal search access; no usable prepared search evidence is available."
-            remaining = max(0, self.refinement_budget - self.refinement_used)
+            remaining = max(0, self.refinement_budget - self.shared_refinement_used)
             evidence_ids = ", ".join(self.prepared_evidence_ids) or "available in Search_Result"
             return (
                 "Mode: refinement only.\n"
                 "Prepared search evidence: available.\n"
                 f"Prepared evidence IDs: {evidence_ids}.\n"
                 f"Shared refinement searches remaining: {remaining}.\n"
+                f"Reserved for each agent: {self.per_agent_refinement_floor}.\n"
                 "Instruction: use Search_Result first; request search only for one specific missing fact."
             )
 
@@ -253,10 +289,13 @@ class Stage1SearchAccessState:
                 "enabled": self.enabled,
                 "refinement_budget": self.refinement_budget,
                 "refinement_used": self.refinement_used,
+                "per_agent_refinement_floor": self.per_agent_refinement_floor,
+                "shared_refinement_used": self.shared_refinement_used,
+                "agent_refinement_used": dict(self.agent_refinement_used),
                 "refinement_remaining": (
                     -1
                     if not self.enabled
-                    else max(0, self.refinement_budget - self.refinement_used)
+                    else max(0, self.refinement_budget - self.shared_refinement_used)
                 ),
                 "request_count": self.request_count,
                 "physical_execution_count": self.physical_execution_count,

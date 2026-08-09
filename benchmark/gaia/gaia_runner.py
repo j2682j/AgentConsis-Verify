@@ -20,10 +20,14 @@ try:
 except Exception:  # pragma: no cover - optional dependency
     load_dotenv = None
 
+from benchmark.gaia import gpu_memory
 from benchmark.gaia.dataset import GAIADataset
 from benchmark.gaia.evaluator import GAIAEvaluator
 from core.config import AgentConfig
 from core.network import Network
+from core.sampling_seed import DEFAULT_SEED
+from core.sampling_seed import ENV_VAR as SEED_ENV_VAR
+from core.sampling_seed import describe as describe_seed
 from score.versa_prm_scorer import (
     DEFAULT_VERSA_PRM_BASE_MODEL_ID,
     DEFAULT_VERSA_PRM_MODEL_ID,
@@ -270,6 +274,7 @@ def run_sample(
         versa_prm_local_files_only=versa_prm_local_files_only,
     )
 
+    vram_before = gpu_memory.begin_task()
     try:
         summary = network.run()
         predicted = summary.final_answer
@@ -279,6 +284,7 @@ def run_sample(
         predicted = ""
         network_summary = {}
         error = f"{type(exc).__name__}: {exc}"
+    vram_after = gpu_memory.snapshot()
 
     expected = str(sample.get("final_answer", "") or "")
     exact_match = evaluator._check_exact_match(predicted, expected)
@@ -313,6 +319,9 @@ def run_sample(
         "search_summary": extract_search_summary(network_summary),
         "execution_time": time.time() - start_time,
         "error": error,
+        # Kept per task so a GPU fault can be traced back to the point the
+        # card started filling up, rather than only to the task that died.
+        "gpu_memory": {"before": vram_before, "after": vram_after},
         "network_summary": network_summary,
     }
 
@@ -362,6 +371,8 @@ def build_results(
         "agent_name": "Network",
         "level_filter": level,
         "stage1_runs_per_agent": stage1_runs_per_agent,
+        # Recorded so an output folder says whether it is comparable to another.
+        "stage1_seed": describe_seed(),
         "total_samples": total,
         "exact_matches": exact,
         "partial_matches": partial,
@@ -460,6 +471,7 @@ def write_markdown_report(results: dict[str, Any], output_path: str | Path) -> P
         f"- Benchmark: {results.get('benchmark', 'GAIA')}",
         f"- Agent: {results.get('agent_name', 'Network')}",
         f"- Level filter: {results.get('level_filter') or 'all'}",
+        f"- Stage1 sampling seed: {results.get('stage1_seed', 'unknown')}",
         f"- Stage1 runs per agent: {results.get('stage1_runs_per_agent')}",
         f"- Total samples: {results.get('total_samples', 0)}",
         f"- Exact matches: {results.get('exact_matches', 0)}",
@@ -1014,10 +1026,34 @@ def run_gaia_evaluation(args: argparse.Namespace) -> dict[str, Any]:
     if load_dotenv is not None:
         load_dotenv(ROOT / ".env")
 
+    if args.stage1_seed is not None:
+        os.environ[SEED_ENV_VAR] = str(args.stage1_seed)
+    # Read and report it up front so a bad value fails here rather than hours
+    # in, and so the log says how the run was sampled before it starts.
+    seed_description = describe_seed()
+    print(f"[INFO] stage1_seed={seed_description}")
+
     data_dir = Path(args.data_dir).resolve()
     dataset = GAIADataset(split=args.split, level=args.level, local_data_dir=data_dir)
     items = dataset.load()
-    if args.max_samples is not None:
+    if args.task_ids:
+        # Re-running a handful of named tasks is how a targeted change gets
+        # checked without paying for the whole split. Prefixes are accepted so
+        # the ids from an output folder can be pasted in directly.
+        wanted = [value.strip() for value in args.task_ids.split(",") if value.strip()]
+        items = [
+            item
+            for item in items
+            if any(str(item.get("task_id", "")).startswith(prefix) for prefix in wanted)
+        ]
+        missing = [
+            prefix
+            for prefix in wanted
+            if not any(str(item.get("task_id", "")).startswith(prefix) for item in items)
+        ]
+        if missing:
+            raise SystemExit(f"--task-ids matched nothing for: {', '.join(missing)}")
+    elif args.max_samples is not None:
         items = items[: max(0, args.max_samples)]
 
     evaluator = GAIAEvaluator(dataset=dataset, level=args.level)
@@ -1116,6 +1152,12 @@ def run_gaia_evaluation(args: argparse.Namespace) -> dict[str, Any]:
             f"winner={result['winner_agent_id']} predicted={result['predicted']!r} "
             f"json={task_json_path}"
         )
+        vram_line = gpu_memory.summarize(
+            (result.get("gpu_memory") or {}).get("before") or {},
+            (result.get("gpu_memory") or {}).get("after") or {},
+        )
+        if vram_line:
+            print(vram_line)
         print(f"verifier_scores={format_verifier_pairs(result.get('network_summary', {}) or {})}")
         if result["error"]:
             print(f"[WARN] {result['error']}")
@@ -1143,6 +1185,20 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--split", default="validation", choices=["validation", "test"])
     parser.add_argument("--level", type=int, default=None, choices=[1, 2, 3])
     parser.add_argument("--max-samples", type=int, default=1)
+    parser.add_argument(
+        "--task-ids",
+        default=None,
+        help="Comma-separated GAIA task ids (prefixes allowed). Overrides --max-samples.",
+    )
+    parser.add_argument(
+        "--stage1-seed",
+        default=None,
+        help=(
+            "Base seed for Stage1 sampling, so a rerun of unchanged code is "
+            f"comparable. Sets {SEED_ENV_VAR}. Use 'off' for free sampling. "
+            f"Omit to use the environment, which defaults to {DEFAULT_SEED}."
+        ),
+    )
     parser.add_argument("--stage1-runs-per-agent", type=int, default=3)
     parser.add_argument(
         "--max-stage1-workers",

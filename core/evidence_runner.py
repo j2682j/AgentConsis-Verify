@@ -962,20 +962,25 @@ class EvidenceRunner:
     ) -> list[dict[str, Any]]:
         """Collect read-only passages for Stage1, newest ranking first.
 
-        References are a fallback for having *no* grounded evidence, never a
-        supplement to it. When strict evidence exists it already states the
-        answer, and padding the prompt with unverified passages only dilutes
-        it — measured on saved runs, one task answered correctly from a single
-        810-character grounded item would have grown to 5.5k characters of
-        mostly irrelevant context.
+        References used to be withheld entirely once any grounded evidence
+        existed, on the reasoning that strict evidence already states the
+        answer and unverified passages only dilute it. That held while evidence
+        was rare enough to be strong — one item across a 53-task run — but
+        level1_final_14 produced five, three of which did not contain the
+        answer, and each one silently removed all eight references from its
+        task. Run-level hits collapsed on those tasks (046 fell from 9 of 9 to
+        1 of 9) because what the single wrong item displaced was the material
+        the Agents had been answering from.
+
+        Both now go to Stage1. They do not compete for space: the context
+        budget gives evidence its per-item allowance first and references take
+        what is left, so the block is the same size it always was.
 
         The converter's relaxed passages are ranked by question-term coverage
         and lead; the legacy best-effort selector fills any remaining slots.
         Every entry is marked support-ineligible so the support checker and
         fact store keep ignoring them.
         """
-        if evidence_items:
-            return []
         references: list[dict[str, Any]] = []
         seen_texts: set[str] = set()
         # Stage1 context is already truncated on most search tasks, and

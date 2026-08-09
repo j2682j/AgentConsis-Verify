@@ -13,7 +13,7 @@ class ScriptedAgent:
         self.replies = list(replies)
         self.messages = []
 
-    def invoke_with_usage(self, messages):
+    def invoke_with_usage(self, messages, **_overrides):
         self.messages.append(messages)
         reply = self.replies.pop(0)
         return json.dumps(reply), 10, 5

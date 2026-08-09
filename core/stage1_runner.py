@@ -6,6 +6,7 @@ from typing import Any, Callable
 from context.context_builder import ContextPacket
 from context.stage1_context import Stage1ContextBuilder
 from core.config import AgentConfig, AgentReasoningSummary, EachAgentReply
+from core.sampling_seed import sampling_overrides
 from core.slm_agent import SLM_Agent
 from core.stage1_search_gate import Stage1SearchAccessState
 from core.stage1_tool_use_runner import Stage1ToolUseRunner
@@ -62,6 +63,7 @@ class Stage1Runner:
         trajectory_runner: Stage1ToolUseRunner | None = None,
         unload_previous_slm_on_switch: bool = True,
         prepared_search_refinement_budget: int = 1,
+        prepared_search_per_agent_floor: int = 1,
         supplemental_search_evidence_max_items: int = 3,
         attachment_workspace: AttachmentWorkspace | None = None,
     ) -> None:
@@ -86,6 +88,7 @@ class Stage1Runner:
         self.tool_manager = tool_manager
         self.unload_previous_slm_on_switch = bool(unload_previous_slm_on_switch)
         self.prepared_search_refinement_budget = int(prepared_search_refinement_budget)
+        self.prepared_search_per_agent_floor = max(0, int(prepared_search_per_agent_floor))
         self.supplemental_search_evidence_max_items = max(
             1,
             int(supplemental_search_evidence_max_items),
@@ -117,6 +120,7 @@ class Stage1Runner:
                 evidence,
                 refinement_budget=self.prepared_search_refinement_budget,
                 supplemental_evidence_max_items=self.supplemental_search_evidence_max_items,
+                per_agent_refinement_floor=self.prepared_search_per_agent_floor,
             )
 
         self.model_lifecycle_records = []
@@ -229,7 +233,15 @@ class Stage1Runner:
         summary = self.aggregator.summarize(config, runs)
         aggregation = self.answer_aggregator.aggregate(runs)
         summary.aggregation_metadata = aggregation.to_dict()
-        if aggregation.answer and aggregation.status == "needs_review":
+        # The aggregation is the vote across this Agent's runs, so it decides the
+        # compressed answer whenever it produced one. It used to be applied only
+        # on needs_review -- the case where the runs all disagree and the vote
+        # means least -- and discarded on consensus, where it means most. On
+        # level1_final_06 and _07 alike, task 1f975693 had qwen vote 2 of 3 for
+        # 'Saint Petersburg' while the summary kept 'St. Petersburg', which the
+        # exact-match scorer counts as wrong. The same inversion let a 2-of-3
+        # split report confidence 1.00 into winner selection instead of 0.67.
+        if aggregation.answer:
             summary.compressed_answer = aggregation.answer
             summary.confidence_score = aggregation.confidence_score
             config.confidence_score = aggregation.confidence_score
@@ -740,6 +752,7 @@ class Stage1Runner:
             raw_reply, prompt_tokens, completion_tokens = self.get_agent(config).invoke_with_usage(
                 messages,
                 unload_after_call=unload_after_call,
+                **sampling_overrides(agent_id=config.agent_id, run_index=run_index),
             )
             self.record_token_usage(
                 stage="stage1",

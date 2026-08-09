@@ -63,8 +63,13 @@ class BestEffortReferenceSelector:
         *,
         strict_evidence_items: list[dict[str, Any]] | None = None,
     ) -> list[UnverifiedReference]:
-        if strict_evidence_items:
-            return []
+        # `strict_evidence_items` used to suppress the whole fallback. That
+        # policy now lives with the caller in
+        # `EvidenceRunner._web_retrieval_unverified_references`, which shares
+        # the prompt between evidence and references instead of choosing one.
+        # Keeping the rule in two places is how it went unnoticed that a single
+        # wrong grounded item was removing all eight references from a task.
+        _ = strict_evidence_items
 
         retrieval = output.get("retrieval")
         retrieval = retrieval if isinstance(retrieval, dict) else {}

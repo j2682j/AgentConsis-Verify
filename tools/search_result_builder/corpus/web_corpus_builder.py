@@ -396,6 +396,8 @@ class WebCorpusBuilder:
         *,
         max_tokens: int = 5000,
         max_chunks: int = 6,
+        question: str = "",
+        embedder: Any = None,
     ) -> list[CorpusRecord]:
         """選擇性抓取結構化記錄的內容連結並建立關聯 passage。"""
         data = record.to_dict() if isinstance(record, CorpusRecord) else dict(record)
@@ -409,7 +411,12 @@ class WebCorpusBuilder:
         all_chunks = self.chunker.chunk(cleaned)
         if not all_chunks:
             all_chunks = [cleaned]
-        chunks = all_chunks[: max(1, max_chunks)]
+        chunks = self._select_linked_chunks(
+            all_chunks,
+            limit=max(1, max_chunks),
+            question=question,
+            embedder=embedder,
+        )
         all_content_preserved = len(chunks) == len(all_chunks)
         collection_record = self._collection_from_mapping(data)
         record_id = str(data.get("record_id") or data.get("id") or "record")
@@ -444,6 +451,60 @@ class WebCorpusBuilder:
                 )
             )
         return results
+
+    def _select_linked_chunks(
+        self,
+        chunks: list[str],
+        *,
+        limit: int,
+        question: str,
+        embedder: Any,
+    ) -> list[str]:
+        """Keep the chunks the question needs, in document order.
+
+        Taking the leading chunks discards by position rather than relevance: on
+        level1_final_06 a 25,618-character changelog reached retrieval as 674,
+        and the entry the task asked about sat past the cut. Ranking needs both a
+        question and a working embedder, so a missing or failing one falls back
+        to the old behaviour instead of guessing. Document order is restored
+        afterwards so `passage_index` and downstream adjacency stay meaningful.
+        """
+
+        if len(chunks) <= limit:
+            return chunks
+        question = str(question or "").strip()
+        if not question or embedder is None:
+            return chunks[:limit]
+        try:
+            vectors = embedder.embed([question, *chunks])
+        except Exception:
+            return chunks[:limit]
+        if not vectors or len(vectors) != len(chunks) + 1:
+            return chunks[:limit]
+
+        query = vectors[0]
+        scored = [
+            (self._cosine(query, vector), index)
+            for index, vector in enumerate(vectors[1:])
+        ]
+        keep = sorted(
+            sorted(scored, key=lambda item: (-item[0], item[1]))[:limit],
+            key=lambda item: item[1],
+        )
+        return [chunks[index] for _, index in keep]
+
+    @staticmethod
+    def _cosine(left: Any, right: Any) -> float:
+        try:
+            pairs = list(zip(left, right))
+            dot = sum(float(a) * float(b) for a, b in pairs)
+            left_norm = sum(float(a) * float(a) for a, _ in pairs) ** 0.5
+            right_norm = sum(float(b) * float(b) for _, b in pairs) ** 0.5
+        except (TypeError, ValueError):
+            return 0.0
+        if not left_norm or not right_norm:
+            return 0.0
+        return dot / (left_norm * right_norm)
 
     def build_jsonl(
         self,

@@ -60,9 +60,11 @@ class ScriptedAgent:
     def __init__(self, replies: list[dict]) -> None:
         self.replies = list(replies)
         self.messages: list[list[dict[str, str]]] = []
+        self.sampling_overrides: list[dict] = []
 
-    def invoke_with_usage(self, messages):
+    def invoke_with_usage(self, messages, **overrides):
         self.messages.append(messages)
+        self.sampling_overrides.append(overrides)
         return json.dumps(self.replies.pop(0)), 10, 5
 
 
@@ -151,9 +153,19 @@ class Stage1SearchGateTests(unittest.TestCase):
         self.assertEqual(reply.tool_results[0]["error_code"], "missing_information_required")
 
     def test_one_refinement_is_shared_across_agents_and_later_context(self):
+        """The shared pool itself, with the per-agent floor stood down.
+
+        By default each Agent now holds a reserved refinement before the shared
+        pool applies, so two Agents asking once each are both granted; that
+        behaviour is pinned in test_search_gate_per_agent_floor. This case keeps
+        the shared pool under test on its own, including the supplemental
+        evidence a blocked Agent inherits from the one that got through.
+        """
+
         state = Stage1SearchAccessState.from_evidence(
             prepared_evidence(),
             refinement_budget=1,
+            per_agent_refinement_floor=0,
         )
         manager = CountingToolManager()
         runner = Stage1ToolUseRunner(tool_manager=manager, max_tool_turns=2)

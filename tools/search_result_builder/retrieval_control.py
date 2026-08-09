@@ -2958,9 +2958,19 @@ class IterativeRetrievalControl:
         self,
         round_trace: RetrievalRoundTrace,
         *,
-        max_total: int = 15,
+        max_total: int = 40,
         max_per_document: int = 6,
     ) -> tuple[list[CandidateSpan], dict[str, tuple[int, str]]]:
+        """Collect the round's spans for role classification.
+
+        `max_total` is the second of three stacked budgets on the same spans
+        (PassageEvidenceUnitBuilder.max_units, this, then the classifier's
+        per-call bound), so it has to track the first: while that one held
+        rounds to 10 spans this never bound, and leaving it at 15 would simply
+        re-truncate the wider budget and reproduce the loss it was raised to
+        fix.
+        """
+
         candidates: list[CandidateSpan] = []
         candidate_map: dict[str, tuple[int, str]] = {}
         seen: set[str] = set()
@@ -3360,7 +3370,18 @@ class WebRetrievalControl:
         min_retrieval_score: float = 0.75,
         relative_score_margin: float = 0.08,
         embedding_batch_size: int = 8,
-        max_collection_links_to_fetch: int = 3,
+        # A structured record is a stub: a title and a content_url, no page body.
+        # This bounds how many of those links get read, so it decides whether the
+        # page holding the answer is ever opened. At 3 it opened 42 of the 567
+        # candidates level1_final_06 produced (7.4%), and six tasks opened none.
+        # Replaying the run's candidates in rank order and fetching them, the
+        # link carrying the answer sat at rank 1, 2, 5, 8 and 19 across the five
+        # tasks where one existed: 3 reaches two of them, 10 reaches four, and 20
+        # reaches the fifth. 10 is where the marginal cost turns -- going to 20
+        # doubles the fetches and the records added to the corpus to gain one
+        # task, at a rank deep enough that ordering is mostly noise. Fetch
+        # latency is not the binding cost (about 1s each, so 7s per task).
+        max_collection_links_to_fetch: int = 10,
         collection_link_fetch_tokens: int = 5000,
         bypass_labeler: bool = False,
     ) -> None:
@@ -3823,6 +3844,8 @@ class WebRetrievalControl:
             enriched = self.corpus_builder.build_enriched_records(
                 document,
                 max_tokens=self.collection_link_fetch_tokens,
+                question=question,
+                embedder=getattr(retriever, "embedder", None),
             )
             added.extend(corpus_session.add_records(enriched))
         return added

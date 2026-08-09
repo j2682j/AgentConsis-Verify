@@ -111,6 +111,9 @@ class FinalWinnerSelector:
         trusted_tool_majority_override_ratio: float = 2.0,
         attestation_majority_override_min_runs: int = 3,
         attestation_majority_override_min_agents: int = 2,
+        evidence_resolution_override_min_runs: int = 3,
+        evidence_resolution_override_min_agents: int = 2,
+        requirement_reject_support_guard: int = 2,
     ) -> None:
         self.question = str(question or "").strip()
         # An empty final answer can never be correct, so an unresolved gate
@@ -141,6 +144,34 @@ class FinalWinnerSelector:
         self.attestation_majority_override_min_agents = max(
             0, int(attestation_majority_override_min_agents)
         )
+        # Evidence-only resolution answers from the fact store without any Agent
+        # nominating the value, which a completed relation plan can legitimately
+        # need on a multi-hop target. But a relation goal being present is not
+        # evidence that the fact filling it is right: on level1_final_07 task
+        # 9d191bce every Agent answered 'extremely' and survived the validity
+        # gate, and a single relation-bound fact reading
+        # (Teal'c, response, "Isn't that hot?") -- the question text, not the
+        # reply -- replaced all of them. That is the same answer the attestation
+        # guard above already protects, lost through a second door. So the same
+        # rule applies: a candidate held by enough runs across enough agents
+        # keeps its claim, and evidence may only confirm it, never replace it.
+        # Setting either bound to 0 disables the guard.
+        self.evidence_resolution_override_min_runs = max(
+            0, int(evidence_resolution_override_min_runs)
+        )
+        self.evidence_resolution_override_min_agents = max(
+            0, int(evidence_resolution_override_min_agents)
+        )
+        # Minimum runs a requirement-rejected candidate needs before its
+        # rejection can be demoted to undecided. The requirement's expected type
+        # is inferred from the question and is sometimes wrong, and a wrong
+        # inference rejects the candidates that declared their type while letting
+        # undeclared ones through. A single run is never enough to outweigh it.
+        # Set to 0 to let every rejection stand; see
+        # _spare_best_supported_requirement_rejects.
+        self.requirement_reject_support_guard = max(
+            0, int(requirement_reject_support_guard)
+        )
         self.answer_validator = answer_validator or AnswerValidator()
         self.clusterer = clusterer or AnswerCandidateClusterer(self.answer_validator)
         self.answer_requirement_gate = (
@@ -161,6 +192,11 @@ class FinalWinnerSelector:
     ) -> FinalWinnerSelection:
         """Run every candidate through the fixed ordered-gate pipeline."""
         evidence = evidence or {}
+        self._agent_chosen_keys = [
+            normalize_text(str(item.compressed_answer or "")).casefold()
+            for item in list(stage1_results or [])
+            if normalize_text(str(item.compressed_answer or ""))
+        ]
         path_index = {
             (
                 item.identity.candidate_key,
@@ -259,16 +295,22 @@ class FinalWinnerSelector:
                 result.gate_name == "evidence_support"
                 and bool(result.metadata.get("all_candidates_unsupported"))
             ):
+                majority_survivor = self._majority_backed_survivor(survivors)
                 resolution = self.evidence_answer_resolver.resolve(
                     evidence,
                     allowed_candidate_keys={item.candidate_key for item in survivors},
                     # A completed relation plan may legitimately derive an
                     # answer no Agent nominated (for example a multi-hop
                     # relation target). Generic promoted facts may not replace
-                    # an existing candidate pool.
-                    allow_new_nomination=bool(
-                        str(evidence.get("required_relation") or "").strip()
-                    ) or not bool(survivors),
+                    # an existing candidate pool, and neither may a relation
+                    # goal when a surviving candidate already carries a
+                    # cross-agent majority: evidence confirms it or stands
+                    # aside, but does not outvote it.
+                    allow_new_nomination=(
+                        bool(str(evidence.get("required_relation") or "").strip())
+                        or not bool(survivors)
+                    )
+                    and majority_survivor is None,
                 )
                 if resolution.resolved:
                     gate_trace.append(
@@ -429,6 +471,8 @@ class FinalWinnerSelector:
         survivors: list[CandidateEvaluation] = []
         eliminated: list[CandidateGateDecision] = []
         decisions: list[CandidateGateDecision] = []
+
+        graded: list[tuple[CandidateEvaluation, str, str, dict[str, Any]]] = []
         for candidate in candidates:
             member_results = []
             for member in self._member_evaluations(candidate):
@@ -446,20 +490,30 @@ class FinalWinnerSelector:
             if "compatible" in outcomes:
                 outcome = "pass"
                 reason = "answer_requirement_compatible"
-                candidate.requirement_status = "compatible"
             elif outcomes and outcomes == {"incompatible"}:
                 outcome = "reject"
                 reason = "answer_requirement_incompatible"
-                candidate.requirement_status = "incompatible"
             else:
                 outcome = "unknown"
                 reason = "answer_requirement_not_decisive"
-                candidate.requirement_status = "unknown"
-            details = {
-                "answer_requirement": requirement,
-                "answer_role": role,
-                "member_results": [item.to_dict() for item in member_results],
-            }
+            graded.append((
+                candidate,
+                outcome,
+                reason,
+                {
+                    "answer_requirement": requirement,
+                    "answer_role": role,
+                    "member_results": [item.to_dict() for item in member_results],
+                },
+            ))
+
+        graded = self._spare_best_supported_requirement_rejects(graded)
+
+        for candidate, outcome, reason, details in graded:
+            candidate.requirement_status = {
+                "pass": "compatible",
+                "reject": "incompatible",
+            }.get(outcome, "unknown")
             candidate.metadata["answer_requirement_gate"] = details
             decision = self._decision(candidate, outcome, reason, details)
             decisions.append(decision)
@@ -485,6 +539,64 @@ class FinalWinnerSelector:
                 else ""
             ),
         )
+
+    def _spare_best_supported_requirement_rejects(
+        self,
+        graded: list[tuple[CandidateEvaluation, str, str, dict[str, Any]]],
+    ) -> list[tuple[CandidateEvaluation, str, str, dict[str, Any]]]:
+        """Stop an inferred answer type from hard-rejecting the leading answer.
+
+        The requirement's expected type is inferred from the question, so it can
+        be wrong -- and when it is, this gate rejects exactly the candidates that
+        declared a type honestly while candidates declaring nothing come through
+        as merely undecided. level1_final_06, _07 and _08 all lose task 388a80fd
+        this way: the sentence the task asks for is inferred to be a `list`, so
+        the well-formed answer held by three runs is rejected as incompatible and
+        a one-run garbled variant wins.
+
+        An inference that can be wrong should not outrank support, so a rejected
+        candidate holding its own against the best survivor is demoted to
+        undecided instead. Two conditions, because either alone is wrong:
+
+        - at least `requirement_reject_support_guard` runs, so a single run never
+          qualifies. A lone run carries no support to weigh, and a clear shape
+          mismatch on one -- a person's name answering "how many" -- has to stay
+          rejected.
+        - at least as many runs as the best survivor, so a rejection only yields
+          to a candidate the runs actually favour.
+
+        Across the three runs this spares only the sentence in task 388a80fd.
+        The other rejected candidates hold 1 to 4 runs against survivors holding
+        3 to 8, and all of them keep being rejected.
+        """
+
+        if self.requirement_reject_support_guard <= 0:
+            return graded
+        rejected = [item for item in graded if item[1] == "reject"]
+        if not rejected or len(rejected) == len(graded):
+            return graded
+        best_survivor_runs = max(
+            int(item[0].supporting_run_count or 0)
+            for item in graded
+            if item[1] != "reject"
+        )
+        spared: list[tuple[CandidateEvaluation, str, str, dict[str, Any]]] = []
+        for candidate, outcome, reason, details in graded:
+            runs = int(candidate.supporting_run_count or 0)
+            if (
+                outcome == "reject"
+                and runs >= self.requirement_reject_support_guard
+                and runs >= best_survivor_runs
+            ):
+                spared.append((
+                    candidate,
+                    "unknown",
+                    "answer_requirement_incompatible_but_best_supported",
+                    {**details, "spared_against_survivor_runs": best_survivor_runs},
+                ))
+                continue
+            spared.append((candidate, outcome, reason, details))
+        return spared
 
     def _apply_contradiction_gate(
         self,
@@ -704,6 +816,36 @@ class FinalWinnerSelector:
             },
         )
 
+    def _majority_backed_survivor(
+        self,
+        survivors: list[CandidateEvaluation],
+    ) -> CandidateEvaluation | None:
+        """Return a survivor whose backing is too broad for evidence to replace.
+
+        Breadth is counted the same way the attestation guard counts it: runs
+        held and distinct agents holding them, so a lone chatty run cannot look
+        like a consensus.
+        """
+
+        if (
+            self.evidence_resolution_override_min_runs <= 0
+            or self.evidence_resolution_override_min_agents <= 0
+        ):
+            return None
+        for item in survivors:
+            agents = {
+                str(agent_id)
+                for agent_id in (item.supporting_agent_ids or [])
+                if str(agent_id)
+            }
+            if (
+                int(item.supporting_run_count or 0)
+                >= self.evidence_resolution_override_min_runs
+                and len(agents) >= self.evidence_resolution_override_min_agents
+            ):
+                return item
+        return None
+
     def _fallback_selection(
         self,
         evaluations: list[CandidateEvaluation],
@@ -778,12 +920,29 @@ class FinalWinnerSelector:
         vote the answer actually received, across agents. Distinct agents then
         breaks ties in favour of independent agreement over one agent repeating
         itself, and confidence only separates candidates that are level on both.
+
+        Distinct agents alone overstates that independence, though, because a run
+        counts toward an answer even when its own agent discarded it. On
+        level1_final_08 task dc28cf18 the candidate '3' was one rejected run from
+        each of two agents -- nemotron had voted 2 of 3 for '2', gemma had settled
+        on '9' -- and that collision of leftovers outranked nemotron's actual
+        answer on equal run counts. So agents that *settled* on the answer rank
+        ahead of agents that merely produced it somewhere.
         """
         return (
             int(candidate.supporting_run_count or 0),
+            self._agents_that_chose(candidate),
             len(set(candidate.supporting_agent_ids)),
             round(self._max_supporter_confidence(candidate), 4),
         )
+
+    def _agents_that_chose(self, candidate: CandidateEvaluation) -> int:
+        """Count agents whose own aggregated answer is this candidate."""
+
+        key = normalize_text(str(candidate.answer or "")).casefold()
+        if not key:
+            return 0
+        return sum(1 for chosen in getattr(self, "_agent_chosen_keys", []) if chosen == key)
 
     def _apply_cross_agent_gate(
         self,

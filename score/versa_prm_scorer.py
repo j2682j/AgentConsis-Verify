@@ -225,6 +225,41 @@ class VersaPRMScoreResult:
         }
 
 
+def _prefer_repeated_kv_attention() -> bool:
+    """Make SDPA expand the KV heads instead of asking for GQA broadcasting.
+
+    VersaPRM's base model is grouped-query (24 query heads, 8 KV heads).
+    Transformers passes `enable_gqa=True` to `scaled_dot_product_attention`
+    whenever torch is new enough and there is no attention mask, which is
+    exactly the shape used here. On this build no fused kernel accepts that
+    combination, so SDPA silently falls back to the math backend and
+    materialises the full `[1, 24, seq, seq]` score matrix in float32.
+
+    Measured on the RTX 4080 at 8k tokens: 13.55 GB and 0.414 s for the GQA
+    path against 0.05 GB and 0.012 s once the KV heads are expanded, and at
+    16k the GQA path asks for 22.89 GB and dies. That is what took down
+    level1_final_11 -- `CUDA error: unknown error` at task 4 of 53, followed by
+    three hours of empty results -- and what made three tasks in
+    level1_final_12 peak past the 16 GB card.
+
+    Flipping the heuristic selects the other branch transformers already has,
+    so the arithmetic is unchanged; it only costs the expanded KV tensors,
+    which are tens of megabytes. Returns whether the override was applied.
+    """
+
+    try:
+        from transformers.integrations import sdpa_attention
+    except Exception:  # pragma: no cover - transformers layout changed
+        return False
+    if getattr(sdpa_attention, "_scp_repeated_kv", False):
+        return True
+    if not hasattr(sdpa_attention, "use_gqa_in_sdpa"):  # pragma: no cover
+        return False
+    sdpa_attention.use_gqa_in_sdpa = lambda attention_mask, key: False
+    sdpa_attention._scp_repeated_kv = True
+    return True
+
+
 class VersaPRMScorer:
     """
     使用 VersaPRM-Base-3B 對 Agent reasoning steps 產生 reward probabilities。
@@ -409,6 +444,7 @@ class VersaPRMScorer:
             os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
 
         self._torch = torch
+        _prefer_repeated_kv_attention()
         resolved_device = self._resolve_device(torch)
         resolved_dtype = self._resolve_dtype(torch, resolved_device)
         self._resolved_device = resolved_device

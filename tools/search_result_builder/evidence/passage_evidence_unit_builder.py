@@ -46,6 +46,19 @@ class PassageEvidenceUnitBuilder:
     The builder performs structural sentence segmentation, then uses the retriever's
     already-loaded embedding model to retain units closest to the task. It does not
     predict CONTINUE/FINISH tags and does not create token-level labels.
+
+    `max_units` bounds the whole call, not each document, so it has to be read
+    against how many documents a round carries. At 10 it was the binding
+    constraint of the entire evidence pipeline: rounds averaged 21.9 documents,
+    90 of 116 rounds saturated it exactly, and 1918 of 2535 documents therefore
+    contributed no candidate at all -- `max_units_per_document` never got the
+    chance to bind. Replaying level1_final_06 across budgets, the gold answer
+    reached the selected units for 8 of 13 answer-bearing tasks at 10 and for
+    all 13 at 40, so 40 is the cheapest budget that stops losing answers here
+    (60 and an uncapped per-document budget recover the same 13 for 1.5x and
+    2.6x the units; a per-document floor costs more still and recovers nothing
+    extra, since forcing every document to contribute pulls in low-relevance
+    ones ahead of better sentences).
     """
 
     _BOUNDARY_RE = re.compile(r"(?:\r?\n)+|(?<=[.!?])\s+(?=[A-Z0-9\"'])")
@@ -54,7 +67,7 @@ class PassageEvidenceUnitBuilder:
     def __init__(
         self,
         *,
-        max_units: int = 10,
+        max_units: int = 40,
         max_units_per_document: int = 6,
         max_unit_chars: int = 160,
         max_context_chars: int = 600,

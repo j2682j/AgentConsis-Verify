@@ -131,15 +131,23 @@ class AdaptiveToolTurnPolicy:
             f"Instruction: {instruction}"
         )
 
+    # Statuses that carry no usable content whatever their payload says. Note
+    # `already_available` is not among them: it marks content the system had
+    # cached or shared, not content this run has already seen, and it arrives
+    # with the payload attached -- search results of 1000-2200 characters,
+    # attachment text of 1400-2700. Rejecting it on the status alone counted 124
+    # such turns across level1_final_06 to _08 as no progress while the Agent
+    # was in fact reading them for the first time, in 111 runs. Two of those in a
+    # row end tool use, and because a progress turn is also what extends the
+    # budget, it is how a run reaches the hard turn limit repeating one tool. The
+    # fingerprint check below already rejects content this run has seen, so it
+    # decides instead.
+    _NO_CONTENT_STATUSES = frozenset({"duplicate_blocked", "unsupported", "fatal"})
+
     def _is_progress(self, result: dict[str, Any]) -> bool:
         if not result.get("evidence_valid", False):
             return False
-        if result.get("status") in {
-            "already_available",
-            "duplicate_blocked",
-            "unsupported",
-            "fatal",
-        }:
+        if result.get("status") in self._NO_CONTENT_STATUSES:
             return False
         content = str(result.get("output_text", "") or "").strip()
         if not content:

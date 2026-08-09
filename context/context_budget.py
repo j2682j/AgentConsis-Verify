@@ -41,6 +41,9 @@ class ContextBudgetManager:
     Apply a deterministic character budget to Stage1 prompt sections.
     """
 
+    _ELLIPSIS = " ..."
+    _REFERENCE_SECTION_RE = re.compile(r"(?m)^(?:Unverified References:|\[[BR]\d+\]\s*$)")
+
     SECTION_LIMITS = {
         "solver_result": "max_deterministic_chars",
         "attachment_result": "max_attachment_chars",
@@ -91,14 +94,48 @@ class ContextBudgetManager:
         )
         return ContextBudgetResult(sections=compact, diagnostics=diagnostics)
 
+    def _search_evidence_budget(self) -> int:
+        return self.budget.max_search_evidence_items * self.budget.max_search_evidence_chars
+
     def _compact_search_evidence(self, text: str) -> tuple[str, int]:
+        """Cut the search block to the allowance.
+
+        The plain cut on the `[R#]` reference shape is deliberate. Making it
+        block-aware -- so every reference kept its head instead of the first
+        few consuming the allowance -- was tried for level1_final_12 and cost
+        four tasks: it turns the same allowance into 8 references of about 150
+        characters where the plain cut leaves 4 of about 430, and the 4B Agents
+        do worse with the shallow spread. The effect was confined to exactly
+        the tasks that carry references (21% -> 4% correct) while tasks without
+        them held (48% -> 50%), and run-level accuracy rose (27.5% -> 28.8%)
+        even as the task score fell, so it was the selection that broke, not
+        the Agents. See tests/test_context_budget_reference_blocks.py.
+        """
+
         cleaned = text.strip()
         if not cleaned or cleaned == "None":
             return cleaned, 0
 
         blocks = self._evidence_blocks(cleaned)
         if not blocks:
-            return self._truncate(cleaned, self.budget.max_search_evidence_items * self.budget.max_search_evidence_chars), 0
+            return self._truncate(cleaned, self._search_evidence_budget()), 0
+
+        # Grounded evidence and unverified references can arrive together, and
+        # `_evidence_blocks` lets its last block run to the end of the text --
+        # which swallows the whole reference section and then trims it to one
+        # item's allowance. Measured on level1_final_14 task 046 that left one
+        # reference and 848 characters where references alone give three and
+        # 2,254. Splitting keeps each side on its own rule: evidence takes its
+        # per-item trim, references take a plain cut of whatever the evidence
+        # did not use. The total allowance is unchanged, and text without any
+        # `[E#]` block never reaches here.
+        head, references = self._split_reference_section(cleaned)
+        if references:
+            kept_head, dropped = self._compact_search_evidence(head)
+            room = self._search_evidence_budget() - len(kept_head) - 1
+            if room <= 0:
+                return kept_head, dropped
+            return f"{kept_head}\n{self._truncate(references, room)}".strip(), dropped
 
         prefix = blocks[0] if blocks and not blocks[0].startswith("[E") else ""
         evidence_blocks = blocks[1:] if prefix else blocks
@@ -109,6 +146,14 @@ class ContextBudgetManager:
             kept_blocks.append(self._truncate_evidence_block(block))
         dropped = max(0, len(evidence_blocks) - min(len(evidence_blocks), self.budget.max_search_evidence_items))
         return "\n".join(kept_blocks).strip(), dropped
+
+    def _split_reference_section(self, text: str) -> tuple[str, str]:
+        """Everything before the unverified-reference section, and that section."""
+
+        match = self._REFERENCE_SECTION_RE.search(text)
+        if match is None:
+            return text, ""
+        return text[: match.start()].rstrip(), text[match.start() :].strip()
 
     def _evidence_blocks(self, text: str) -> list[str]:
         matches = list(re.finditer(r"(?m)^\[E\d+\]\s*$", text))
@@ -185,7 +230,7 @@ class ContextBudgetManager:
             return ""
         if len(value) <= max_chars:
             return value
-        return value[:max_chars].rstrip() + " ..."
+        return value[:max_chars].rstrip() + self._ELLIPSIS
 
     def _text(self, value: Any) -> str:
         return "" if value is None else str(value)

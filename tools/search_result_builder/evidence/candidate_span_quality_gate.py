@@ -163,9 +163,16 @@ class CandidateSpanQualityGate:
     def __init__(
         self,
         *,
-        max_candidates: int = 15,
+        max_candidates: int = 40,
         max_span_chars: int = 160,
     ) -> None:
+        # Fourth and last of the budgets bounding the same spans, after
+        # PassageEvidenceUnitBuilder.max_units, RetrievalControl's max_total,
+        # and the classifier's per-call bound. It has to track them: while the
+        # first held rounds to 10 spans this never bound, and raising that one
+        # to 40 without this simply moved the truncation here. level1_final_07
+        # shows the shape -- candidate units per round rose from 8.5 to 30.2,
+        # and the spans reaching the classifier still stopped dead at 15.
         self.max_candidates = max(1, max_candidates)
         self.max_span_chars = max(30, max_span_chars)
 
