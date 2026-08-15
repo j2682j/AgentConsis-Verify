@@ -200,7 +200,14 @@ class OrderedWinnerGateTests(unittest.TestCase):
 
         self.assertIsNotNone(winner)
         self.assertEqual(winner.compressed_answer, "3")
-        requirement_gate = network._last_winner_selection_trace["gate_trace"][1]
+        # By name, not by position: this read `gate_trace[1]` and broke when a
+        # gate was inserted ahead of the requirement gate, reporting the new
+        # gate's survivors as though the requirement gate had passed both.
+        requirement_gate = next(
+            gate
+            for gate in network._last_winner_selection_trace["gate_trace"]
+            if gate["gate_name"] == "answer_requirement"
+        )
         self.assertEqual(requirement_gate["survivors"], ["3"])
 
     def test_contradicted_candidate_cannot_be_rescued_by_high_versa(self) -> None:

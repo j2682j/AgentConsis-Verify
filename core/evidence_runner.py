@@ -5,6 +5,7 @@ from dataclasses import asdict, is_dataclass
 import hashlib
 from pathlib import Path
 import time
+import traceback
 from typing import Any
 
 from tools.attachment_reader import AttachmentEvidenceBuilder
@@ -364,7 +365,46 @@ class EvidenceRunner:
         )
         self._attach_search_contract_state(bundle)
         bundle["fact_store"] = self.fact_store.to_dict()
+        pipeline_status, evidence_status = self._evidence_prepare_status(bundle)
+        bundle["pipeline_status"] = pipeline_status
+        bundle["evidence_status"] = evidence_status
         return bundle
+
+    @staticmethod
+    def _evidence_prepare_status(bundle: dict[str, Any]) -> tuple[str, str]:
+        """The task-level status, including tasks that never searched at all.
+
+        Routing skips the search build entirely on 24 of 53 level 1 tasks -- a
+        deterministic handler or an attachment answers them -- and those tasks
+        carried no status, because the status was written inside the search
+        build. Reading the absence of the field as `complete + empty` merges two
+        different things: retrieval that ran and found nothing, and retrieval
+        that was never asked to run. The `complete + empty` bucket answered 54%
+        correctly on that reading, which said nothing useful, because most of
+        it was tasks that never needed evidence.
+
+        Returns:
+         - tuple[str, str]: `pipeline_status` in {complete, partial_failure,
+           failed, not_run} and `evidence_status` in {strict, unverified_only,
+           empty, not_applicable}.
+        """
+
+        searches = [
+            item
+            for item in (bundle.get("tool_usage") or [])
+            if isinstance(item, dict) and item.get("tool_name") == "search"
+        ]
+        if not searches:
+            return "not_run", "not_applicable"
+        for item in reversed(searches):
+            raw = item.get("raw_result")
+            diagnostics = (raw or {}).get("diagnostics") if isinstance(raw, dict) else None
+            status = (diagnostics or {}).get("pipeline_status")
+            if status:
+                return str(status), str((diagnostics or {}).get("evidence_status") or "empty")
+        # The build ran and recorded no diagnostics at all, which only happens
+        # when it raised before reaching them.
+        return "failed", "empty"
 
     def _collect_facts(self, tool_usage: list[dict[str, Any]]) -> None:
         """Collect newly available tool facts before readiness evaluation."""
@@ -852,12 +892,35 @@ class EvidenceRunner:
                 "error": None,
             }
         except Exception as exc:
+            # The message alone is not diagnosable. Three defects have reached
+            # this handler -- `not vectors` on a numpy array, `payload.get` on a
+            # string, and a `<` between two dicts -- and each one emptied the
+            # whole search evidence for its task while the run reported a normal
+            # score. Recovering the first two meant instrumenting this line and
+            # re-running; the third never reproduced, because which documents
+            # retrieval returns decides whether it fires. Keeping the traceback
+            # makes the next one readable from the saved run instead.
+            # The two fail-open points below cover the failures seen so far, but
+            # an exception reaching here escaped both, so nothing produced a
+            # status. Stating it explicitly keeps `pipeline_status` total: every
+            # task carries one, and an unknown defect reads as `failed` rather
+            # than as an absent field indistinguishable from an old run.
             result = {
                 "ok": False,
                 "tool_name": "search",
                 "output_text": "",
-                "raw_result": None,
+                "raw_result": {
+                    "diagnostics": {
+                        "pipeline_status": "failed",
+                        "evidence_status": "empty",
+                        "failure_scope": "search_evidence_build",
+                    }
+                },
                 "error": str(exc),
+                "error_type": type(exc).__name__,
+                "error_traceback": "".join(
+                    traceback.format_exception(type(exc), exc, exc.__traceback__)
+                )[-4000:],
             }
         return self._validate_tool_context(
             "search",
@@ -1174,6 +1237,56 @@ class EvidenceRunner:
             lines.append("")
         return lines
 
+    @staticmethod
+    def _evidence_pipeline_status(
+        *,
+        output_dict: dict[str, Any],
+        evidence_items: list[dict[str, Any]],
+        references: list[dict[str, Any]],
+        strict_evidence_count: int,
+        source_count: int,
+    ) -> tuple[str, str]:
+        """Separate "the pipeline broke" from "the pipeline found nothing".
+
+        These were indistinguishable, and the confusion was expensive. A numpy
+        truthiness error emptied Evidence Prepare on 25 of 53 tasks in
+        level1_final_18 and the run still reported a normal score, because a
+        crashed pipeline and a pipeline that legitimately converted no evidence
+        both surface as an empty `search_result`. `evidence_conversion_empty` is
+        a finding; an escaped `TypeError` is a defect, and reading one as the
+        other cost a full benchmark run.
+
+        Returns:
+         - tuple[str, str]: `pipeline_status` in {complete, partial_failure,
+           failed} and `evidence_status` in {strict, unverified_only, empty}.
+        """
+
+        failed_sources = [
+            trace
+            for trace in (output_dict.get("web_searches") or [])
+            if str((trace or {}).get("actual_acquirer") or "") == "acquisition_failed"
+        ]
+        enrichment = (output_dict.get("diagnostics") or {}).get(
+            "collection_link_enrichment"
+        ) or {}
+        raised = bool(failed_sources) or bool(enrichment.get("error_traceback"))
+        survived = bool(evidence_items or references or source_count)
+
+        if not raised:
+            pipeline_status = "complete"
+        elif survived:
+            pipeline_status = "partial_failure"
+        else:
+            pipeline_status = "failed"
+
+        if strict_evidence_count:
+            evidence_status = "strict"
+        elif references:
+            evidence_status = "unverified_only"
+        else:
+            evidence_status = "empty"
+        return pipeline_status, evidence_status
+
     def _web_retrieval_raw_result(
         self,
         *,
@@ -1214,8 +1327,20 @@ class EvidenceRunner:
             or 0
         )
         references = list(unverified_references or [])
+        strict_evidence_count = sum(
+            1 for item in evidence_items if not item.get("relaxed")
+        )
+        pipeline_status, evidence_status = self._evidence_pipeline_status(
+            output_dict=output_dict,
+            evidence_items=evidence_items,
+            references=references,
+            strict_evidence_count=strict_evidence_count,
+            source_count=source_count,
+        )
         diagnostics = {
             **dict(output_dict.get("diagnostics") or {}),
+            "pipeline_status": pipeline_status,
+            "evidence_status": evidence_status,
             "initial_web_preprocessing": {
                 "source_pipeline": (
                     (output_dict.get("diagnostics") or {}).get("corpus_pipeline")
@@ -1296,12 +1421,20 @@ class EvidenceRunner:
             "best_effort_evidence": {
                 "enabled": True,
                 "triggered": bool(references),
+                # References are not only a fallback: `_web_retrieval_unverified_
+                # references` deliberately emits them alongside grounded evidence,
+                # so reporting `strict_evidence_empty` whenever any reference
+                # exists mislabels every task that has both.
                 "fallback_reason": (
-                    "strict_evidence_empty" if references else ""
+                    ""
+                    if not references
+                    else (
+                        "strict_evidence_empty"
+                        if not strict_evidence_count
+                        else "supplemental_unverified_context"
+                    )
                 ),
-                "strict_evidence_count": sum(
-                    1 for item in evidence_items if not item.get("relaxed")
-                ),
+                "strict_evidence_count": strict_evidence_count,
                 "relaxed_evidence_count": sum(
                     1 for item in evidence_items if item.get("relaxed")
                 ),

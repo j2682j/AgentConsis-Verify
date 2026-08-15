@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import traceback
 from dataclasses import asdict, dataclass, field
 from typing import Any
 from urllib.parse import urlparse
@@ -30,6 +31,7 @@ class SourceAcquisitionTrace:
      - source_ids: 對應的 SearchSourceCandidate IDs。
      - fallback_used: 是否因主要取得方式失敗而回退。
      - notices: 取得失敗或修復資訊。
+     - error_traceback: 該來源拋出例外時的完整堆疊，供事後診斷。
 
     Returns:
      - SourceAcquisitionTrace: 可寫入實驗紀錄的來源取得 trace。
@@ -45,6 +47,7 @@ class SourceAcquisitionTrace:
     source_ids: list[str] = field(default_factory=list)
     fallback_used: bool = False
     notices: list[str] = field(default_factory=list)
+    error_traceback: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -109,12 +112,39 @@ class SourceAcquisitionRouter:
                     )
                 )
                 continue
-            acquired, trace = self.acquire(
-                request,
-                question=question,
-                query_id=f"Q{query_index}",
-                max_results=max_results,
-            )
+            try:
+                acquired, trace = self.acquire(
+                    request,
+                    question=question,
+                    query_id=f"Q{query_index}",
+                    max_results=max_results,
+                )
+            except Exception as exc:
+                # One source must not cost the task its whole evidence. Every
+                # defect found here so far raised inside a single request --
+                # `payload.get` on a string return, a numpy array in a
+                # truthiness check -- and propagated out of the batch, out of
+                # `RetrievalControl.run`, and into the handler that records an
+                # empty `search_result`. Task 034 produced zero facts in every
+                # recorded run for exactly that reason. Dropping the branch and
+                # keeping the rest turns a fatal defect into a partial one.
+                requirement = request.source_requirement
+                traces.append(
+                    SourceAcquisitionTrace(
+                        query=request.query,
+                        requested_source_kind=requirement.source_kind,
+                        requested_access_mode=requirement.access_mode,
+                        source_hint=requirement.source_hint,
+                        required_content=requirement.required_content,
+                        actual_acquirer="acquisition_failed",
+                        fallback_used=True,
+                        notices=[f"{type(exc).__name__}: {exc}"[:200]],
+                        error_traceback="".join(
+                            traceback.format_exception(type(exc), exc, exc.__traceback__)
+                        )[-2000:],
+                    )
+                )
+                continue
             for source in acquired:
                 source.source_id = f"S{len(sources) + 1}"
                 sources.append(source)
@@ -222,6 +252,15 @@ class SourceAcquisitionRouter:
                     "required_content": request.source_requirement.required_content,
                 }
             )
+            # The video tools return a plain string on some failure paths, and
+            # every branch below reads `payload` as a mapping. The resulting
+            # AttributeError was not caught here, so instead of taking the
+            # fallback two lines down it escaped and killed the whole search
+            # evidence build: task 034 has produced `search_used=False` and zero
+            # facts in every recorded run because of it. Normalising once keeps
+            # the failure on the path already written for it.
+            if not isinstance(payload, dict):
+                payload = {"ok": False, "error": normalize_text(str(payload or ""))}
             if bool(payload.get("ok")) and normalize_text(payload.get("output_text", "")):
                 trace.actual_acquirer = (
                     "video_transcript"

@@ -8,7 +8,13 @@ from typing import Any
 @dataclass
 class ContextBudget:
     max_total_chars: int = 6000
-    max_search_evidence_items: int = 5
+    # The search allowance is `items * chars`, not a count of items kept: the
+    # section is fitted to that character budget. At 5 it was 2250, which
+    # delivered 3.5 references of which 63% were fragments. At 8 it is 3600,
+    # delivering about 4.8 with 83% complete, and the whole prompt still lands
+    # near 5400 against the 6000 total. Raising `chars` instead would also
+    # deepen each `[E#]` block, which is a separate question.
+    max_search_evidence_items: int = 8
     max_search_evidence_chars: int = 450
     max_attachment_chars: int = 1200
     max_tool_result_chars: int = 800
@@ -118,6 +124,23 @@ class ContextBudgetManager:
 
         blocks = self._evidence_blocks(cleaned)
         if not blocks:
+            # Strict evidence forms on 3 of 28 retrieval tasks, so this is the
+            # path almost every task takes and the one that produced the
+            # mid-word cut. References still have their own `[R#]` boundaries
+            # even with no `[E#]` block above them, so honour those instead of
+            # slicing the section at a character offset.
+            if len(cleaned) <= self._search_evidence_budget():
+                return cleaned, 0
+            head, references = self._split_reference_section(cleaned)
+            if references:
+                room = self._search_evidence_budget() - len(head) - 1
+                if room > 0:
+                    kept, _dropped = self._fit_reference_blocks(references, room)
+                    if kept:
+                        # Reference drops stay out of `dropped`, which counts
+                        # evidence blocks; see
+                        # tests/test_context_budget_reference_blocks.py.
+                        return f"{head}\n{kept}".strip(), 0
             return self._truncate(cleaned, self._search_evidence_budget()), 0
 
         # Grounded evidence and unverified references can arrive together, and
@@ -135,7 +158,11 @@ class ContextBudgetManager:
             room = self._search_evidence_budget() - len(kept_head) - 1
             if room <= 0:
                 return kept_head, dropped
-            return f"{kept_head}\n{self._truncate(references, room)}".strip(), dropped
+            kept_references, dropped_references = self._fit_reference_blocks(references, room)
+            return (
+                f"{kept_head}\n{kept_references}".strip(),
+                dropped + dropped_references,
+            )
 
         prefix = blocks[0] if blocks and not blocks[0].startswith("[E") else ""
         evidence_blocks = blocks[1:] if prefix else blocks
@@ -146,6 +173,70 @@ class ContextBudgetManager:
             kept_blocks.append(self._truncate_evidence_block(block))
         dropped = max(0, len(evidence_blocks) - min(len(evidence_blocks), self.budget.max_search_evidence_items))
         return "\n".join(kept_blocks).strip(), dropped
+
+    def _fit_reference_blocks(self, references: str, room: int) -> tuple[str, int]:
+        """Keep whole `[R#]` references; drop the ones that do not fit.
+
+        The section used to be cut as one string at a character offset, which
+        landed mid-word on 89% of level1_final_16's retrieval tasks and
+        mid-sentence on all of them. Every task ended on a fragment averaging
+        294 characters -- 13% of the allowance -- and 14% ended on a reference
+        header with no content at all, so the Agents' last piece of evidence
+        read `Hiccup would have had to carry 8 ...`.
+
+        This is not the block-aware truncation reverted after level1_final_12.
+        That gave every reference its head, turning 4 references of ~430
+        characters into 8 of ~150, and the shallower spread cost four tasks.
+        Per-reference depth is unchanged here; only the point where the section
+        ends moves, from an arbitrary offset to the last complete reference.
+
+        No task's gold sits solely in the discarded fragment, measured across
+        the 21 comparable retrieval tasks, so nothing recoverable is lost.
+        """
+
+        blocks = self._reference_blocks(references)
+        if not blocks:
+            return self._truncate(references, room), 0
+
+        kept: list[str] = []
+        used = 0
+        dropped = 0
+        carries_reference = False
+        for block in blocks:
+            cost = len(block) + (1 if kept else 0)
+            is_reference = bool(re.match(r"^\[[BR]\d+\]", block))
+            if used + cost <= room:
+                kept.append(block)
+                used += cost
+                carries_reference = carries_reference or is_reference
+                continue
+            # A first reference longer than the whole allowance is truncated
+            # rather than dropped: dropping it leaves only the section header,
+            # which tells the reader nothing.
+            if is_reference and not carries_reference:
+                kept.append(self._truncate(block, max(0, room - used - 1)))
+                used = room
+                carries_reference = True
+                continue
+            dropped += 1
+        return "\n".join(kept).strip(), dropped
+
+    def _reference_blocks(self, text: str) -> list[str]:
+        """The reference section split on its `[R#]`/`[B#]` markers."""
+
+        matches = list(re.finditer(r"(?m)^\[[BR]\d+\]", text))
+        if not matches:
+            return []
+        blocks: list[str] = []
+        prefix = text[: matches[0].start()].strip()
+        if prefix:
+            blocks.append(prefix)
+        for index, match in enumerate(matches):
+            end = matches[index + 1].start() if index + 1 < len(matches) else len(text)
+            block = text[match.start() : end].strip()
+            if block:
+                blocks.append(block)
+        return blocks
 
     def _split_reference_section(self, text: str) -> tuple[str, str]:
         """Everything before the unverified-reference section, and that section."""

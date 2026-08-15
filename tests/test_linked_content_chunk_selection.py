@@ -153,6 +153,54 @@ class LinkedContentChunkSelectionTest(unittest.TestCase):
         joined = " ".join(item.text for item in enriched).casefold()
         self.assertNotIn(ANSWER.casefold(), joined)
 
+    def test_an_array_returning_embedder_ranks_instead_of_raising(self) -> None:
+        """The production embedder returns an array, and the stub above does not.
+
+        That gap hid a real failure for a full benchmark run. The guard on the
+        returned vectors read `if not vectors`, which raises on a numpy array
+        holding more than one row, and it sits outside the `try` that catches a
+        failing embedder -- so the error escaped `_select_linked_chunks` and
+        took the entire search evidence build with it. Measured on
+        level1_final_18, `prepared_status` was `prepared_usable` on 6 of 53
+        tasks against 28 in the run before it, and the run still reported a
+        normal score.
+        """
+
+        numpy = __import__("numpy")
+
+        class _ArrayEmbedder(_KeywordEmbedder):
+            def embed(self, texts: list[str]):
+                return numpy.asarray(super().embed(texts), dtype="float32")
+
+        enriched = _builder().build_enriched_records(
+            _record(),
+            max_chunks=3,
+            question=QUESTION,
+            embedder=_ArrayEmbedder(),
+        )
+
+        joined = " ".join(item.text for item in enriched).casefold()
+        self.assertIn(ANSWER.casefold(), joined)
+        self.assertEqual(len(enriched), 3)
+
+    def test_an_empty_array_falls_back_instead_of_ranking(self) -> None:
+        numpy = __import__("numpy")
+
+        class _EmptyArray:
+            def embed(self, texts: list[str]):
+                return numpy.empty((0, 2), dtype="float32")
+
+        enriched = _builder().build_enriched_records(
+            _record(),
+            max_chunks=3,
+            question=QUESTION,
+            embedder=_EmptyArray(),
+        )
+
+        self.assertEqual(len(enriched), 3)
+        joined = " ".join(item.text for item in enriched).casefold()
+        self.assertNotIn(ANSWER.casefold(), joined)
+
 
 if __name__ == "__main__":
     unittest.main()

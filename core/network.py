@@ -595,6 +595,15 @@ class Network:
                 },
                 "active_agent_count": len(active_results),
                 "search_used": bool(evidence["search_result"].strip()),
+                # Recorded for every task, including the ones routing never
+                # sends to retrieval. Inferring the status from a missing field
+                # cannot tell "found nothing" from "was never asked".
+                "evidence_pipeline_status": str(
+                    evidence.get("pipeline_status") or "not_run"
+                ),
+                "evidence_status": str(
+                    evidence.get("evidence_status") or "not_applicable"
+                ),
                 "attachment_used": bool(evidence["attachment_result"].strip()),
                 "solver_used": bool(evidence["solver_result"].strip()),
                 "routing": evidence.get("routing", {}),
@@ -1099,6 +1108,15 @@ class Network:
         best_by_agent: dict[str, Any] = {}
         for item in evaluations:
             current = best_by_agent.get(item.identity.agent_id)
+            # Deliberately still the floor. This picks the path that is then
+            # thresholded against EARLY_STOP_VERIFIER_THRESHOLD, so it decides
+            # whether Stage 1 stops -- an execution change, not a reordering,
+            # and nothing offline can measure it. Replayed over final_13/15/16,
+            # ranking on the median moves the representative path for 99 of the
+            # agent-tasks and changes the answer that path carries on 29 of
+            # them. The median AUC result licenses ranking candidates for
+            # winner selection; it says nothing about feeding a threshold
+            # calibrated on the minimum.
             key = (
                 int(item.direct_support),
                 float(item.critical_step_floor or 0.0),

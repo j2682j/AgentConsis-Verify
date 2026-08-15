@@ -88,5 +88,98 @@ class TranscriptSegmentBlockTest(unittest.TestCase):
                 self.assertEqual(len(payload.text_blocks), 4)
 
 
+class TranscriptSurvivesTheAttachmentBudgetTest(unittest.TestCase):
+    """The segments were reaching fact extraction and still losing their tail.
+
+    Splitting the transcript fixed how it was chunked, not whether it arrived.
+    `max_attachment_chars` is 1200 and the header carried the whole question
+    back as `question_focus`, which ran to 1052 characters on level1_final_20
+    task 031 -- 88% of the budget spent restating text the Agent already had,
+    leaving 152 characters of transcript. The cut landed on `and cornstarch.
+    Cook t ...` and took `pure vanilla extract` with it, the single ingredient
+    the answer omitted. Task 045 lost `132, 133, 134` from its closing segment
+    and answered `197, 245`, exactly what survived.
+
+    Neither transcript was too long: 455 and 660 characters against a budget of
+    1200. Only the header made them not fit.
+    """
+
+    # The real header, minus the question, at its real length.
+    HEADER = (
+        "Audio transcription:\n"
+        "- faster_whisper_model: base\n"
+        "- device: cuda\n"
+        "- compute_type: float16\n"
+        "- detected_language: en confidence=1.00\n"
+        "Transcript:\n"
+    )
+    # Task 031's question verbatim, 885 characters, which is the point: the
+    # header it produced ran to 1052 against a 1200 budget. A paraphrase is not
+    # interchangeable here -- a shorter one leaves room and the cut moves.
+    QUESTION = (
+        "Hi, I'm making a pie but I could use some help with my shopping list. I have "
+        "everything I need for the crust, but I'm not sure about the filling. I got the "
+        "recipe from my friend Aditi, but she left it as a voice memo and the speaker on "
+        "my phone is buzzing so I can't quite make out what she's saying. Could you "
+        "please listen to the recipe and list all of the ingredients that my friend "
+        "described? I only want the ingredients for the filling, as I have everything I "
+        "need to make my favorite pie crust. I've attached the recipe as Strawberry "
+        "pie.mp3.\n\nIn your response, please only list the ingredients, not any "
+        "measurements. So if the recipe calls for \"a pinch of salt\" or \"two cups of "
+        "ripe strawberries\" the ingredients on the list would be \"salt\" and \"ripe "
+        "strawberries\".\n\nPlease format your response as a comma separated list of "
+        "ingredients. Also, please alphabetize the ingredients."
+    )
+    BODY = (
+        "[0.00-5.84] In a saucepan, combine ripe strawberries, granulated sugar, "
+        "freshly squeezed lemon juice\n"
+        "[5.84-11.12] and cornstarch. Cook the mixture over medium heat, stirring "
+        "constantly until it thickens to\n"
+        "[11.12-16.72] a smooth consistency. Remove from heat and stir in a dash of "
+        "pure vanilla extract.\n"
+        "[16.72-21.20] Allow the strawberry pie filling to cool before using it as a "
+        "delicious and fruity filling for\n"
+        "[21.20-31.20] your pie crust."
+    )
+    INGREDIENTS = (
+        "ripe strawberries",
+        "granulated sugar",
+        "freshly squeezed lemon juice",
+        "cornstarch",
+        "pure vanilla extract",
+    )
+
+    def _fit(self, content: str) -> str:
+        from context.context_budget import ContextBudget, ContextBudgetManager
+
+        return ContextBudgetManager()._truncate(
+            content, ContextBudget().max_attachment_chars
+        )
+
+    def test_every_ingredient_survives_the_budget(self) -> None:
+        kept = self._fit(self.HEADER + self.BODY).casefold()
+
+        for item in self.INGREDIENTS:
+            with self.subTest(item=item):
+                self.assertIn(item, kept)
+
+    def test_the_question_in_the_header_is_what_used_to_cut_it(self) -> None:
+        """Guard the regression direction, and the size of the effect."""
+
+        with_question = (
+            "Audio transcription:\n"
+            "- faster_whisper_model: base\n"
+            "- device: cuda\n"
+            "- compute_type: float16\n"
+            "- detected_language: en confidence=1.00\n"
+            f"- question_focus: {self.QUESTION}\n"
+            "Transcript:\n"
+        ) + self.BODY
+        kept = self._fit(with_question).casefold()
+
+        self.assertNotIn("pure vanilla extract", kept)
+        self.assertIn("ripe strawberries", kept)
+
+
 if __name__ == "__main__":
     unittest.main()

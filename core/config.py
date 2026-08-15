@@ -150,7 +150,9 @@ class CandidateEvaluation:
      - candidate_key: 對應的答案候選鍵值。
      - eligible: 候選是否可進入最終選擇。
      - support_status: 證據支持類別，不使用加權總分。
-     - critical_step_floor: 關鍵推理步驟中最低的 Versa reward probability。
+     - step_score_median: 全部推理步驟 reward probabilities 的中位數，排序主鍵。
+     - critical_step_floor: 關鍵推理步驟中最低的 Versa reward probability；
+       僅供 early-stop 門檻與跨版本比對，不再參與排序。
      - critical_step_geometric_mean: 關鍵步驟 reward probabilities 的幾何平均。
 
     Returns:
@@ -172,6 +174,10 @@ class CandidateEvaluation:
     selected_reasoning: str = ""
     selected_agent_confidence: float = 0.0
     selected_agent_answer_frequency: int = 0
+    # The verifier ranking key. `critical_step_floor` held this role and
+    # separated correct from incorrect candidates worse than chance; see
+    # `Stage2Runner._process_verification_summary` for the measurement.
+    step_score_median: float = 0.0
     critical_step_floor: float = 0.0
     critical_step_geometric_mean: float = 0.0
     average_verifier_probability: float = 0.0
@@ -308,6 +314,7 @@ class CandidatePathEvaluation:
     evidence_support_metadata: dict[str, Any] = field(default_factory=dict)
     versa_available: bool = False
     versa_status: str = "disabled"
+    step_score_median: float | None = None
     critical_step_floor: float | None = None
     critical_step_geometric_mean: float | None = None
     average_verifier_probability: float | None = None

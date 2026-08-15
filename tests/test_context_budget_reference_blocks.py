@@ -79,10 +79,16 @@ class ReferenceShapeTest(unittest.TestCase):
         self.assertGreater(median_body, 300, "a kept reference has to carry usable content")
 
     def test_the_allowance_is_what_binds(self) -> None:
-        compacted = self._compact(_references(8))
+        source = _references(8)
+        compacted = self._compact(source)
 
         self.assertLessEqual(len(compacted), self.manager._search_evidence_budget() + len(" ..."))
-        self.assertTrue(compacted.endswith("..."))
+        # Content is dropped to reach the allowance. This used to assert the
+        # trailing "..." as well, which pinned the mechanism rather than the
+        # property: the section now ends on the last complete `[R#]` block
+        # instead of a character offset, so the marker is usually absent. See
+        # tests/test_reference_block_boundary.py.
+        self.assertLess(len(compacted), len(source.strip()))
 
     def test_a_block_under_the_allowance_is_untouched(self) -> None:
         text = "\n".join(_references(1).splitlines()[:5])

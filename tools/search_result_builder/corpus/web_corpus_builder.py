@@ -479,7 +479,15 @@ class WebCorpusBuilder:
             vectors = embedder.embed([question, *chunks])
         except Exception:
             return chunks[:limit]
-        if not vectors or len(vectors) != len(chunks) + 1:
+        # `len`, not truthiness: the embedder returns a numpy array, and
+        # `not vectors` on one holding more than one row raises rather than
+        # falling back. Because this line sits outside the `try` above, that
+        # ValueError escaped `_select_linked_chunks` and killed the whole
+        # search evidence build -- `prepared_status` went from `prepared_usable`
+        # on 28 of 53 tasks to 6, and the semantic fact channel with it, while
+        # the run still reported a normal score. See
+        # tests/test_linked_content_chunk_selection.py.
+        if vectors is None or len(vectors) != len(chunks) + 1:
             return chunks[:limit]
 
         query = vectors[0]

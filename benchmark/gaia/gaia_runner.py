@@ -1258,13 +1258,22 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Check VersaPRM cache at startup without downloading missing files.",
     )
     parser.add_argument(
-        "--without--stage2--score",
         "--without-stage2-score",
         dest="without_stage2_score",
         action="store_true",
         help="Skip Stage2 judge scoring and rank agents by Stage1 confidence plus penalties.",
     )
-    parser.add_argument("--enable-stage1-tool-use", action="store_true")
+    parser.add_argument(
+        "--enable-stage1-tool-use",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help=(
+            "Let Stage 1 call tools. On by default: every recorded benchmark run "
+            "has it enabled (159 of 159 task runs across level1_final_13, _15 and "
+            "_16), so a default of off meant that omitting the flag silently ran a "
+            "different system. Disable with --no-enable-stage1-tool-use."
+        ),
+    )
     parser.add_argument("--evidence-prepare", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--compact-search-evidence", action="store_true")
     parser.add_argument("--enable-evidence-driven-search", action=argparse.BooleanOptionalAction, default=True)
@@ -1287,18 +1296,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--enable-candidate-verification-search",
         dest="candidate_verification_search",
         action="store_true",
+        default=False,
         help=(
             "Enable bounded candidate evidence recovery when every factual "
             "candidate is unsupported. Off by default: an A/B run showed it "
             "can promote wrong candidates whose text co-occurs with question "
             "terms (opt in for controlled experiments)."
         ),
-    )
-    parser.add_argument(
-        "--without-candidate-verification-search",
-        dest="candidate_verification_search",
-        action="store_false",
-        help="Explicitly disable candidate verification search (the default).",
     )
     parser.add_argument(
         "--candidate-verification-max-queries",

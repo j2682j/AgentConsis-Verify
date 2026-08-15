@@ -201,6 +201,9 @@ class CandidatePathEvaluator:
                 process = verifier.metadata.get("process_verification", {})
                 evaluation.versa_available = True
                 evaluation.versa_status = "available"
+                evaluation.step_score_median = float(
+                    process.get("step_score_median") or 0.0
+                )
                 evaluation.critical_step_floor = float(
                     process.get("critical_step_floor") or 0.0
                 )
@@ -239,6 +242,7 @@ class CandidatePathEvaluator:
         process = dict(path.metadata.get("process_verification") or {})
         process.update(
             {
+                "step_score_median": path.step_score_median,
                 "critical_step_floor": path.critical_step_floor,
                 "critical_step_geometric_mean": path.critical_step_geometric_mean,
                 "average_probability": path.average_verifier_probability,

@@ -253,6 +253,142 @@ class SourceAcquisitionRouterTests(unittest.TestCase):
         self.assertEqual(sources[0].required_content, "transcript")
         self.assertTrue(sources[0].requirement_met)
 
+    def test_a_string_payload_falls_back_instead_of_raising(self):
+        """The video tools do not always return a mapping.
+
+        Every fake above returns a dict, so the branch that reads
+        `payload.get("ok")` was never given anything else. In production the
+        tool returns a plain string on some failure paths, and the resulting
+        AttributeError was not caught here -- it escaped the router and killed
+        the entire search evidence build. Task 034 produced `search_used=False`
+        and zero facts in every recorded run, level1_final_16 and _18 alike,
+        for exactly this reason.
+        """
+
+        class _StringReturningTool(FakeVideoTool):
+            def run(self, parameters):
+                self.calls.append(dict(parameters))
+                return "transcript unavailable"
+
+        search = FakeSearchTool(
+            [
+                {
+                    "title": "Video",
+                    "url": "https://youtube.com/watch?v=abcdefghijk",
+                    "content": "Video search result",
+                }
+            ]
+        )
+        video = _StringReturningTool()
+        router = SourceAcquisitionRouter(search_tool=search, video_tool=video)
+        request = SearchQueryRequest(
+            query="target video",
+            source_requirement=SourceRequirement(
+                source_kind="video",
+                access_mode="search",
+                source_hint="youtube.com",
+            ),
+        )
+
+        sources, traces = router.acquire_many(
+            [request],
+            question="What appears in the video?",
+            max_results=3,
+        )
+
+        self.assertEqual(len(video.calls), 1)
+        self.assertEqual(len(sources), 1)
+        self.assertTrue(traces[0].fallback_used)
+        self.assertIn("transcript unavailable", traces[0].notices)
+
+
+class AcquisitionFailsOpenTest(unittest.TestCase):
+    """One source raising must not cost the task every other source.
+
+    Both defects found in this router escaped a single request and unwound the
+    whole of `RetrievalControl.run`, so the handler above it recorded an empty
+    `search_result` and the task ran with no prepared evidence while the
+    benchmark still reported a normal score. Task 034 produced zero facts in
+    every recorded run because of one `payload.get` on a string.
+    """
+
+    def _requests(self) -> list[SearchQueryRequest]:
+        return [
+            SearchQueryRequest(
+                query="first query",
+                source_requirement=SourceRequirement(
+                    source_kind="web", access_mode="search"
+                ),
+            ),
+            SearchQueryRequest(
+                query="second query",
+                source_requirement=SourceRequirement(
+                    source_kind="web", access_mode="search"
+                ),
+            ),
+        ]
+
+    def _router_that_fails_the_first_request(self, error: Exception):
+        """`_search_sources` already guards the search tool, so the failure is
+        injected at `acquire` -- which is where both real defects escaped from,
+        one in `_acquire_video`'s payload handling and one below it in corpus
+        enrichment. What is under test is that `acquire_many` isolates it.
+        """
+
+        search = FakeSearchTool(
+            [
+                {
+                    "title": "Second",
+                    "url": "https://example.org/second",
+                    "content": "The surviving source.",
+                }
+            ]
+        )
+        router = SourceAcquisitionRouter(search_tool=search, video_tool=FakeVideoTool())
+        original = router.acquire
+        calls = {"n": 0}
+
+        def failing_acquire(request, **kwargs):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise error
+            return original(request, **kwargs)
+
+        router.acquire = failing_acquire
+        return router, calls
+
+    def test_a_raising_source_drops_only_its_own_branch(self):
+        router, calls = self._router_that_fails_the_first_request(
+            TypeError("'<' not supported between instances of 'dict' and 'dict'")
+        )
+
+        sources, traces = router.acquire_many(
+            self._requests(), question="anything", max_results=3
+        )
+
+        self.assertEqual(calls["n"], 2)
+        self.assertEqual(len(traces), 2)
+        self.assertEqual(traces[0].actual_acquirer, "acquisition_failed")
+        self.assertTrue(traces[0].fallback_used)
+        self.assertIn("TypeError", traces[0].notices[0])
+        # The point of the change: the second source still arrives.
+        self.assertEqual(len(sources), 1)
+        self.assertIn("surviving", sources[0].snippet)
+
+    def test_the_failure_keeps_its_traceback(self):
+        """Recovering the first two defects meant instrumenting and rerunning."""
+
+        router, _calls = self._router_that_fails_the_first_request(
+            ValueError("The truth value of an array with more than one element is ambiguous")
+        )
+
+        _sources, traces = router.acquire_many(
+            self._requests()[:1], question="anything", max_results=3
+        )
+
+        self.assertIn("ValueError", traces[0].error_traceback)
+        self.assertIn("ambiguous", traces[0].error_traceback)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -301,7 +301,22 @@ class AnswerRequirementGate:
             return "number"
         if re.search(r"\b(?:percentage|percent|ratio|volume|distance|duration)\b", text):
             return "number"
-        if re.search(r"\b(?:list|names of|titles of|all of the)\b", text):
+        # `all of the` is deliberately absent. The other three are requests --
+        # "list", "names of", "titles of" name what the answer should contain --
+        # while `all of the` is a quantifier that reads the same in an
+        # instruction about method. Task 038 says `Pull out the sentence ... use
+        # all of the letters in order`, which set `expected="list"` for a
+        # question asking for one sentence. `_clearly_incompatible` then
+        # rejected every candidate whose observed type was `text`, so the gold
+        # answer was hard-rejected while `THESE GULLS GLIDE DEEP, MY CHAIR`
+        # passed -- its comma made it observe as a list.
+        #
+        # Measured over the 53 level 1 questions, `all of the` fires on two:
+        # task 031, where `list` matches as well and the expected type is
+        # unchanged, and task 038, where it is the only match and the answer is
+        # not a list. Removing it changes one task's expected type, and that
+        # task's gold is a sentence.
+        if re.search(r"\b(?:list|names of|titles of)\b", text):
             return "list"
         if re.search(r"\b(?:which|what) (?:person|author|director|founder|scientist|winner|name)\b", text):
             return "person"

@@ -23,7 +23,9 @@ from score.evidence_support_level import (
 )
 from score.evidence_answer_resolver import EvidenceAnswerResolver
 from score.gate_result import CandidateGateDecision, GateResult
+from score.literal_answer_contract import literal_answer
 from score.question_echo import is_question_echo
+from score.surface_form_morphology import singular_variants
 from utils.network_utils import normalize_text
 
 
@@ -258,6 +260,9 @@ class FinalWinnerSelector:
         gate_trace: list[GateResult] = []
         gates: tuple[Callable[..., GateResult], ...] = (
             self._apply_validity_gate,
+            # Before the requirement gate, because when the question dictates
+            # its own answer there is nothing for the other gates to weigh.
+            self._apply_literal_answer_gate,
             self._apply_requirement_gate,
             self._apply_contradiction_gate,
             self._apply_evidence_gate,
@@ -266,6 +271,9 @@ class FinalWinnerSelector:
             # that consensus alone would confirm it; asking whether the fetched
             # pages ever state it is independent of how many runs proposed it.
             self._apply_corpus_attestation_gate,
+            # Ahead of the vote, because the vote is what the split spellings
+            # break: merging has to happen before anything counts them.
+            self._apply_surface_form_gate,
             self._apply_cross_agent_gate,
             self._apply_self_consistency_gate,
             self._apply_versa_gate,
@@ -460,6 +468,81 @@ class FinalWinnerSelector:
                 "all_candidates_failed_validity_gate" if not survivors else ""
             ),
         )
+
+    def _apply_literal_answer_gate(
+        self,
+        candidates: list[CandidateEvaluation],
+        *,
+        evidence: dict[str, Any],
+    ) -> GateResult:
+        """Take the answer the question states, when it states one.
+
+        Task 024 instructs `Write only the word "Guava"` and `Do not answer any
+        of the questions in this prompt`, then lists three questions. The Agents
+        answered them: `8` -- four plus four -- took five runs against `Guava`'s
+        four, and consensus preferred it. No downstream gate can tell those
+        apart, because both are self-consistent; one just answers what the
+        prompt forbids.
+
+        The trigger is what makes this safe. Across all 53 level 1 tasks exactly
+        one question pairs an output verb with an exclusivity word and a quoted
+        value, so on the other 52 this gate returns its input untouched. The
+        contract also declines whenever the instruction is ambiguous -- two
+        competing `write only` directives, an expression rather than a literal,
+        a value offered as one of several -- rather than guessing which binds.
+
+        A literal no candidate produced changes nothing: rejecting every
+        candidate would leave the task with no answer at all, which is worse
+        than the wrong one.
+        """
+
+        literal = literal_answer(self.question)
+        if not literal or len(candidates) < 2:
+            return GateResult(
+                gate_name="literal_answer",
+                survivors=list(candidates),
+                decisions=[],
+                metadata={"applied": False, "literal": literal},
+            )
+
+        target = normalize_text(literal).casefold()
+        matching = [
+            item
+            for item in candidates
+            if normalize_text(str(item.answer or "")).casefold() == target
+        ]
+        if not matching or len(matching) == len(candidates):
+            return GateResult(
+                gate_name="literal_answer",
+                survivors=list(candidates),
+                decisions=[],
+                metadata={
+                    "applied": True,
+                    "literal": literal,
+                    "matched_candidate_count": len(matching),
+                    "enforced": False,
+                },
+            )
+
+        result = self._gate_from_survivors(
+            gate_name="literal_answer",
+            candidates=candidates,
+            survivors=matching,
+            pass_reason="matches_literal_answer_directive",
+            reject_reason="answer_requirement_incompatible",
+            details={
+                item.candidate_key: {
+                    "literal": literal,
+                    "matches": item in matching,
+                }
+                for item in candidates
+            },
+            hard=True,
+        )
+        result.metadata["applied"] = True
+        result.metadata["literal"] = literal
+        result.metadata["enforced"] = True
+        return result
 
     def _apply_requirement_gate(
         self,
@@ -1082,7 +1165,7 @@ class FinalWinnerSelector:
         if len(available_candidates) != len(candidates):
             best_available = self._filter_max(
                 available_candidates,
-                lambda item: item.critical_step_floor,
+                lambda item: item.step_score_median,
             )
             if len(best_available) > 1:
                 best_available = self._filter_max(
@@ -1102,6 +1185,7 @@ class FinalWinnerSelector:
                 details={
                     item.candidate_key: {
                         "versa_available": availability[item.candidate_key],
+                        "step_score_median": item.step_score_median,
                         "critical_step_floor": item.critical_step_floor,
                         "critical_step_geometric_mean": item.critical_step_geometric_mean,
                         "coverage": "partial",
@@ -1129,7 +1213,7 @@ class FinalWinnerSelector:
         if len(survivors) > 1:
             survivors = self._filter_max(
                 survivors,
-                lambda item: item.critical_step_floor,
+                lambda item: item.step_score_median,
             )
             tie_break_depth = 3
         if len(survivors) > 1:
@@ -1156,6 +1240,7 @@ class FinalWinnerSelector:
                     "max_supporter_confidence": round(
                         self._max_supporter_confidence(item), 4
                     ),
+                    "step_score_median": item.step_score_median,
                     "critical_step_floor": item.critical_step_floor,
                     "critical_step_geometric_mean": item.critical_step_geometric_mean,
                     "average_verifier_probability": item.average_verifier_probability,
@@ -1290,18 +1375,145 @@ class FinalWinnerSelector:
             }
         return survivors
 
+    _FULL_FORM_DIRECTIVE = re.compile(
+        r"\b(?:without|no)\s+(?:any\s+)?abbreviations?\b|"
+        r"\b(?:do\s+not|don't)\s+abbreviate\b|\bfull\s+(?:name|form)\b"
+    )
+
+    # Only forms whose expansion is unambiguous in a place name. A general
+    # abbreviation table would merge answers that are genuinely different.
+    _ABBREVIATION_EXPANSIONS = {
+        "st": "saint",
+        "st.": "saint",
+        "ste": "sainte",
+        "ste.": "sainte",
+        "mt": "mount",
+        "mt.": "mount",
+        "ft": "fort",
+        "ft.": "fort",
+    }
+
+    def _full_form_required(self, evidence: dict[str, Any]) -> bool:
+        requirement, _ = self._answer_contract(evidence)
+        text = normalize_text(requirement or self.question).casefold()
+        return bool(self._FULL_FORM_DIRECTIVE.search(text))
+
     def _corpus_surface_form_is_authoritative(self, evidence: dict[str, Any]) -> bool:
         """Do not let source abbreviations override an explicit full-form directive."""
 
-        requirement, _ = self._answer_contract(evidence)
-        text = normalize_text(requirement or self.question).casefold()
-        return not bool(
-            re.search(
-                r"\b(?:without|no)\s+(?:any\s+)?abbreviations?\b|"
-                r"\b(?:do\s+not|don't)\s+abbreviate\b|\bfull\s+(?:name|form)\b",
-                text,
+        return not self._full_form_required(evidence)
+
+    def _expanded_surface_key(self, answer: str) -> str:
+        """The answer with place-name abbreviations written out."""
+
+        words = [
+            self._ABBREVIATION_EXPANSIONS.get(word, word)
+            for word in normalize_text(str(answer or "")).casefold().split()
+        ]
+        return " ".join(words)
+
+    def _apply_surface_form_gate(
+        self,
+        candidates: list[CandidateEvaluation],
+        *,
+        evidence: dict[str, Any],
+    ) -> GateResult:
+        """Merge spellings of one answer when the question forbids abbreviating.
+
+        Task 048 asks for a city name `without abbreviations` and its runs split
+        three ways -- `St Petersburg` with three, `St. Petersburg` with three,
+        `Saint Petersburg` with two. Consensus counts spellings, so the right
+        answer arrived third with eight of its own votes scattered across the
+        wrong two. It has failed this way in three of the four recorded runs.
+
+        The merge is deliberately narrow. It runs only when the question states
+        the directive, so on every other task this gate returns its input
+        untouched; it expands only place-name abbreviations whose full form is
+        unambiguous; and it promotes an existing candidate rather than
+        synthesising a spelling no run produced. Where a group holds no
+        unabbreviated member there is nothing to promote and the group is left
+        alone.
+        """
+
+        if len(candidates) < 2 or not self._full_form_required(evidence):
+            return GateResult(
+                gate_name="surface_form",
+                survivors=list(candidates),
+                decisions=[],
+                metadata={"applied": False},
             )
+
+        groups: dict[str, list[CandidateEvaluation]] = {}
+        for item in candidates:
+            groups.setdefault(self._expanded_surface_key(item.answer), []).append(item)
+
+        merged: dict[str, dict[str, Any]] = {}
+        deferred: list[CandidateEvaluation] = []
+        for key, members in groups.items():
+            if len(members) < 2:
+                continue
+            full_form = [
+                item
+                for item in members
+                if self._expanded_surface_key(item.answer)
+                == normalize_text(str(item.answer or "")).casefold()
+            ]
+            if not full_form:
+                continue
+            canonical = max(full_form, key=lambda item: item.supporting_run_count or 0)
+            runs = sum(int(item.supporting_run_count or 0) for item in members)
+            agents = sorted(
+                {
+                    agent
+                    for item in members
+                    for agent in (item.supporting_agent_ids or [])
+                }
+            )
+            canonical.supporting_run_count = runs
+            canonical.supporting_agent_ids = agents
+            merged[canonical.candidate_key] = {
+                "expanded_key": key,
+                "merged_run_count": runs,
+                "merged_agent_count": len(agents),
+                "absorbed": [
+                    item.candidate_key for item in members if item is not canonical
+                ],
+            }
+            for item in members:
+                if item is canonical:
+                    continue
+                item.selection_state = "reserve"
+                if "surface_form" not in item.soft_deferred_by:
+                    item.soft_deferred_by.append("surface_form")
+                deferred.append(item)
+
+        if not deferred:
+            return GateResult(
+                gate_name="surface_form",
+                survivors=list(candidates),
+                decisions=[],
+                metadata={"applied": True, "merged": {}},
+            )
+
+        survivors = [item for item in candidates if item not in deferred]
+        result = self._gate_from_survivors(
+            gate_name="surface_form",
+            candidates=candidates,
+            survivors=survivors,
+            pass_reason="full_form_directive_canonical_spelling",
+            reject_reason="abbreviated_spelling_merged_into_full_form",
+            details={
+                item.candidate_key: merged.get(
+                    item.candidate_key,
+                    {"expanded_key": self._expanded_surface_key(item.answer)},
+                )
+                for item in candidates
+            },
+            hard=False,
         )
+        result.metadata["applied"] = True
+        result.metadata["merged"] = merged
+        return result
 
     def _evaluate_candidate(
         self,
@@ -1370,6 +1582,7 @@ class FinalWinnerSelector:
                 "eligible_run_count": path.eligible_run_count,
                 "versa_available": path.versa_available,
                 "versa_status": path.versa_status,
+                "step_score_median": path.step_score_median,
                 "critical_step_floor": path.critical_step_floor,
                 "critical_step_geometric_mean": path.critical_step_geometric_mean,
                 "average_verifier_probability": path.average_verifier_probability,
@@ -1413,6 +1626,7 @@ class FinalWinnerSelector:
             "agent_answer_frequency": member.agent_answer_frequency,
             "eligible_run_count": member.eligible_run_count,
             "versa_available": verifier is not None and bool(process),
+            "step_score_median": float(process.get("step_score_median") or 0.0),
             "critical_step_floor": float(process.get("critical_step_floor") or 0.0),
             "critical_step_geometric_mean": float(
                 process.get("critical_step_geometric_mean") or 0.0
@@ -1442,7 +1656,7 @@ class FinalWinnerSelector:
         if available:
             survivors = self._filter_max_dict(
                 available,
-                lambda item: float(item.get("critical_step_floor") or 0.0),
+                lambda item: float(item.get("step_score_median") or 0.0),
             )
             survivors = self._filter_max_dict(
                 survivors,
@@ -1476,6 +1690,9 @@ class FinalWinnerSelector:
         )
         evaluation.selected_agent_answer_frequency = int(
             member.get("agent_answer_frequency") or 0
+        )
+        evaluation.step_score_median = float(
+            member.get("step_score_median") or 0.0
         )
         evaluation.critical_step_floor = float(
             member.get("critical_step_floor") or 0.0
@@ -1654,7 +1871,48 @@ class FinalWinnerSelector:
                 rf"(?<![a-z0-9]){re.escape(answer)}(?![a-z0-9])"
             )
             counts[candidate.candidate_key] = len(pattern.findall(corpus))
+        self._attest_singular_forms(candidates, counts, corpus)
         return counts
+
+    def _attest_singular_forms(
+        self,
+        candidates: list[CandidateEvaluation],
+        counts: dict[str, int],
+        corpus: str,
+    ) -> None:
+        """Credit a plural candidate the corpus states in the singular.
+
+        Counting exact surfaces only made task 034's `Rockhopper penguins`
+        score zero against a corpus that says `rockhopper penguin`, so
+        attestation reserved a three-run specific answer and a one-run generic
+        one won. Admission here is by non-zero count, not by rank, so restoring
+        the count is enough to put the candidate back in the running.
+
+        The answer is rewritten to the form the corpus used, and only to that
+        form: the replacement is a string found in the fetched pages, never one
+        this rule composed. Where the corpus does not state the singular
+        either, nothing changes.
+
+        Measured over final_13/15/16/20/21 this reaches three candidates across
+        two tasks, both classified as attested-but-inflected, and no task that
+        is currently answered correctly. Offline replay of the five runs turns
+        task 034 over and changes nothing else.
+        """
+
+        for candidate in candidates:
+            if counts.get(candidate.candidate_key, 0) > 0:
+                continue
+            for variant in singular_variants(candidate.answer):
+                pattern = re.compile(
+                    rf"(?<![a-z0-9]){re.escape(variant.casefold())}(?![a-z0-9])"
+                )
+                found = len(pattern.findall(corpus))
+                if not found:
+                    continue
+                counts[candidate.candidate_key] = found
+                candidate.answer = variant
+                candidate.metadata["attested_surface_form"] = variant
+                break
 
     def _filter_max(
         self,

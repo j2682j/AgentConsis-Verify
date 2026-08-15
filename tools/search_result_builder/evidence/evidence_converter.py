@@ -115,7 +115,14 @@ class EvidenceConverter:
         *,
         span_builder: SpanBuilder | None = None,
         max_items: int = 8,
-        max_chars: int = 520,
+        # 520 cut 59% of references mid-content on level1_final_16: their
+        # untruncated length is 720 on average, 600 median, 956 at p90. At 900
+        # the share arriving complete goes from 37% to 86%, which is what the
+        # Agents read -- a reference ending "Hiccup would have had to carry 8
+        # ..." is what the old cap produced. The p95 is 1381 and the longest
+        # 20,584, so a cap is still needed; this one just sits above the bulk
+        # of the distribution instead of through the middle of it.
+        max_chars: int = 900,
         duplicate_overlap_threshold: float = 0.86,
         max_relaxed_references: int = 8,
     ) -> None:

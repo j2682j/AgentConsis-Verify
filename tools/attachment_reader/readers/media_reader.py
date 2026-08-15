@@ -161,13 +161,24 @@ class MediaAttachmentReader:
                 probability_text = f" confidence={probability}"
 
         transcript = "\n".join(lines).strip() or "(empty transcription)"
+        # The question is deliberately absent from this header. Whisper never
+        # reads it -- `question` reaches this method and is used nowhere else --
+        # so restating it here only spent the attachment budget on text the
+        # Agent already has. `max_attachment_chars` is 1200 and the header ran
+        # to 1052 characters on task 031, leaving 152 for the transcript: the
+        # cut landed on `and cornstarch. Cook t ...` and dropped
+        # `pure vanilla extract`, which is exactly the one ingredient the answer
+        # missed. Task 045 lost `132, 133, 134` from its final segment the same
+        # way and answered `197, 245` -- precisely what survived. Both
+        # transcripts are short enough to fit whole (455 and 660 characters);
+        # only the header made them not fit, and removing it takes both from
+        # partial to complete. See tests/test_transcript_segment_blocks.py.
         return (
             "Audio transcription:\n"
             f"- faster_whisper_model: {self.config.audio_model_size}\n"
             f"- device: {self.config.audio_device}\n"
             f"- compute_type: {self.config.audio_compute_type}\n"
             f"- detected_language: {language}{probability_text}\n"
-            f"- question_focus: {question}\n"
             "Transcript:\n"
             f"{transcript}"
         )

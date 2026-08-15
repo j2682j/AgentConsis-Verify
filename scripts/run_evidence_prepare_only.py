@@ -113,6 +113,12 @@ def prepare_one(sample: dict[str, Any], args: argparse.Namespace, tool_manager: 
         "execution_time": time.time() - started,
         "search_summary": extract_search_summary(network_summary),
         "evidence_prepare": {
+            # Recorded because `tool_usage` is stripped to four keys below, which
+            # drops the `raw_result` the statuses used to be readable from. A
+            # replay that cannot tell `not_run` from `complete + empty`, or
+            # `partial_failure` from `failed`, cannot attribute anything.
+            "pipeline_status": str(bundle.get("pipeline_status") or "not_run"),
+            "evidence_status": str(bundle.get("evidence_status") or "not_applicable"),
             "search_result_chars": len(str(bundle.get("search_result") or "")),
             "attachment_result_chars": len(str(bundle.get("attachment_result") or "")),
             "solver_result_chars": len(str(bundle.get("solver_result") or "")),

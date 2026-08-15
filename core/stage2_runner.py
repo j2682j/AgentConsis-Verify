@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import replace
 import json
 import math
+from statistics import median
 from typing import Any
 
 from core.config import (
@@ -292,18 +293,43 @@ class Stage2Runner:
         final_answer: str,
     ) -> dict[str, Any]:
         """
-        從 Versa step probabilities 建立關鍵步驟最低值與幾何平均。
+        從 Versa step probabilities 建立逐步評分的中位數、關鍵步驟最低值與幾何平均。
+
+        `step_score_median` is the ranking key; the two `critical_step_*` values
+        are kept for the early-stop threshold and for comparability with runs
+        recorded before this change.
+
+        Measured over final_13/15/16 -- 58 tasks that produced both a correct
+        and an incorrect candidate, scored pairwise within the task -- the
+        critical floor separates them worse than chance:
+
+            median over every step          0.577
+            mean over every step            0.516
+            geometric mean over every step  0.511
+            median over critical steps      0.491
+            geometric mean over critical    0.470
+            floor over critical steps       0.399
+
+        Two things were wrong, not one. The floor is a worst-case statistic
+        over a chain averaging 14.7 steps, and a correct chain carries a weak
+        step as readily as a wrong one, so one step decided the candidate. And
+        the critical subset has a median size of 1 -- for half the paths every
+        statistic collapses to the same number, which is why even the median
+        recovers little while confined to it. Each of the five alternatives
+        beats the floor by task-level sign test at p < 0.006, and the median
+        over all steps beats the best critical-subset statistic at p = 0.041.
 
         Args:
          - step_scores: 已結合 evidence support 狀態的逐步評分。
          - final_answer: 此推理路徑對應的候選答案。
 
         Returns:
-         - dict[str, Any]: 關鍵步驟索引、最低值、幾何平均與整體平均。
+         - dict[str, Any]: 關鍵步驟索引、中位數、最低值、幾何平均與整體平均。
         """
         if not step_scores:
             return {
                 "critical_step_indices": [],
+                "step_score_median": 0.0,
                 "critical_step_floor": 0.0,
                 "critical_step_geometric_mean": 0.0,
                 "average_probability": 0.0,
@@ -337,6 +363,9 @@ class Stage2Runner:
         )
         return {
             "critical_step_indices": sorted(critical_indices),
+            # Over every step, not the critical subset -- the name says so
+            # because the distinction is the larger half of the measured gain.
+            "step_score_median": median(all_probabilities) if all_probabilities else 0.0,
             "critical_step_floor": floor,
             "critical_step_geometric_mean": geometric_mean,
             "average_probability": (

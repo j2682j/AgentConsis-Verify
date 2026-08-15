@@ -5,6 +5,7 @@ import os
 import pickle
 import re
 import shutil
+import traceback
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, Callable, Iterable
@@ -3632,15 +3633,30 @@ class WebRetrievalControl:
             retriever=retriever,
             exporter=self.corpus_builder.exporter,
         )
-        linked_records = self._enrich_collection_links(
-            question=text,
-            retriever=retriever,
-            corpus_session=corpus_session,
-        )
+        # Link enrichment only ever adds records; the corpus already stands
+        # without it. It is wrapped because it did not degrade when it broke --
+        # `not vectors` on a numpy array inside `_select_linked_chunks` raised,
+        # unwound the whole of `run`, and left the task with no search evidence
+        # at all. That emptied Evidence Prepare on 25 of 53 tasks in
+        # level1_final_18 while the run still reported a normal score. An
+        # optional stage failing should cost its own records and nothing else.
+        link_enrichment_error = ""
+        try:
+            linked_records = self._enrich_collection_links(
+                question=text,
+                retriever=retriever,
+                corpus_session=corpus_session,
+            )
+        except Exception as exc:
+            linked_records = []
+            link_enrichment_error = "".join(
+                traceback.format_exception(type(exc), exc, exc.__traceback__)
+            )[-2000:]
         diagnostics["collection_link_enrichment"] = {
             "enabled": self.max_collection_links_to_fetch > 0,
             "added_record_count": len(linked_records),
             "record_ids": [record.id for record in linked_records],
+            "error_traceback": link_enrichment_error,
         }
 
         def load_external_sources(requests: list[SearchQueryRequest]) -> int:
