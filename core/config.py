@@ -49,6 +49,14 @@ class EachAgentReply:
     final_answer_source: str = "original"
     repair_metadata: dict = field(default_factory=dict)
     context_budget: dict = field(default_factory=dict)
+    #: What `tool_context` holds on this run. Under tool use it is the runtime
+    #: tool trace and reads `"None"` when no tool was called; on the non-tool
+    #: path it can be formatted evidence. Two meanings in one field is how a
+    #: four-character `"None"` came to be read as an agent answering with no
+    #: context at all, in runs whose prompt was six thousand characters and had
+    #: dropped no evidence. Stated outright so nothing has to infer it again.
+    context_source: str = "unspecified"
+    runtime_tool_trace_chars: int = 0
     reasoning_parse_quality: str = "unreliable"
     reasoning_versa_eligible: bool = False
     reasoning_parse_diagnostics: dict = field(default_factory=dict)

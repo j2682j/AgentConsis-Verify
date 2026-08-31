@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 from dataclasses import asdict, dataclass, field
 import re
 from typing import Any
@@ -23,14 +24,39 @@ class ContextBudget:
     max_policy_chars: int = 900
 
 
+def _digest(text: str) -> str:
+    """Short content hash, so two runs can be compared without storing both."""
+
+    return hashlib.sha256(str(text or "").encode("utf-8")).hexdigest()[:16] if text else ""
+
+
 @dataclass
 class ContextBudgetDiagnostics:
+    """What the budget did, per prompt section.
+
+    The search evidence is measured on both sides of the budget rather than
+    only after it. Reading the prepared evidence and reading what the agent was
+    finally shown are different questions, and the run record used to answer
+    neither: `tool_context` holds a runtime tool trace under tool use and
+    formatted evidence otherwise, so the same field means two things and an
+    analysis that reads it gets a plausible wrong answer. It did -- 4 characters
+    of `"None"` was mistaken for an empty context when the prompt was 6004
+    characters and had dropped nothing.
+    """
+
     original_chars: int = 0
     final_chars: int = 0
     truncation_applied: bool = False
     dropped_evidence_count: int = 0
     truncated_sections: list[str] = field(default_factory=list)
     section_chars: dict[str, int] = field(default_factory=dict)
+    #: The prepared search evidence as it arrived, before any budgeting.
+    prepared_search_context_chars: int = 0
+    prepared_search_context_hash: str = ""
+    #: The same section as it appears in the prompt the agent is sent.
+    rendered_search_context_chars: int = 0
+    rendered_search_context_hash: str = ""
+    search_result_truncated: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -90,6 +116,8 @@ class ContextBudgetManager:
 
         original_chars = sum(len(value) for value in original.values())
         final_chars = sum(len(value) for value in compact.values())
+        prepared_search = original.get("search_result", "")
+        rendered_search = compact.get("search_result", "")
         diagnostics = ContextBudgetDiagnostics(
             original_chars=original_chars,
             final_chars=final_chars,
@@ -97,6 +125,11 @@ class ContextBudgetManager:
             dropped_evidence_count=dropped_evidence_count,
             truncated_sections=sorted(set(truncated)),
             section_chars={key: len(value) for key, value in compact.items()},
+            prepared_search_context_chars=len(prepared_search),
+            prepared_search_context_hash=_digest(prepared_search),
+            rendered_search_context_chars=len(rendered_search),
+            rendered_search_context_hash=_digest(rendered_search),
+            search_result_truncated=prepared_search != rendered_search,
         )
         return ContextBudgetResult(sections=compact, diagnostics=diagnostics)
 

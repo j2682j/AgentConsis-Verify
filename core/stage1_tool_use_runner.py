@@ -432,6 +432,10 @@ class Stage1ToolUseRunner:
             final_answer=final_answer,
             parse_completed=bool(parsed.get("eligible_for_winner")),
             tool_context=self._format_tool_trace(tool_results),
+            context_source="runtime_tool_trace",
+            runtime_tool_trace_chars=len(
+                str(self._format_tool_trace(tool_results) or "")
+            ),
             prompt_tokens=prompt_tokens_total,
             completion_tokens=completion_tokens_total,
             total_tokens=prompt_tokens_total + completion_tokens_total,
@@ -504,6 +508,10 @@ class Stage1ToolUseRunner:
             final_answer="",
             parse_completed=False,
             tool_context=self._format_tool_trace(tool_results),
+            context_source="runtime_tool_trace",
+            runtime_tool_trace_chars=len(
+                str(self._format_tool_trace(tool_results) or "")
+            ),
             prompt_tokens=prompt_tokens_total,
             completion_tokens=completion_tokens_total,
             total_tokens=prompt_tokens_total + completion_tokens_total,
@@ -530,6 +538,18 @@ class Stage1ToolUseRunner:
         )
 
     def _context_budget_summary(self, trajectory: list[dict[str, Any]]) -> dict[str, Any]:
+        """Fold the per-turn budgets into one record, without losing the turns.
+
+        Summing chars across turns and dropping everything else made the tool-use
+        path report less than the non-tool path: the prepared and rendered search
+        context, the only fields that say whether evidence survived budgeting,
+        never reached the run record at all.
+
+        Hashes are kept per turn and never combined. A hash of concatenated turns
+        identifies nothing that can be compared against anything, whereas the
+        first turn's hash is exactly what a later replay needs to check.
+        """
+
         budgets = [
             dict(item.get("context_budget") or {})
             for item in trajectory
@@ -537,18 +557,53 @@ class Stage1ToolUseRunner:
         ]
         if not budgets:
             return {}
+
+        turns = [
+            {
+                "turn": index,
+                "prepared_search_context_chars": int(
+                    item.get("prepared_search_context_chars", 0) or 0
+                ),
+                "prepared_search_context_hash": str(
+                    item.get("prepared_search_context_hash", "") or ""
+                ),
+                "rendered_search_context_chars": int(
+                    item.get("rendered_search_context_chars", 0) or 0
+                ),
+                "rendered_search_context_hash": str(
+                    item.get("rendered_search_context_hash", "") or ""
+                ),
+                "search_result_truncated": bool(item.get("search_result_truncated")),
+                "section_chars": dict(item.get("section_chars") or {}),
+            }
+            for index, item in enumerate(budgets, 1)
+        ]
+        first = turns[0]
         return {
             "turn_count": len(budgets),
             "original_chars": sum(int(item.get("original_chars", 0) or 0) for item in budgets),
             "final_chars": sum(int(item.get("final_chars", 0) or 0) for item in budgets),
             "truncation_applied": any(bool(item.get("truncation_applied")) for item in budgets),
-            "dropped_evidence_count": sum(int(item.get("dropped_evidence_count", 0) or 0) for item in budgets),
+            # Kept, but not evidence of anything on its own: reference tails are
+            # trimmed without incrementing it, by design and by test. Loss shows
+            # up in `search_result_truncated` and the rendered chars instead.
+            "dropped_evidence_count": sum(
+                int(item.get("dropped_evidence_count", 0) or 0) for item in budgets
+            ),
             "truncated_sections": sorted(
                 {
                     str(section)
                     for item in budgets
                     for section in list(item.get("truncated_sections") or [])
                 }
+            ),
+            "turns": turns,
+            "first_turn_prepared_search_context_chars": first["prepared_search_context_chars"],
+            "first_turn_prepared_search_context_hash": first["prepared_search_context_hash"],
+            "first_turn_rendered_search_context_chars": first["rendered_search_context_chars"],
+            "first_turn_rendered_search_context_hash": first["rendered_search_context_hash"],
+            "search_result_truncated_turn_count": sum(
+                1 for turn in turns if turn["search_result_truncated"]
             ),
         }
 

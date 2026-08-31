@@ -110,6 +110,11 @@ class Stage1ToolContextBuilder(Stage1ContextBuilder):
 
     def compress(self, structured: dict[str, Any], **kwargs: Any) -> dict[str, Any]:
         compressed = super().compress(structured, **kwargs)
+        # The base pass already budgeted once and recorded the raw section; this
+        # class budgets again after compressing its own sections, and without
+        # carrying the raw through, that second pass would overwrite the three
+        # layer record with a two layer one.
+        raw_search_result = str(structured.get("search_result", "") or "")
         compressed["tool_trace"] = (
             self._compress_multiline_text(
                 str(structured.get("tool_trace", "")),
@@ -166,7 +171,9 @@ class Stage1ToolContextBuilder(Stage1ContextBuilder):
             )
             or self.config.none_text
         )
-        return self._apply_context_budget(compressed)
+        return self._apply_context_budget(
+            compressed, raw_search_result=raw_search_result
+        )
 
     def render(self, compressed: dict[str, Any], **_: Any) -> list[dict[str, str]]:
         user_content = STAGE1_TOOL_USER_PROMPT.format(

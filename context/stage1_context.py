@@ -152,6 +152,11 @@ class Stage1ContextBuilder(ContextBuilder):
 
     def compress(self, structured: dict[str, Any], **_: Any) -> dict[str, Any]:
         compressed = dict(structured)
+        # Kept before the line compressor runs. The evidence is reduced twice --
+        # here by line and character caps, then again by the budget -- and only
+        # the second reduction was being recorded, so a section that arrived at
+        # 3686 characters and reached the budget at 3072 looked untouched.
+        raw_search_result = str(compressed.get("search_result", "") or "")
         compressed["search_result"] = (
             self._compress_multiline_text(
                 compressed["search_result"],
@@ -176,9 +181,13 @@ class Stage1ContextBuilder(ContextBuilder):
             )
             or self.config.none_text
         )
-        return self._apply_context_budget(compressed)
+        return self._apply_context_budget(
+            compressed, raw_search_result=raw_search_result
+        )
 
-    def _apply_context_budget(self, structured: dict[str, Any]) -> dict[str, Any]:
+    def _apply_context_budget(
+        self, structured: dict[str, Any], *, raw_search_result: str | None = None
+    ) -> dict[str, Any]:
         budget_sections = {
             key: value
             for key, value in structured.items()
@@ -187,7 +196,25 @@ class Stage1ContextBuilder(ContextBuilder):
         budgeted = self.budget_manager.apply(budget_sections)
         compressed = dict(structured)
         compressed.update(budgeted.sections)
-        compressed["_context_budget"] = budgeted.diagnostics.to_dict()
+        diagnostics = budgeted.diagnostics.to_dict()
+        if raw_search_result is not None:
+            from context.evidence_block_lineage import digest, trace
+
+            rendered = compressed.get("search_result", "")
+            diagnostics.update(
+                raw_search_context_chars=len(raw_search_result),
+                raw_search_context_hash=digest(raw_search_result),
+                # Two reductions, two dispositions. A block can survive the line
+                # compressor and be dropped by the budget, or the reverse, and
+                # one combined verdict cannot say which happened.
+                compressed_from_raw=trace(
+                    raw_search_result, structured.get("search_result", "")
+                ).to_dict(),
+                rendered_from_compressed=trace(
+                    structured.get("search_result", ""), rendered
+                ).to_dict(),
+            )
+        compressed["_context_budget"] = diagnostics
         return compressed
 
     def render(self, compressed: dict[str, Any], **_: Any) -> list[dict[str, str]]:

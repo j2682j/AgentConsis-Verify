@@ -10,6 +10,27 @@ from .semantic_impact import SemanticImpactScorer
 from .span_repair import SalientSpan
 
 
+@dataclass(frozen=True)
+class RoleDecision:
+    """What the scores said, and whether the margin was enough to act on it.
+
+    Args:
+        - top_role: highest-scoring role before the confidence threshold.
+        - legacy_role: the value `role` has always carried; `"other"` when the
+          margin fell short.
+        - confidence: best score minus second best.
+        - abstained: whether the margin fell under `min_confidence`.
+
+    Returns:
+        - RoleDecision: the classification outcome, undivided.
+    """
+
+    top_role: str
+    legacy_role: str
+    confidence: float
+    abstained: bool
+
+
 @dataclass
 class ClassifiedSpan:
     """
@@ -27,10 +48,26 @@ class ClassifiedSpan:
         - question_role: 問題答案角色資訊。
         - entity_label: spaCy NER label。
         - role_scores: 加上 soft prior 後的最終角色分數。
+        - classification_status: resolved 或 unresolved。
+        - semantic_role: 判斷成立時的語意角色；unresolved 時為 None。
+        - predicted_top_role: 信心門檻判斷前的最高角色。
+        - schema_version: 序列化格式版本。
+
+    `role` 與 `semantic_role` 的差別是這個型別存在的理由。`role` 在無法判斷
+    時寫 `"other"`，所以「這個 span 沒有作用」和「分類器放棄了」共用同一個
+    值。標註 133 個 span 後，系統輸出的 39 個 `other` **全部**是放棄判斷，
+    人工認定真正無作用的只有 5 個，其中 4 個正是被放棄的那些。混在一起時
+    `other` 的 precision 是 0.103，看起來像分類器判斷很差；分開之後，實際的
+    情況是它願意判斷時準確率 0.755，而有 29.3% 的 span 判斷不出來。
+
+    `role` 保持原本的值與語意，因為 query generation 與 prompt 組裝都讀它；
+    這一版只讓紀錄能區分兩者，不改變任何決策。
 
     Returns:
         - ClassifiedSpan: 可序列化的 span classification 結果。
     """
+
+    SCHEMA_VERSION = 2
 
     text: str
     role: str
@@ -43,9 +80,39 @@ class ClassifiedSpan:
     question_role: dict[str, Any] = field(default_factory=dict)
     entity_label: str = ""
     role_scores: dict[str, float] = field(default_factory=dict)
+    classification_status: str = "resolved"
+    semantic_role: str | None = None
+    predicted_top_role: str = ""
+    schema_version: int = SCHEMA_VERSION
+
+    @property
+    def unresolved(self) -> bool:
+        return self.classification_status == "unresolved"
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "ClassifiedSpan":
+        """Load either schema, without inferring a status the record cannot support.
+
+        A version 1 record has no `classification_status`, and `role == "other"`
+        does not settle it: the value covers both a span judged inert and one the
+        classifier gave up on. Reading it as `unresolved` would invent the very
+        distinction this field was added to record, so those load as
+        `legacy_unknown`.
+        """
+
+        data = dict(payload or {})
+        version = int(data.get("schema_version") or 1)
+        known = {f for f in cls.__dataclass_fields__}
+        row = {k: v for k, v in data.items() if k in known}
+        if version < cls.SCHEMA_VERSION:
+            row["classification_status"] = "legacy_unknown"
+            row["semantic_role"] = None
+            row["predicted_top_role"] = str(data.get("role") or "")
+            row["schema_version"] = version
+        return cls(**row)
 
 
 class SpanRoleClassifier:
@@ -203,12 +270,17 @@ class SpanRoleClassifier:
                 question_role=question_role,
                 entity_label=entity_label,
             )
-            role, confidence = self._role_from_scores(role_scores)
+            decision = self._role_from_scores(role_scores)
             output.append(
                 ClassifiedSpan(
                     text=span.text,
-                    role=role,
-                    confidence=confidence,
+                    role=decision.legacy_role,
+                    classification_status=(
+                        "unresolved" if decision.abstained else "resolved"
+                    ),
+                    semantic_role=None if decision.abstained else decision.top_role,
+                    predicted_top_role=decision.top_role,
+                    confidence=decision.confidence,
                     similarities=similarity_map,
                     score=float(span.score or 0.0),
                     repair_source=span.repair_source,
@@ -222,6 +294,13 @@ class SpanRoleClassifier:
         return output
 
     def grouped(self, spans: list[ClassifiedSpan]) -> dict[str, list[ClassifiedSpan]]:
+        """Group by the legacy `role`, unchanged.
+
+        Callers that build queries and prompts read this, so it keeps grouping
+        abstentions under `other` exactly as before. `grouped_by_status` exposes
+        the distinction for anything that wants it.
+        """
+
         grouped: dict[str, list[ClassifiedSpan]] = {
             role: [] for role in [*self.ROLE_ORDER, "weak_generic"]
         }
@@ -230,6 +309,32 @@ class SpanRoleClassifier:
         for values in grouped.values():
             values.sort(key=lambda item: (item.score, item.confidence), reverse=True)
         return grouped
+
+    def grouped_by_status(
+        self, spans: list[ClassifiedSpan]
+    ) -> dict[str, list[ClassifiedSpan]]:
+        """`other` split into the two things it currently means.
+
+        `legacy_other_spans` is what `grouped()["other"]` returns and is what
+        the prompt still reads; the other two exist so a caller can ask which
+        kind it is holding. Built from one pass over the input in its original
+        order -- concatenating two filtered lists would reorder the result, and
+        the prompt has to render byte for byte as before.
+        """
+
+        semantic: list[ClassifiedSpan] = []
+        unresolved: list[ClassifiedSpan] = []
+        legacy: list[ClassifiedSpan] = []
+        for span in spans:
+            if span.role != "other":
+                continue
+            legacy.append(span)
+            (unresolved if span.unresolved else semantic).append(span)
+        return {
+            "semantic_other_spans": semantic,
+            "unresolved_spans": unresolved,
+            "legacy_other_spans": legacy,
+        }
 
     def _similarity_map(self, similarities: list[float]) -> dict[str, float]:
         return {
@@ -268,15 +373,30 @@ class SpanRoleClassifier:
             scores["other"] += 0.025
         return {role: round(score, 6) for role, score in scores.items()}
 
-    def _role_from_scores(self, role_scores: dict[str, float]) -> tuple[str, float]:
+    def _role_from_scores(self, role_scores: dict[str, float]) -> RoleDecision:
+        """The winning role, and whether the margin was enough to keep it.
+
+        Returns both rather than the collapsed role alone. When the margin is
+        too small this writes `"other"` into `legacy_role`, which is the same
+        value a span genuinely judged inert receives -- so a caller handed only
+        that value cannot tell the two apart. Recovering it by comparing against
+        the argmax almost works, and fails exactly when `other` is the argmax
+        *and* the margin is short: that span abstained, and the comparison would
+        call it a decision.
+        """
+
         pairs = [(role, round(float(score), 6)) for role, score in role_scores.items()]
         pairs.sort(key=lambda item: item[1], reverse=True)
-        best_role, best_score = pairs[0] if pairs else ("other", 0.0)
+        top_role, best_score = pairs[0] if pairs else ("other", 0.0)
         second_score = pairs[1][1] if len(pairs) > 1 else 0.0
         confidence = round(max(0.0, best_score - second_score), 6)
-        if confidence < self.min_confidence:
-            best_role = "other"
-        return best_role, confidence
+        abstained = confidence < self.min_confidence
+        return RoleDecision(
+            top_role=top_role,
+            legacy_role="other" if abstained else top_role,
+            confidence=confidence,
+            abstained=abstained,
+        )
 
     def _classification_text(
         self,

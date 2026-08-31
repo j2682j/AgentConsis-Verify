@@ -15,6 +15,7 @@ from .relation_plan import RelationPlan
 from .relation_plan_validator import RelationPlanValidationResult, RelationPlanValidator
 from .span_classifier import ClassifiedSpan, SpanRoleClassifier
 from .semantic_impact import DEFAULT_HF_MODEL_NAME, SemanticImpactScorer, TokenSalient
+from .query_literal_integrity import repair_query
 from .span_repair import SalientSpan, SpanRepairer
 from .source_requirement import SearchQueryRequest, SourceRequirement
 
@@ -287,6 +288,9 @@ Return exactly this JSON shape:
         self.last_token_salience: list[TokenSalient] = []
         self.last_salient_spans: list[SalientSpan] = []
         self.last_classified_spans: list[ClassifiedSpan] = []
+        #: Raw and repaired query kept side by side. A silent correction is a
+        #: correction nobody can audit, and this one rewrites model output.
+        self.last_query_repairs: list[dict[str, Any]] = []
         self.last_question_role: QuestionRole = QuestionRole()
         self.last_relation_plan: RelationPlan = RelationPlan()
         self.last_relation_plan_validation = RelationPlanValidationResult(
@@ -312,6 +316,7 @@ Return exactly this JSON shape:
             - list[SalienceQueryCandidate]: Deduplicated query candidates.
         """
         text = normalize_text(question)
+        self.last_query_repairs = []
         if not text:
             return []
 
@@ -656,9 +661,16 @@ Return exactly this JSON shape:
             )
             cleaned_query = self._clean_query(request.query)
             if cleaned_query:
+                # The model has been observed writing `2:009` for a year the
+                # question spelled `2009`, in the same reply that spelled it
+                # correctly elsewhere. A query carrying that constrains nothing,
+                # and the task is lost before a document is fetched.
+                integrity = repair_query(cleaned_query, question)
+                if integrity.changed:
+                    self.last_query_repairs.append(integrity.to_dict())
                 requests.append(
                     SearchQueryRequest(
-                        query=cleaned_query,
+                        query=integrity.repaired,
                         source_requirement=request.source_requirement,
                     )
                 )
